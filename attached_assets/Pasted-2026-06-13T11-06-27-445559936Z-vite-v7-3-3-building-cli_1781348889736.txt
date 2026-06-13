@@ -1,0 +1,70 @@
+2026-06-13T11:06:27.445559936Z vite v7.3.3 building client environment for production...
+2026-06-13T11:06:27.524237746Z transforming...
+2026-06-13T11:06:27.773058084Z Found 1 warning while optimizing generated CSS:
+2026-06-13T11:06:27.773097735Z 
+2026-06-13T11:06:27.773107595Z │     color: #fff;
+2026-06-13T11:06:27.773112735Z │   }
+2026-06-13T11:06:27.773119596Z │   @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Inter:wght@300;400;500;600;700&display=swap');
+2026-06-13T11:06:27.773125976Z ┆          ^-- Unknown at rule: @import
+2026-06-13T11:06:27.773130576Z ┆
+2026-06-13T11:06:27.773135506Z │ }
+2026-06-13T11:06:27.773140216Z │ @layer utilities {
+2026-06-13T11:06:27.773143266Z 
+2026-06-13T11:06:27.966327969Z src/components/ui/tooltip.tsx (2:0): Error when using sourcemap for reporting an error: Can't resolve original location of error.
+2026-06-13T11:06:31.029599629Z ✓ 2187 modules transformed.
+2026-06-13T11:06:31.350830468Z rendering chunks...
+2026-06-13T11:06:31.360785451Z computing gzip size...
+2026-06-13T11:06:31.380248466Z dist/index.html                   1.38 kB │ gzip:   0.54 kB
+2026-06-13T11:06:31.380271967Z dist/assets/index-DHtPR9p2.css  145.71 kB │ gzip:  21.61 kB
+2026-06-13T11:06:31.380316158Z dist/assets/index-CuJ4ihTJ.js   632.55 kB │ gzip: 185.41 kB
+2026-06-13T11:06:31.380366309Z 
+2026-06-13T11:06:31.380371959Z (!) Some chunks are larger than 500 kB after minification. Consider:
+2026-06-13T11:06:31.380375659Z - Using dynamic import() to code-split the application
+2026-06-13T11:06:31.380379239Z - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+2026-06-13T11:06:31.380382549Z - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+2026-06-13T11:06:31.380739297Z ✓ built in 3.89s
+2026-06-13T11:06:32.096027764Z ==> Uploading build...
+2026-06-13T11:06:41.589307982Z ==> Uploaded in 5.0s. Compression took 4.5s
+2026-06-13T11:06:41.611127381Z ==> Build successful 🎉
+2026-06-13T11:06:45.834458252Z ==> Deploying...
+2026-06-13T11:06:45.906342937Z ==> Setting WEB_CONCURRENCY=1 by default, based on available CPUs in the instance
+2026-06-13T11:07:44.318825026Z ==> Running 'node dist/index.mjs'
+2026-06-13T11:07:44.519296917Z node:internal/modules/cjs/loader:1459
+2026-06-13T11:07:44.519322098Z   throw err;
+2026-06-13T11:07:44.519326338Z   ^
+2026-06-13T11:07:44.519329748Z 
+2026-06-13T11:07:44.519333868Z Error: Cannot find module '/opt/render/project/src/dist/index.mjs'
+2026-06-13T11:07:44.519337408Z     at Module._resolveFilename (node:internal/modules/cjs/loader:1456:15)
+2026-06-13T11:07:44.519340748Z     at defaultResolveImpl (node:internal/modules/cjs/loader:1066:19)
+2026-06-13T11:07:44.519343838Z     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1071:22)
+2026-06-13T11:07:44.519348169Z     at Module._load (node:internal/modules/cjs/loader:1242:25)
+2026-06-13T11:07:44.519351458Z     at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)
+2026-06-13T11:07:44.519355729Z     at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:154:5)
+2026-06-13T11:07:44.519359899Z     at node:internal/main/run_main_module:33:47 {
+2026-06-13T11:07:44.519364699Z   code: 'MODULE_NOT_FOUND',
+2026-06-13T11:07:44.519369349Z   requireStack: []
+2026-06-13T11:07:44.519372759Z }
+2026-06-13T11:07:44.519375089Z 
+2026-06-13T11:07:44.519377469Z Node.js v24.14.1
+2026-06-13T11:07:48.302532296Z ==> Exited with status 1
+2026-06-13T11:07:48.305799637Z ==> Common ways to troubleshoot your deploy: https://render.com/docs/troubleshooting-deploys
+2026-06-13T11:07:50.31614054Z ==> No open ports detected, continuing to scan...
+2026-06-13T11:07:50.42733736Z ==> Docs on specifying a port: https://render.com/docs/web-services#port-binding
+2026-06-13T11:07:54.503474264Z ==> Running 'node dist/index.mjs'
+2026-06-13T11:07:54.797336727Z node:internal/modules/cjs/loader:1459
+2026-06-13T11:07:54.797354248Z   throw err;
+2026-06-13T11:07:54.797357828Z   ^
+2026-06-13T11:07:54.797360858Z 
+2026-06-13T11:07:54.797364068Z Error: Cannot find module '/opt/render/project/src/dist/index.mjs'
+2026-06-13T11:07:54.797367358Z     at Module._resolveFilename (node:internal/modules/cjs/loader:1456:15)
+2026-06-13T11:07:54.797370118Z     at defaultResolveImpl (node:internal/modules/cjs/loader:1066:19)
+2026-06-13T11:07:54.797372998Z     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1071:22)
+2026-06-13T11:07:54.797375928Z     at Module._load (node:internal/modules/cjs/loader:1242:25)
+2026-06-13T11:07:54.797378908Z     at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)
+2026-06-13T11:07:54.797381788Z     at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:154:5)
+2026-06-13T11:07:54.797386988Z     at node:internal/main/run_main_module:33:47 {
+2026-06-13T11:07:54.797390058Z   code: 'MODULE_NOT_FOUND',
+2026-06-13T11:07:54.797393148Z   requireStack: []
+2026-06-13T11:07:54.797395898Z }
+2026-06-13T11:07:54.797405638Z 
+2026-06-13T11:07:54.797408918Z Node.js v24.14.1
