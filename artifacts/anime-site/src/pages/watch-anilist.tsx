@@ -157,7 +157,7 @@ export default function WatchAniList() {
   const [jikanLoading, setJikanLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [lang, setLang] = useState<"SUB" | "DUB">("SUB");
-  const [server, setServer] = useState<"HD-1" | "HD-2" | "HD-3" | "GOGO" | "KOTO" | "CUSTOM">("HD-1");
+  const [server, setServer] = useState<"GOGO" | "KOTO" | "CUSTOM">("GOGO");
   const [customUrl, setCustomUrl] = useState("");
   const [urlTemplate, setUrlTemplate] = useState("");
   const [templateInput, setTemplateInput] = useState("");
@@ -169,11 +169,6 @@ export default function WatchAniList() {
   const [commentAuthor, setCommentAuthor] = useState(() => localStorage.getItem("na_username") ?? "");
   const [commentSort, setCommentSort] = useState<"Best" | "Newest" | "Oldest">("Newest");
   const [iframeLoaded, setIframeLoaded] = useState(false);
-  const [autoRetry, setAutoRetry] = useState(0);
-  const [allServersFailed, setAllServersFailed] = useState(false);
-  const [autoSwitchingTo, setAutoSwitchingTo] = useState<"gogo" | "koto" | null>(null);
-  const autoFallbackChainRef = useRef(false);
-  const proxyErrRef = useRef(false); // guards onLoad flash when proxy_error fires
   const epListRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [cdnUrl, setCdnUrl] = useState<string | null>(null);
@@ -198,9 +193,6 @@ export default function WatchAniList() {
   const [newEpNotice, setNewEpNotice] = useState<number | null>(null);
   const prevNextAiringEpRef = useRef<number | null>(null);
   const [countdownSecs, setCountdownSecs] = useState<number | null>(null);
-
-  const HD_SERVERS = ["vidsrc.to", "vidsrc.xyz", "vidsrc.icu"] as const;
-  const totalHd = HD_SERVERS.length;
 
   const { toggle, isInList } = useWatchlist();
   const { markWatched, isWatched } = useWatchProgress();
@@ -313,11 +305,6 @@ export default function WatchAniList() {
 
   useEffect(() => {
     setIframeLoaded(false);
-    setAutoRetry(0);
-    setAllServersFailed(false);
-    setAutoSwitchingTo(null);
-    autoFallbackChainRef.current = false;
-    proxyErrRef.current = false;
     setVideoState({ paused: true, time: 0, duration: 0, buffered: 0, volume: 1, muted: false });
     setCdnUrl(null);
     setCdnLoading(false);
@@ -335,62 +322,6 @@ export default function WatchAniList() {
     setGogoSlugInput(saved);
   }, [animeId]);
 
-  // Auto-advance to next HD server after 10 s if still loading
-  useEffect(() => {
-    if (iframeLoaded || server === "CUSTOM" || server === "GOGO" || server === "KOTO") return;
-    const timer = setTimeout(() => {
-      if (autoRetry < totalHd - 1) {
-        setAutoRetry((prev) => prev + 1);
-        setIframeLoaded(false);
-      }
-    }, 10000);
-    return () => clearTimeout(timer);
-  }, [autoRetry, iframeLoaded, server, totalHd]);
-
-  // Listen for proxy_error postMessages — instant fallback without waiting 10 s
-  useEffect(() => {
-    const handler = (evt: MessageEvent) => {
-      if (evt.data?.type !== "proxy_error") return;
-      if (server === "CUSTOM" || server === "GOGO" || server === "KOTO") return;
-      proxyErrRef.current = true;
-      if (autoRetry < totalHd - 1) {
-        setAutoRetry((prev) => prev + 1);
-        setIframeLoaded(false);
-        // Reset the guard after new iframe starts
-        setTimeout(() => { proxyErrRef.current = false; }, 300);
-      } else {
-        // All HD servers exhausted
-        setAllServersFailed(true);
-      }
-    };
-    window.addEventListener("message", handler);
-    return () => window.removeEventListener("message", handler);
-  }, [autoRetry, server, totalHd]);
-
-  // Auto-fallback: all HD servers failed → try GOGO silently (1.5 s indicator then switch)
-  useEffect(() => {
-    if (!allServersFailed) { setAutoSwitchingTo(null); return; }
-    setAutoSwitchingTo("gogo");
-    autoFallbackChainRef.current = true;
-    const timer = setTimeout(() => {
-      setAutoSwitchingTo(null);
-      activateGogo();
-    }, 1500);
-    return () => clearTimeout(timer);
-  }, [allServersFailed]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Auto-fallback: GOGO cdnNotFound (as part of chain) → try KOTO silently
-  useEffect(() => {
-    if (server !== "GOGO" || !cdnNotFound || cdnUrl || !autoFallbackChainRef.current) return;
-    autoFallbackChainRef.current = false;
-    setAutoSwitchingTo("koto");
-    const timer = setTimeout(() => {
-      setAutoSwitchingTo(null);
-      setServer("KOTO");
-      setIframeLoaded(false);
-    }, 1500);
-    return () => clearTimeout(timer);
-  }, [server, cdnNotFound, cdnUrl]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load saved URL template from localStorage when anime changes
   useEffect(() => {
@@ -445,7 +376,6 @@ export default function WatchAniList() {
     setGogoSlugInput(s);
     localStorage.setItem(`na_gogo_${animeId}`, s);
     setServer("GOGO");
-    setAllServersFailed(false);
     setIframeLoaded(false);
   };
 
@@ -896,72 +826,38 @@ export default function WatchAniList() {
               <>
                 <iframe
                   ref={iframeRef}
-                  key={`${animeId}-${anime.idMal ?? "al"}-${currentEp}-${lang}-${server}-${autoRetry}-${server === "CUSTOM" ? customUrl : ""}-${server === "GOGO" ? (cdnLoading ? "loading" : (cdnUrl ?? "fallback")) : ""}-${server === "KOTO" ? (kotoPlayerLoading ? "koto-loading" : (kotoPlayerUrl ?? "koto-missing")) : ""}`}
+                  key={`${animeId}-${anime.idMal ?? "al"}-${currentEp}-${lang}-${server}-${server === "CUSTOM" ? customUrl : ""}-${server === "GOGO" ? (cdnLoading ? "loading" : (cdnUrl ?? "fallback")) : ""}-${server === "KOTO" ? (kotoPlayerLoading ? "koto-loading" : (kotoPlayerUrl ?? "koto-missing")) : ""}`}
                   src={(() => {
                     if (server === "CUSTOM") return customUrl ? `/api/proxy?url=${encodeURIComponent(customUrl)}` : "about:blank";
                     if (server === "KOTO") {
                       if (kotoPlayerLoading || !kotoPlayerUrl) return "about:blank";
                       return kotoPlayerUrl;
                     }
-                    if (server === "GOGO") {
-                      if (!gogoSlug) return "about:blank";
-                      if (cdnLoading) return "about:blank";
-                      // CDN URL resolved — embed directly like KOTO, no proxy (proxy CSS/JS breaks JW Player controls)
-                      if (cdnUrl) return cdnUrl;
-                      if (cdnNotFound) return "about:blank";
-                      return "about:blank";
-                    }
-                    const malId = anime.idMal ?? null;
-                    const dub = lang === "DUB";
-                    const idx = server === "HD-3" ? 2 : server === "HD-2" ? 1 : autoRetry;
-                    let rawSrc: string;
-                    if (idx === 0) {
-                      // HD-1: vidsrc.to with MAL ID — original format uses ?e= query param
-                      rawSrc = malId
-                        ? `https://vidsrc.to/embed/anime/mal/${malId}?e=${currentEp}${dub ? "&type=dub" : ""}`
-                        : `https://vidsrc.to/embed/anime/anilist/${animeId}?e=${currentEp}${dub ? "&type=dub" : ""}`;
-                    } else if (idx === 1) {
-                      // HD-2: vidsrc.xyz with MAL ID path format
-                      rawSrc = malId
-                        ? `https://vidsrc.xyz/embed/anime/mal/${malId}/${currentEp}${dub ? "?type=dub" : ""}`
-                        : `https://vidsrc.xyz/embed/anime/anilist/${animeId}/${currentEp}${dub ? "?type=dub" : ""}`;
-                    } else {
-                      // HD-3: vidsrc.icu fallback
-                      rawSrc = malId
-                        ? `https://vidsrc.icu/embed/anime/${malId}/${currentEp}`
-                        : `https://vidsrc.icu/embed/anime/anilist/${animeId}/${currentEp}`;
-                    }
-                    return rawSrc;
+                    // GOGO
+                    if (!gogoSlug) return "about:blank";
+                    if (cdnLoading) return "about:blank";
+                    if (cdnUrl) return cdnUrl;
+                    return "about:blank";
                   })()}
                   className="w-full h-full"
                   style={{ opacity: iframeLoaded ? 1 : 0, transition: "opacity 0.5s ease" }}
                   allowFullScreen
                   allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
-                  sandbox={server === "KOTO" || server === "GOGO"
-                    ? "allow-scripts allow-same-origin allow-forms allow-presentation"
-                    : "allow-scripts allow-same-origin allow-forms allow-presentation allow-popups allow-popups-to-escape-sandbox"
-                  }
+                  sandbox="allow-scripts allow-same-origin allow-forms allow-presentation"
                   referrerPolicy="no-referrer"
                   title={`${title} Episode ${currentEp}`}
                   onLoad={() => {
-                    // Ignore about:blank that loads while GOGO/KOTO fetches the video URL
                     if (server === "GOGO" && cdnLoading) return;
                     if (server === "KOTO" && (kotoPlayerLoading || !kotoPlayerUrl)) return;
-                    // 200 ms grace period — lets proxy_error postMessage fire first
                     setTimeout(() => {
-                      if (!proxyErrRef.current) {
-                        setIframeLoaded(true);
-                        // Ask the CDN player for initial state so our controls reflect reality
-                        if (server === "GOGO") {
-                          setTimeout(() => sendCmd({ na_cmd: "query" }), 600);
-                        }
-                      }
+                      setIframeLoaded(true);
+                      if (server === "GOGO") setTimeout(() => sendCmd({ na_cmd: "query" }), 600);
                     }, 200);
                   }}
                 />
 
 
-                {(!iframeLoaded || allServersFailed) && (
+                {!iframeLoaded && (
                   <div
                     className="absolute inset-0 z-10 flex flex-col items-center justify-center"
                     style={{ background: "rgba(0,0,0,0.92)" }}
@@ -974,97 +870,26 @@ export default function WatchAniList() {
                       />
                     )}
                     <div className="relative z-10 flex flex-col items-center gap-4">
-                      {allServersFailed ? (
+                      {server === "GOGO" && cdnNotFound && !cdnUrl ? (
                         <>
-                          {autoSwitchingTo === "gogo" ? (
-                            <>
-                              <div className="relative w-12 h-12">
-                                <div className="absolute inset-0 rounded-full border-2 border-white/10" />
-                                <div className="absolute inset-0 rounded-full border-2 border-t-orange-400 border-r-transparent border-b-transparent border-l-transparent animate-spin" />
-                              </div>
-                              <div className="text-center space-y-1">
-                                <p className="text-white/70 text-sm font-semibold tracking-wide">HD servers unavailable</p>
-                                <p className="text-orange-400/80 text-[11px] font-mono uppercase tracking-widest">Trying GogoAnimeS…</p>
-                              </div>
-                            </>
-                          ) : (
-                            <>
-                              <div className="text-center space-y-2">
-                                <p className="text-white/70 text-sm font-semibold tracking-wide">HD servers unavailable</p>
-                                <p className="text-white/30 text-[11px] font-mono uppercase tracking-widest">
-                                  Episode not yet indexed on vidsrc
-                                </p>
-                              </div>
-                              <div className="flex flex-wrap gap-2 justify-center">
-                                <button
-                                  onClick={() => activateGogo()}
-                                  className="flex items-center gap-2 text-[12px] font-mono font-bold px-6 py-3 border border-orange-400 text-orange-400 hover:bg-orange-400 hover:text-black transition-all uppercase tracking-widest"
-                                >
-                                  <Play className="w-3.5 h-3.5 fill-current" />
-                                  Stream via GogoAnimeS
-                                </button>
-                                <button
-                                  onClick={() => { setServer("KOTO"); setAllServersFailed(false); setIframeLoaded(false); }}
-                                  className="flex items-center gap-2 text-[12px] font-mono font-bold px-6 py-3 border border-teal-400 text-teal-400 hover:bg-teal-400 hover:text-black transition-all uppercase tracking-widest"
-                                >
-                                  <Play className="w-3.5 h-3.5 fill-current" />
-                                  Stream via AniKoto
-                                </button>
-                              </div>
-                              <p className="text-[9px] font-mono text-white/20 max-w-[260px] text-center">
-                                Slug: <span className="text-white/40">{deriveGogoSlug(title)}</span>
-                                {" · "}edit below if wrong
-                              </p>
-                              <button
-                                onClick={() => { setServer("CUSTOM"); setAllServersFailed(false); }}
-                                className="text-[10px] font-mono px-4 py-1.5 border border-white/15 text-white/30 hover:border-white/40 hover:text-white/60 transition-colors uppercase tracking-widest"
-                              >
-                                Or paste URL directly
-                              </button>
-                            </>
-                          )}
-                        </>
-                      ) : server === "GOGO" && cdnNotFound && !cdnUrl ? (
-                        <>
-                          {autoSwitchingTo === "koto" ? (
-                            <>
-                              <div className="relative w-12 h-12">
-                                <div className="absolute inset-0 rounded-full border-2 border-white/10" />
-                                <div className="absolute inset-0 rounded-full border-2 border-t-teal-400 border-r-transparent border-b-transparent border-l-transparent animate-spin" />
-                              </div>
-                              <div className="text-center space-y-1">
-                                <p className="text-white/70 text-sm font-semibold tracking-wide">Not found on GogoAnimeS</p>
-                                <p className="text-teal-400/80 text-[11px] font-mono uppercase tracking-widest">Trying AniKoto…</p>
-                              </div>
-                            </>
-                          ) : (
-                            <>
-                              <div className="text-center space-y-2">
-                                <p className="text-white/70 text-sm font-semibold tracking-wide">Not found on GogoAnimeS</p>
-                                <p className="text-white/30 text-[11px] font-mono uppercase tracking-widest">
-                                  Slug <span className="text-orange-400/60">{gogoSlug}</span> · episode {currentEp}
-                                </p>
-                                <p className="text-white/20 text-[10px] font-mono max-w-[260px] text-center">
-                                  This anime may not be on GogoAnimeS — try KOTO or edit the slug below.
-                                </p>
-                              </div>
-                              <div className="flex flex-wrap gap-2 justify-center mt-2">
-                                <button
-                                  onClick={() => { setServer("KOTO"); setAllServersFailed(false); setIframeLoaded(false); }}
-                                  className="flex items-center gap-2 text-[12px] font-mono font-bold px-6 py-3 border border-teal-400 text-teal-400 hover:bg-teal-400 hover:text-black transition-all uppercase tracking-widest"
-                                >
-                                  <Play className="w-3.5 h-3.5 fill-current" />
-                                  Stream via AniKoto
-                                </button>
-                                <button
-                                  onClick={() => { setServer("CUSTOM"); setAllServersFailed(false); }}
-                                  className="text-[10px] font-mono px-4 py-1.5 border border-white/15 text-white/30 hover:border-white/40 hover:text-white/60 transition-colors uppercase tracking-widest self-center"
-                                >
-                                  Paste URL directly
-                                </button>
-                              </div>
-                            </>
-                          )}
+                          <div className="text-center space-y-2">
+                            <p className="text-white/70 text-sm font-semibold tracking-wide">Not found on GogoAnimeS</p>
+                            <p className="text-white/30 text-[11px] font-mono uppercase tracking-widest">
+                              Slug <span className="text-orange-400/60">{gogoSlug}</span> · episode {currentEp}
+                            </p>
+                            <p className="text-white/20 text-[10px] font-mono max-w-[260px] text-center">
+                              This anime may not be on GogoAnimeS — try KOTO or edit the slug below.
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap gap-2 justify-center mt-2">
+                            <button
+                              onClick={() => { setServer("KOTO"); setIframeLoaded(false); }}
+                              className="flex items-center gap-2 text-[12px] font-mono font-bold px-6 py-3 border border-teal-400 text-teal-400 hover:bg-teal-400 hover:text-black transition-all uppercase tracking-widest"
+                            >
+                              <Play className="w-3.5 h-3.5 fill-current" />
+                              Stream via AniKoto
+                            </button>
+                          </div>
                         </>
                       ) : (
                         <>
@@ -1087,15 +912,12 @@ export default function WatchAniList() {
                                 ? "Loading AniKoto player…"
                                 : server === "KOTO"
                                 ? "Fetching AniKoto stream…"
-                                : server === "HD-1" && autoRetry > 0
-                                ? `Trying server ${autoRetry + 1} of ${totalHd}…`
                                 : "Loading, please wait…"}
                             </p>
                             <p className="text-white/30 text-[11px] font-mono mt-1 uppercase tracking-widest">
                               Episode {currentEp} · {lang}
                               {server === "GOGO" && gogoSlug && ` · ${gogoSlug.toUpperCase()}`}
                               {server === "KOTO" && kotoSlug && ` · ${kotoSlug}`}
-                              {server === "HD-1" && ` · ${HD_SERVERS[autoRetry]}`}
                             </p>
                           </div>
                         </>
@@ -1171,44 +993,23 @@ export default function WatchAniList() {
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2 ml-auto">
-              {/* Language */}
+              {/* SUB/DUB toggle */}
               <div className="flex items-center gap-1">
-                <span className="text-[9px] font-mono text-white/30 uppercase tracking-widest mr-1 flex items-center gap-1">
-                  <span className="text-[8px] border border-white/20 px-1 py-0.5">SUB</span>
-                </span>
-                {(["HD-1", "HD-2", "HD-3"] as const).map((q) => (
+                {(["SUB", "DUB"] as const).map((l) => (
                   <button
-                    key={q}
-                    onClick={() => { setServer(q); setLang("SUB"); }}
+                    key={l}
+                    onClick={() => setLang(l)}
                     className={`text-[10px] font-mono px-2.5 py-1 border transition-colors ${
-                      lang === "SUB" && server === q
+                      lang === l
                         ? "border-white bg-white text-black"
                         : "border-white/20 text-white/40 hover:border-white/50 hover:text-white"
                     }`}
                   >
-                    {q}
+                    {l}
                   </button>
                 ))}
               </div>
-              <div className="flex items-center gap-1">
-                <span className="text-[9px] font-mono text-white/30 uppercase tracking-widest mr-1 flex items-center gap-1">
-                  <span className="text-[8px] border border-white/20 px-1 py-0.5">DUB</span>
-                </span>
-                {(["HD-1", "HD-2", "HD-3"] as const).map((q) => (
-                  <button
-                    key={q}
-                    onClick={() => { setServer(q); setLang("DUB"); }}
-                    className={`text-[10px] font-mono px-2.5 py-1 border transition-colors ${
-                      lang === "DUB" && server === q
-                        ? "border-white bg-white text-black"
-                        : "border-white/20 text-white/40 hover:border-white/50 hover:text-white"
-                    }`}
-                  >
-                    {q}
-                  </button>
-                ))}
-              </div>
-              {/* GogoAnimes server */}
+              {/* GOGO server */}
               <button
                 onClick={() => { setServer("GOGO"); setCdnNotFound(false); setIframeLoaded(false); }}
                 className={`text-[10px] font-mono px-2.5 py-1 border transition-colors ${
@@ -1219,7 +1020,7 @@ export default function WatchAniList() {
               >
                 GOGO
               </button>
-              {/* AniKoto server */}
+              {/* KOTO server */}
               <button
                 onClick={() => { setServer("KOTO"); setIframeLoaded(false); }}
                 className={`text-[10px] font-mono px-2.5 py-1 border transition-colors ${
@@ -1229,17 +1030,6 @@ export default function WatchAniList() {
                 }`}
               >
                 KOTO
-              </button>
-              {/* Custom URL server */}
-              <button
-                onClick={() => setServer("CUSTOM")}
-                className={`text-[10px] font-mono px-2.5 py-1 border transition-colors ${
-                  server === "CUSTOM"
-                    ? "border-white bg-white text-black"
-                    : "border-white/20 text-white/40 hover:border-white/50 hover:text-white"
-                }`}
-              >
-                DIRECT
               </button>
             </div>
           </div>
