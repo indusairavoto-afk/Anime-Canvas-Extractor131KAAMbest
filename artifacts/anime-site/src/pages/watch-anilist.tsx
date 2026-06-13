@@ -157,7 +157,9 @@ export default function WatchAniList() {
   const [jikanLoading, setJikanLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [lang, setLang] = useState<"SUB" | "DUB">("SUB");
-  const [server, setServer] = useState<"GOGO" | "KOTO" | "CUSTOM">("GOGO");
+  const [server, setServer] = useState<"GOGO" | "KOTO" | "REAN" | "CUSTOM">("GOGO");
+  const [reanSlug, setReanSlug] = useState("");
+  const [reanSlugInput, setReanSlugInput] = useState("");
   const [customUrl, setCustomUrl] = useState("");
   const [urlTemplate, setUrlTemplate] = useState("");
   const [templateInput, setTemplateInput] = useState("");
@@ -320,6 +322,14 @@ export default function WatchAniList() {
     const saved = localStorage.getItem(`na_gogo_${animeId}`) ?? "";
     setGogoSlug(saved);
     setGogoSlugInput(saved);
+  }, [animeId]);
+
+  // Load saved ReAnime slug from localStorage
+  useEffect(() => {
+    if (!animeId) return;
+    const saved = localStorage.getItem(`na_rean_${animeId}`) ?? "";
+    setReanSlug(saved);
+    setReanSlugInput(saved);
   }, [animeId]);
 
 
@@ -833,6 +843,10 @@ export default function WatchAniList() {
                       if (kotoPlayerLoading || !kotoPlayerUrl) return "about:blank";
                       return kotoPlayerUrl;
                     }
+                    if (server === "REAN") {
+                      if (!reanSlug) return "about:blank";
+                      return `https://reanime.to/watch/${reanSlug}-episode-${currentEp}`;
+                    }
                     // GOGO
                     if (!gogoSlug) return "about:blank";
                     if (cdnLoading) return "about:blank";
@@ -849,6 +863,7 @@ export default function WatchAniList() {
                   onLoad={() => {
                     if (server === "GOGO" && cdnLoading) return;
                     if (server === "KOTO" && (kotoPlayerLoading || !kotoPlayerUrl)) return;
+                    if (server === "REAN" && !reanSlug) return;
                     setTimeout(() => {
                       setIframeLoaded(true);
                       if (server === "GOGO") setTimeout(() => sendCmd({ na_cmd: "query" }), 600);
@@ -912,12 +927,15 @@ export default function WatchAniList() {
                                 ? "Loading AniKoto player…"
                                 : server === "KOTO"
                                 ? "Fetching AniKoto stream…"
+                                : server === "REAN"
+                                ? "Loading ReAnime player…"
                                 : "Loading, please wait…"}
                             </p>
                             <p className="text-white/30 text-[11px] font-mono mt-1 uppercase tracking-widest">
                               Episode {currentEp} · {lang}
                               {server === "GOGO" && gogoSlug && ` · ${gogoSlug.toUpperCase()}`}
                               {server === "KOTO" && kotoSlug && ` · ${kotoSlug}`}
+                              {server === "REAN" && reanSlug && ` · ${reanSlug.toUpperCase()}`}
                             </p>
                           </div>
                         </>
@@ -1030,6 +1048,17 @@ export default function WatchAniList() {
                 }`}
               >
                 KOTO
+              </button>
+              {/* ReAnime server */}
+              <button
+                onClick={() => { setServer("REAN"); setIframeLoaded(false); }}
+                className={`text-[10px] font-mono px-2.5 py-1 border transition-colors ${
+                  server === "REAN"
+                    ? "border-violet-400 bg-violet-400 text-black"
+                    : "border-violet-400/30 text-violet-400/60 hover:border-violet-400/70 hover:text-violet-400"
+                }`}
+              >
+                REAN
               </button>
             </div>
           </div>
@@ -1178,6 +1207,57 @@ export default function WatchAniList() {
                     Retry
                   </button>
                 </div>
+              )}
+            </div>
+          )}
+
+          {/* REAN panel */}
+          {server === "REAN" && (
+            <div className="border-b border-white/5 bg-violet-400/[0.03] px-4 py-3 space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="text-[9px] font-mono text-violet-400/60 uppercase tracking-widest shrink-0 w-16">Slug</span>
+                <input
+                  value={reanSlugInput}
+                  onChange={(e) => setReanSlugInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      const s = reanSlugInput.trim();
+                      setReanSlug(s);
+                      localStorage.setItem(`na_rean_${animeId}`, s);
+                      setIframeLoaded(false);
+                    }
+                  }}
+                  placeholder="e.g. one-piece"
+                  className="flex-1 bg-white/5 border border-violet-400/20 px-3 py-1.5 text-xs text-white placeholder-white/15 focus:outline-none focus:border-violet-400/50 font-mono"
+                />
+                <button
+                  onClick={() => {
+                    const s = reanSlugInput.trim();
+                    setReanSlug(s);
+                    localStorage.setItem(`na_rean_${animeId}`, s);
+                    setIframeLoaded(false);
+                  }}
+                  className="text-[10px] font-mono px-2.5 py-1.5 border border-violet-400/30 text-violet-400/60 hover:border-violet-400 hover:text-violet-400 transition-colors shrink-0"
+                >
+                  Load
+                </button>
+                <button
+                  onClick={() => {
+                    const s = deriveGogoSlug(title);
+                    setReanSlug(s);
+                    setReanSlugInput(s);
+                    localStorage.setItem(`na_rean_${animeId}`, s);
+                    setIframeLoaded(false);
+                  }}
+                  className="text-[10px] font-mono px-2.5 py-1.5 border border-violet-400/20 text-violet-400/40 hover:border-violet-400/60 hover:text-violet-400/80 transition-colors shrink-0"
+                >
+                  Auto
+                </button>
+              </div>
+              {reanSlug && (
+                <p className="text-[10px] font-mono text-white/20 pl-[72px]">
+                  Opens: <span className="text-violet-400/50">reanime.to/watch/{reanSlug}-episode-{currentEp}</span>
+                </p>
               )}
             </div>
           )}
