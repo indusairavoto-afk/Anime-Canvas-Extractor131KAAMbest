@@ -865,6 +865,46 @@ export default function WatchAniList() {
           <div ref={playerContainerRef} className="w-full aspect-video bg-black relative overflow-hidden">
             {anime ? (
               <>
+                {/* External-only servers: REAN and MKISSA can't be embedded — show a launcher */}
+                {(server === "REAN" || server === "MKISSA") ? (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center z-10" style={{ background: "rgba(0,0,0,0.93)" }}>
+                    {banner && (
+                      <img src={banner} alt="" className="absolute inset-0 w-full h-full object-cover opacity-10 scale-110 blur-sm" />
+                    )}
+                    <div className="relative z-10 flex flex-col items-center gap-5 px-6 text-center">
+                      <div className={`text-[10px] font-mono uppercase tracking-[0.25em] ${server === "REAN" ? "text-violet-400/70" : "text-rose-400/70"}`}>
+                        {server === "REAN" ? "ReAnime" : "MKissa"} · Episode {currentEp} · {lang}
+                      </div>
+                      <p className="text-white/40 text-xs font-mono max-w-xs leading-relaxed">
+                        This server can't be embedded. Click below to watch in a new tab.
+                      </p>
+                      {server === "REAN" && !reanSlug ? (
+                        <p className="text-white/30 text-[11px] font-mono">Set a slug in the REAN panel below first.</p>
+                      ) : server === "MKISSA" && !mkissaId ? (
+                        <p className="text-white/30 text-[11px] font-mono">
+                          {mkissaSearching ? "Auto-searching mkissa.to…" : "No ID found — use Search in the panel below."}
+                        </p>
+                      ) : (
+                        <a
+                          href={server === "REAN"
+                            ? `https://reanime.to/watch/${reanSlug}?ep=${currentEp}&lang=${lang.toLowerCase()}`
+                            : `https://mkissa.to/anime/${mkissaId}/p-${currentEp}-${lang.toLowerCase()}`
+                          }
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={`flex items-center gap-3 font-mono font-bold px-8 py-4 border transition-all uppercase tracking-widest text-sm ${
+                            server === "REAN"
+                              ? "border-violet-400 text-violet-400 hover:bg-violet-400 hover:text-black"
+                              : "border-rose-400 text-rose-400 hover:bg-rose-400 hover:text-black"
+                          }`}
+                        >
+                          <Play className="w-4 h-4 fill-current" />
+                          Watch Episode {currentEp}
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                ) : (
                 <iframe
                   ref={iframeRef}
                   key={`${animeId}-${anime.idMal ?? "al"}-${currentEp}-${lang}-${server}-${server === "CUSTOM" ? customUrl : ""}-${server === "GOGO" ? (cdnLoading ? "loading" : (cdnUrl ?? "fallback")) : ""}-${server === "KOTO" ? (kotoPlayerLoading ? "koto-loading" : (kotoPlayerUrl ?? "koto-missing")) : ""}`}
@@ -873,14 +913,6 @@ export default function WatchAniList() {
                     if (server === "KOTO") {
                       if (kotoPlayerLoading || !kotoPlayerUrl) return "about:blank";
                       return kotoPlayerUrl;
-                    }
-                    if (server === "REAN") {
-                      if (!reanSlug) return "about:blank";
-                      return `https://reanime.to/watch/${reanSlug}?ep=${currentEp}&lang=${lang.toLowerCase()}`;
-                    }
-                    if (server === "MKISSA") {
-                      if (!mkissaId) return "about:blank";
-                      return `https://mkissa.to/anime/${mkissaId}/p-${currentEp}-${lang.toLowerCase()}`;
                     }
                     // GOGO
                     if (!gogoSlug) return "about:blank";
@@ -892,26 +924,22 @@ export default function WatchAniList() {
                   style={{ opacity: iframeLoaded ? 1 : 0, transition: "opacity 0.5s ease" }}
                   allowFullScreen
                   allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
-                  sandbox={server === "REAN" || server === "MKISSA"
-                    ? "allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-presentation"
-                    : "allow-scripts allow-same-origin allow-forms allow-presentation"
-                  }
-                  referrerPolicy={server === "REAN" || server === "MKISSA" ? "origin" : "no-referrer"}
+                  sandbox="allow-scripts allow-same-origin allow-forms allow-presentation"
+                  referrerPolicy="no-referrer"
                   title={`${title} Episode ${currentEp}`}
                   onLoad={() => {
                     if (server === "GOGO" && cdnLoading) return;
                     if (server === "KOTO" && (kotoPlayerLoading || !kotoPlayerUrl)) return;
-                    if (server === "REAN" && !reanSlug) return;
-                    if (server === "MKISSA" && !mkissaId) return;
                     setTimeout(() => {
                       setIframeLoaded(true);
                       if (server === "GOGO") setTimeout(() => sendCmd({ na_cmd: "query" }), 600);
                     }, 200);
                   }}
                 />
+                )}
 
 
-                {!iframeLoaded && (
+                {!iframeLoaded && server !== "REAN" && server !== "MKISSA" && (
                   <div
                     className="absolute inset-0 z-10 flex flex-col items-center justify-center"
                     style={{ background: "rgba(0,0,0,0.92)" }}
@@ -966,20 +994,12 @@ export default function WatchAniList() {
                                 ? "Loading AniKoto player…"
                                 : server === "KOTO"
                                 ? "Fetching AniKoto stream…"
-                                : server === "REAN"
-                                ? "Loading ReAnime player…"
-                                : server === "MKISSA" && mkissaSearching
-                                ? "Searching mkissa.to…"
-                                : server === "MKISSA"
-                                ? "Loading mkissa.to player…"
                                 : "Loading, please wait…"}
                             </p>
                             <p className="text-white/30 text-[11px] font-mono mt-1 uppercase tracking-widest">
                               Episode {currentEp} · {lang}
                               {server === "GOGO" && gogoSlug && ` · ${gogoSlug.toUpperCase()}`}
                               {server === "KOTO" && kotoSlug && ` · ${kotoSlug}`}
-                              {server === "REAN" && reanSlug && ` · ${reanSlug.toUpperCase()}`}
-                              {server === "MKISSA" && mkissaId && ` · ${mkissaId}`}
                             </p>
                           </div>
                         </>
