@@ -157,9 +157,14 @@ export default function WatchAniList() {
   const [jikanLoading, setJikanLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [lang, setLang] = useState<"SUB" | "DUB">("SUB");
-  const [server, setServer] = useState<"GOGO" | "KOTO" | "REAN" | "CUSTOM">("GOGO");
+  const [server, setServer] = useState<"GOGO" | "KOTO" | "REAN" | "MKISSA" | "CUSTOM">("GOGO");
   const [reanSlug, setReanSlug] = useState("");
   const [reanSlugInput, setReanSlugInput] = useState("");
+  const [mkissaId, setMkissaId] = useState("");
+  const [mkissaIdInput, setMkissaIdInput] = useState("");
+  const [mkissaSearchResults, setMkissaSearchResults] = useState<{ _id: string; name: string; thumbnail: string }[]>([]);
+  const [mkissaSearching, setMkissaSearching] = useState(false);
+  const [mkissaSearchDone, setMkissaSearchDone] = useState(false);
   const [customUrl, setCustomUrl] = useState("");
   const [urlTemplate, setUrlTemplate] = useState("");
   const [templateInput, setTemplateInput] = useState("");
@@ -331,6 +336,33 @@ export default function WatchAniList() {
     setReanSlug(saved);
     setReanSlugInput(saved);
   }, [animeId]);
+
+  // Load saved mkissa AllAnime ID from localStorage; auto-search if none saved
+  useEffect(() => {
+    if (!animeId || !anime) return;
+    const saved = localStorage.getItem(`na_mkissa_${animeId}`) ?? "";
+    const animeTitle = anime.title.english || anime.title.romaji || "";
+    if (saved) {
+      setMkissaId(saved);
+      setMkissaIdInput(saved);
+    } else if (animeTitle) {
+      setMkissaSearching(true);
+      setMkissaSearchDone(false);
+      fetch(apiUrl(`/api/mkissa/search?q=${encodeURIComponent(animeTitle)}&limit=5`))
+        .then((r) => r.json())
+        .then((data: { results?: { _id: string; name: string; thumbnail: string }[] }) => {
+          const results = data.results ?? [];
+          setMkissaSearchResults(results);
+          if (results.length > 0) {
+            setMkissaId(results[0]._id);
+            setMkissaIdInput(results[0]._id);
+            localStorage.setItem(`na_mkissa_${animeId}`, results[0]._id);
+          }
+        })
+        .catch(() => {})
+        .finally(() => { setMkissaSearching(false); setMkissaSearchDone(true); });
+    }
+  }, [animeId, anime]); // eslint-disable-line react-hooks/exhaustive-deps
 
 
   // Load saved URL template from localStorage when anime changes
@@ -847,6 +879,10 @@ export default function WatchAniList() {
                       if (!reanSlug) return "about:blank";
                       return `https://reanime.to/watch/${reanSlug}?ep=${currentEp}&lang=${lang.toLowerCase()}`;
                     }
+                    if (server === "MKISSA") {
+                      if (!mkissaId) return "about:blank";
+                      return `https://mkissa.to/anime/${mkissaId}?ep=${currentEp}`;
+                    }
                     // GOGO
                     if (!gogoSlug) return "about:blank";
                     if (cdnLoading) return "about:blank";
@@ -857,16 +893,17 @@ export default function WatchAniList() {
                   style={{ opacity: iframeLoaded ? 1 : 0, transition: "opacity 0.5s ease" }}
                   allowFullScreen
                   allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
-                  sandbox={server === "REAN"
+                  sandbox={server === "REAN" || server === "MKISSA"
                     ? "allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-presentation"
                     : "allow-scripts allow-same-origin allow-forms allow-presentation"
                   }
-                  referrerPolicy={server === "REAN" ? "origin" : "no-referrer"}
+                  referrerPolicy={server === "REAN" || server === "MKISSA" ? "origin" : "no-referrer"}
                   title={`${title} Episode ${currentEp}`}
                   onLoad={() => {
                     if (server === "GOGO" && cdnLoading) return;
                     if (server === "KOTO" && (kotoPlayerLoading || !kotoPlayerUrl)) return;
                     if (server === "REAN" && !reanSlug) return;
+                    if (server === "MKISSA" && !mkissaId) return;
                     setTimeout(() => {
                       setIframeLoaded(true);
                       if (server === "GOGO") setTimeout(() => sendCmd({ na_cmd: "query" }), 600);
@@ -932,6 +969,10 @@ export default function WatchAniList() {
                                 ? "Fetching AniKoto stream…"
                                 : server === "REAN"
                                 ? "Loading ReAnime player…"
+                                : server === "MKISSA" && mkissaSearching
+                                ? "Searching mkissa.to…"
+                                : server === "MKISSA"
+                                ? "Loading mkissa.to player…"
                                 : "Loading, please wait…"}
                             </p>
                             <p className="text-white/30 text-[11px] font-mono mt-1 uppercase tracking-widest">
@@ -939,6 +980,7 @@ export default function WatchAniList() {
                               {server === "GOGO" && gogoSlug && ` · ${gogoSlug.toUpperCase()}`}
                               {server === "KOTO" && kotoSlug && ` · ${kotoSlug}`}
                               {server === "REAN" && reanSlug && ` · ${reanSlug.toUpperCase()}`}
+                              {server === "MKISSA" && mkissaId && ` · ${mkissaId}`}
                             </p>
                           </div>
                         </>
@@ -1062,6 +1104,17 @@ export default function WatchAniList() {
                 }`}
               >
                 REAN
+              </button>
+              {/* mkissa.to server */}
+              <button
+                onClick={() => { setServer("MKISSA"); setIframeLoaded(false); }}
+                className={`text-[10px] font-mono px-2.5 py-1 border transition-colors ${
+                  server === "MKISSA"
+                    ? "border-rose-400 bg-rose-400 text-black"
+                    : "border-rose-400/30 text-rose-400/60 hover:border-rose-400/70 hover:text-rose-400"
+                }`}
+              >
+                MKISSA
               </button>
             </div>
           </div>
@@ -1260,6 +1313,105 @@ export default function WatchAniList() {
               {reanSlug && (
                 <p className="text-[10px] font-mono text-white/20 pl-[72px]">
                   Opens: <span className="text-violet-400/50">reanime.to/watch/{reanSlug}-episode-{currentEp}</span>
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* MKISSA panel */}
+          {server === "MKISSA" && (
+            <div className="border-b border-white/5 bg-rose-400/[0.03] px-4 py-3 space-y-2">
+              {/* Status row */}
+              <div className="flex items-center gap-2">
+                <span className="text-[9px] font-mono text-rose-400/60 uppercase tracking-widest shrink-0 w-16">ID</span>
+                {mkissaSearching && (
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 border border-rose-400/40 border-t-rose-400 rounded-full animate-spin" />
+                    <span className="text-[10px] font-mono text-rose-400/50">Auto-searching mkissa.to…</span>
+                  </div>
+                )}
+                {!mkissaSearching && (
+                  <>
+                    <input
+                      value={mkissaIdInput}
+                      onChange={(e) => setMkissaIdInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          const s = mkissaIdInput.trim();
+                          setMkissaId(s);
+                          localStorage.setItem(`na_mkissa_${animeId}`, s);
+                          setIframeLoaded(false);
+                        }
+                      }}
+                      placeholder="AllAnime ID (auto-filled)"
+                      className="flex-1 bg-white/5 border border-rose-400/20 px-3 py-1.5 text-xs text-white placeholder-white/15 focus:outline-none focus:border-rose-400/50 font-mono"
+                    />
+                    <button
+                      onClick={() => {
+                        const s = mkissaIdInput.trim();
+                        setMkissaId(s);
+                        localStorage.setItem(`na_mkissa_${animeId}`, s);
+                        setIframeLoaded(false);
+                      }}
+                      className="text-[10px] font-mono px-2.5 py-1.5 border border-rose-400/30 text-rose-400/60 hover:border-rose-400 hover:text-rose-400 transition-colors shrink-0"
+                    >
+                      Load
+                    </button>
+                    <button
+                      onClick={() => {
+                        setMkissaSearching(true);
+                        setMkissaSearchDone(false);
+                        setMkissaSearchResults([]);
+                        fetch(apiUrl(`/api/mkissa/search?q=${encodeURIComponent(title)}&limit=8`))
+                          .then((r) => r.json())
+                          .then((data: { results?: { _id: string; name: string; thumbnail: string }[] }) => {
+                            setMkissaSearchResults(data.results ?? []);
+                          })
+                          .catch(() => {})
+                          .finally(() => { setMkissaSearching(false); setMkissaSearchDone(true); });
+                      }}
+                      className="text-[10px] font-mono px-2.5 py-1.5 border border-rose-400/20 text-rose-400/40 hover:border-rose-400/60 hover:text-rose-400/80 transition-colors shrink-0"
+                    >
+                      Search
+                    </button>
+                  </>
+                )}
+              </div>
+              {/* Search results */}
+              {mkissaSearchResults.length > 0 && (
+                <div className="pl-[72px]">
+                  <div className="flex flex-col gap-1 max-h-48 overflow-y-auto">
+                    {mkissaSearchResults.map((r) => (
+                      <button
+                        key={r._id}
+                        onClick={() => {
+                          setMkissaId(r._id);
+                          setMkissaIdInput(r._id);
+                          localStorage.setItem(`na_mkissa_${animeId}`, r._id);
+                          setIframeLoaded(false);
+                          setMkissaSearchResults([]);
+                          setMkissaSearchDone(false);
+                        }}
+                        className="flex items-center gap-2 text-left px-2 py-1.5 hover:bg-rose-400/10 border border-transparent hover:border-rose-400/20 transition-colors group"
+                      >
+                        {r.thumbnail && (
+                          <img src={r.thumbnail} alt="" className="w-8 h-11 object-cover shrink-0 opacity-70 group-hover:opacity-100 transition-opacity" />
+                        )}
+                        <div className="min-w-0">
+                          <p className="text-[11px] text-white/80 group-hover:text-white truncate">{r.name}</p>
+                          <p className="text-[9px] font-mono text-rose-400/40 group-hover:text-rose-400/70 truncate">{r._id}</p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {!mkissaSearching && mkissaSearchDone && mkissaSearchResults.length === 0 && (
+                <p className="pl-[72px] text-[10px] font-mono text-white/20 pt-1">No matches. Try editing the ID manually.</p>
+              )}
+              {mkissaId && (
+                <p className="text-[10px] font-mono text-white/20 pl-[72px]">
+                  Opens: <span className="text-rose-400/50">mkissa.to/anime/{mkissaId}?ep={currentEp}</span>
                 </p>
               )}
             </div>

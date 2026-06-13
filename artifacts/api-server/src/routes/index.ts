@@ -7,6 +7,7 @@ import discoveryRouter from "./discovery";
 import proxyRouter from "./proxy";
 import gogoRouter from "./gogo";
 import kotoRouter from "./koto";
+import mkissaRouter from "./mkissa";
 
 const router: IRouter = Router();
 
@@ -18,5 +19,6 @@ router.use(discoveryRouter);
 router.use(proxyRouter);
 router.use(gogoRouter);
 router.use(kotoRouter);
+router.use(mkissaRouter);
 
 export default router;
