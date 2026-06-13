@@ -845,7 +845,7 @@ export default function WatchAniList() {
                     }
                     if (server === "REAN") {
                       if (!reanSlug) return "about:blank";
-                      return `https://reanime.to/watch/${reanSlug}-episode-${currentEp}`;
+                      return `https://reanime.to/watch/${reanSlug}?ep=${currentEp}&lang=${lang.toLowerCase()}`;
                     }
                     // GOGO
                     if (!gogoSlug) return "about:blank";
@@ -857,8 +857,11 @@ export default function WatchAniList() {
                   style={{ opacity: iframeLoaded ? 1 : 0, transition: "opacity 0.5s ease" }}
                   allowFullScreen
                   allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
-                  sandbox="allow-scripts allow-same-origin allow-forms allow-presentation"
-                  referrerPolicy="no-referrer"
+                  sandbox={server === "REAN"
+                    ? "allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-presentation"
+                    : "allow-scripts allow-same-origin allow-forms allow-presentation"
+                  }
+                  referrerPolicy={server === "REAN" ? "origin" : "no-referrer"}
                   title={`${title} Episode ${currentEp}`}
                   onLoad={() => {
                     if (server === "GOGO" && cdnLoading) return;
@@ -1227,7 +1230,7 @@ export default function WatchAniList() {
                       setIframeLoaded(false);
                     }
                   }}
-                  placeholder="e.g. one-piece"
+                  placeholder="e.g. daemons-of-the-shadow-realm-y6uy28  (from reanime.to/watch/...)"
                   className="flex-1 bg-white/5 border border-violet-400/20 px-3 py-1.5 text-xs text-white placeholder-white/15 focus:outline-none focus:border-violet-400/50 font-mono"
                 />
                 <button
