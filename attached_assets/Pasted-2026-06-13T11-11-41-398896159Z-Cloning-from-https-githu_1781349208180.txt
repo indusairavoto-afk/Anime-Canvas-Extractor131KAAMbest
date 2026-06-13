@@ -1,0 +1,37 @@
+2026-06-13T11:11:41.398896159Z ==> Cloning from https://github.com/ujwalokay/Anime-Canvas-Extractor130KAAMTESTFINAL
+2026-06-13T11:11:47.583884797Z ==> Checking out commit d31d2a154c67dfb2a8b7ea86c54cd710f208dda4 in branch main
+2026-06-13T11:11:48.49575999Z ==> Installing dependencies with pnpm...
+2026-06-13T11:11:48.583792491Z ==> Using Node.js version 24.14.1 (default)
+2026-06-13T11:11:48.583800685Z ==> Docs on specifying a Node.js version: https://render.com/docs/node-version
+2026-06-13T11:11:56.495298797Z ==> Running build command 'npx --yes pnpm@10 install && npx pnpm@10 --filter @workspace/anime-site run build'...
+2026-06-13T11:12:02.898418619Z 
+2026-06-13T11:12:02.898440291Z > @workspace/anime-site@0.0.0 build /opt/render/project/src/artifacts/anime-site
+2026-06-13T11:12:02.898444899Z > vite build --config vite.config.ts
+2026-06-13T11:12:02.898447379Z 
+2026-06-13T11:12:03.272556796Z vite v7.3.3 building client environment for production...
+2026-06-13T11:12:03.352762964Z transforming...
+2026-06-13T11:12:03.600187179Z Found 1 warning while optimizing generated CSS:
+2026-06-13T11:12:03.600203942Z 
+2026-06-13T11:12:03.600208209Z │     color: #fff;
+2026-06-13T11:12:03.600210998Z │   }
+2026-06-13T11:12:03.600215248Z │   @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Inter:wght@300;400;500;600;700&display=swap');
+2026-06-13T11:12:03.600219009Z ┆          ^-- Unknown at rule: @import
+2026-06-13T11:12:03.600222315Z ┆
+2026-06-13T11:12:03.600224948Z │ }
+2026-06-13T11:12:03.600227665Z │ @layer utilities {
+2026-06-13T11:12:03.600230087Z 
+2026-06-13T11:12:03.82772992Z src/components/ui/tooltip.tsx (2:0): Error when using sourcemap for reporting an error: Can't resolve original location of error.
+2026-06-13T11:12:06.847568664Z ✓ 2187 modules transformed.
+2026-06-13T11:12:07.207293385Z rendering chunks...
+2026-06-13T11:12:07.219019657Z computing gzip size...
+2026-06-13T11:12:07.241069729Z dist/index.html                   1.38 kB │ gzip:   0.54 kB
+2026-06-13T11:12:07.241100396Z dist/assets/index-DHtPR9p2.css  145.71 kB │ gzip:  21.61 kB
+2026-06-13T11:12:07.241145372Z dist/assets/index-CuJ4ihTJ.js   632.55 kB │ gzip: 185.41 kB
+2026-06-13T11:12:07.24118132Z 
+2026-06-13T11:12:07.24118568Z (!) Some chunks are larger than 500 kB after minification. Consider:
+2026-06-13T11:12:07.241188838Z - Using dynamic import() to code-split the application
+2026-06-13T11:12:07.24119209Z - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+2026-06-13T11:12:07.241194797Z - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+2026-06-13T11:12:07.241430483Z ✓ built in 3.93s
+2026-06-13T11:12:08.500798994Z ==> Uploading build...
+2026-06-13T11:12:08.703933297Z ==> Your site is live 🎉

@@ -9,6 +9,7 @@ import {
 import { useWatchlist } from "@/hooks/useWatchlist";
 import { useWatchProgress } from "@/hooks/useWatchProgress";
 import { useContinueWatching } from "@/hooks/useContinueWatching";
+import { apiUrl } from "@/lib/api";
 
 interface StreamEpisode {
   title: string;
@@ -484,7 +485,7 @@ export default function WatchAniList() {
     setGogoSearchResults([]);
     setGogoSearchDone(false);
     let cancelled = false;
-    fetch(`/api/gogo/cdn-url?slug=${encodeURIComponent(gogoSlug)}&ep=${currentEp}`)
+    fetch(apiUrl(`/api/gogo/cdn-url?slug=${encodeURIComponent(gogoSlug)}&ep=${currentEp}`))
       .then((r) => r.json())
       .then((data: { cdnUrl?: string; resolvedSlug?: string }) => {
         if (cancelled) return;
@@ -520,7 +521,7 @@ export default function WatchAniList() {
     setGogoSearching(true);
     setGogoSearchDone(false);
     const q = query.replace(/\s*season\s*\d+/i, "").replace(/\s*\d+(st|nd|rd|th)\s*season/i, "").trim();
-    fetch(`/api/gogo/search?q=${encodeURIComponent(q)}&limit=8`)
+    fetch(apiUrl(`/api/gogo/search?q=${encodeURIComponent(q)}&limit=8`))
       .then((r) => r.json())
       .then((data: { results?: { slug: string; title: string; thumbnail: string }[] }) => {
         setGogoSearchResults(data.results ?? []);
@@ -534,7 +535,7 @@ export default function WatchAniList() {
     setKotoSearching(true);
     setKotoSearchDone(false);
     const q = query.replace(/\s*season\s*\d+/i, "").replace(/\s*\d+(st|nd|rd|th)\s*season/i, "").trim();
-    fetch(`/api/koto/search?q=${encodeURIComponent(q)}&limit=8`)
+    fetch(apiUrl(`/api/koto/search?q=${encodeURIComponent(q)}&limit=8`))
       .then((r) => r.json())
       .then((data: { results?: { slug: string; title: string; thumbnail: string }[] }) => {
         const results = data.results ?? [];
@@ -594,7 +595,7 @@ export default function WatchAniList() {
     const params = new URLSearchParams({ ep: String(currentEp), malId: String(malId) });
     if (slug) params.set("slug", slug);
     let cancelled = false;
-    fetch(`/api/koto/stream?${params}`)
+    fetch(apiUrl(`/api/koto/stream?${params}`))
       .then((r) => r.json())
       .then((data: { url?: string; error?: string }) => {
         if (cancelled) return;
@@ -1373,7 +1374,7 @@ export default function WatchAniList() {
                       setKotoPlayerUrl(null);
                       setKotoPlayerLoading(true);
                       setKotoPlayerError(null);
-                      fetch(`/api/koto/stream?malId=${anime.idMal}&ep=${currentEp}`)
+                      fetch(apiUrl(`/api/koto/stream?malId=${anime.idMal}&ep=${currentEp}`))
                         .then((r) => r.json())
                         .then((data: { url?: string; error?: string }) => {
                           if (data.url) setKotoPlayerUrl(data.url);
