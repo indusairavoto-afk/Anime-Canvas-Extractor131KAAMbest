@@ -1,0 +1,332 @@
+import { Router } from "express";
+
+const router = Router();
+
+const BROWSER_HEADERS = {
+  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+  Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+  "Accept-Language": "en-US,en;q=0.5",
+  "Accept-Encoding": "identity",
+  "Cache-Control": "no-cache",
+};
+
+const AJAX_HEADERS = {
+  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+  Accept: "application/json, text/plain, */*",
+  "Accept-Language": "en-US,en;q=0.5",
+  "Accept-Encoding": "identity",
+  "Cache-Control": "no-cache",
+  "X-Requested-With": "XMLHttpRequest",
+  Origin: "https://anikoto.cz",
+  Referer: "https://anikoto.cz/",
+};
+
+interface StreamResult {
+  url: string;
+  skipData: unknown;
+  isDub?: boolean;
+}
+
+/**
+ * Calls anikoto.cz/ajax/server?get={token} to decrypt a link ID into a CDN URL.
+ */
+async function decryptLinkId(token: string): Promise<StreamResult | null> {
+  const resp = await fetch(
+    `https://anikoto.cz/ajax/server?get=${encodeURIComponent(token)}`,
+    {
+      headers: {
+        ...AJAX_HEADERS,
+        Referer: "https://anikoto.cz/watch/",
+      },
+    }
+  );
+  if (!resp.ok) return null;
+  const data = (await resp.json()) as {
+    status: number;
+    result?: { url?: string; skip_data?: unknown };
+  };
+  if (data.status !== 200 || !data.result?.url) return null;
+  return { url: data.result.url, skipData: data.result.skip_data ?? null };
+}
+
+/**
+ * Given ordered link IDs, decrypt each until one returns a valid URL.
+ */
+async function tryLinkIds(linkIds: string[]): Promise<StreamResult | null> {
+  for (const id of linkIds) {
+    try {
+      const r = await decryptLinkId(id);
+      if (r?.url) return r;
+    } catch {
+      // try next
+    }
+  }
+  return null;
+}
+
+/**
+ * Parses data-link-id values out of server list HTML, ordered sub → hsub → dub.
+ */
+function extractLinkIds(html: string): string[] {
+  const ids: string[] = [];
+  const seenIds = new Set<string>();
+
+  for (const type of ["sub", "hsub", "dub"]) {
+    const typeRe = new RegExp(
+      `data-type="${type}"[\\s\\S]*?(?=data-type="|$)`,
+      "i"
+    );
+    const typeBlock = html.match(typeRe)?.[0] ?? "";
+    const linkRe = /data-link-id="([^"]+)"/g;
+    let m: RegExpExecArray | null;
+    while ((m = linkRe.exec(typeBlock)) !== null) {
+      const id = m[1].trim();
+      if (id && !seenIds.has(id)) {
+        seenIds.add(id);
+        ids.push(id);
+      }
+    }
+  }
+
+  // Fallback: catch any not already found
+  const allRe = /data-link-id="([^"]+)"/g;
+  let m2: RegExpExecArray | null;
+  while ((m2 = allRe.exec(html)) !== null) {
+    const id = m2[1].trim();
+    if (id && !seenIds.has(id)) {
+      seenIds.add(id);
+      ids.push(id);
+    }
+  }
+
+  return ids;
+}
+
+/**
+ * Primary extraction path:
+ *  1. Fetch anikoto.cz/watch/{slug}/ep-{ep} → extract data-id (anime ID)
+ *  2. GET /ajax/episode/list/{animeId} → find episode row for ep → get data-ids token
+ *  3. GET /ajax/server/list?servers={data-ids} → get server list with data-link-id tokens
+ *  4. Decrypt each link ID until one returns a CDN URL
+ */
+async function fetchViaAnikotoNative(slug: string, ep: number): Promise<StreamResult | null> {
+  // Step 1: Watch page → anime ID
+  const pageResp = await fetch(
+    `https://anikoto.cz/watch/${encodeURIComponent(slug)}/ep-${ep}`,
+    {
+      headers: {
+        ...BROWSER_HEADERS,
+        Referer: "https://anikoto.cz/",
+        Host: "anikoto.cz",
+      },
+    }
+  );
+  if (!pageResp.ok) return null;
+  const pageHtml = await pageResp.text();
+
+  const animeIdMatch = pageHtml.match(/data-id="(\d+)"/);
+  if (!animeIdMatch) return null;
+  const animeId = animeIdMatch[1];
+
+  // Step 2: Episode list → data-ids for the requested episode
+  const epListResp = await fetch(
+    `https://anikoto.cz/ajax/episode/list/${animeId}`,
+    {
+      headers: {
+        ...AJAX_HEADERS,
+        Referer: `https://anikoto.cz/watch/${encodeURIComponent(slug)}/ep-${ep}`,
+      },
+    }
+  );
+  if (!epListResp.ok) return null;
+  const epListJson = (await epListResp.json()) as {
+    status: number;
+    result?: string;
+  };
+  const epHtml = epListJson.result ?? "";
+
+  // Find <a ... data-num="{ep}" ... > and pull its data-ids
+  const tagRe = new RegExp(`<a[^>]+data-num="${ep}"[^>]*>`, "i");
+  const tagMatch = epHtml.match(tagRe);
+  if (!tagMatch) return null;
+  const tagStr = tagMatch[0];
+  const dataIdsMatch = tagStr.match(/data-ids="([^"]+)"/);
+  if (!dataIdsMatch) return null;
+  const dataIds = dataIdsMatch[1];
+
+  // Step 3: Server list from data-ids
+  const serverListResp = await fetch(
+    `https://anikoto.cz/ajax/server/list?servers=${encodeURIComponent(dataIds)}`,
+    {
+      headers: {
+        ...AJAX_HEADERS,
+        Referer: `https://anikoto.cz/watch/${encodeURIComponent(slug)}/ep-${ep}`,
+      },
+    }
+  );
+  if (!serverListResp.ok) return null;
+  const serverListJson = (await serverListResp.json()) as {
+    status: number;
+    result?: string;
+  };
+  if (serverListJson.status !== 200) return null;
+  const serverHtml = serverListJson.result ?? "";
+
+  // Step 4: Extract and decrypt link IDs
+  const linkIds = extractLinkIds(serverHtml);
+  if (linkIds.length === 0) return null;
+
+  return await tryLinkIds(linkIds);
+}
+
+/**
+ * Fallback extraction path using mapper.nekostream.site
+ */
+async function fetchViaMapper(malId: string, ep: string): Promise<StreamResult | null> {
+  const timestamp = Math.floor(Date.now() / 1000);
+  const mapperUrl = `https://mapper.nekostream.site/api/mal/${malId}/${ep}/${timestamp}`;
+  const mapperResp = await fetch(mapperUrl, {
+    headers: {
+      ...AJAX_HEADERS,
+      Referer: "https://anikoto.cz/",
+      Host: "mapper.nekostream.site",
+    },
+  });
+  if (!mapperResp.ok) return null;
+
+  const mapperData = (await mapperResp.json()) as Record<string, unknown>;
+
+  let encryptedUrl: string | null = null;
+  let isDub = false;
+
+  for (const [source, data] of Object.entries(mapperData)) {
+    if (source === "status") continue;
+    const d = data as Record<string, { url?: string }> | null;
+    if (d?.sub?.url) { encryptedUrl = d.sub.url; isDub = false; break; }
+    if (!encryptedUrl && d?.dub?.url) { encryptedUrl = d.dub.url; isDub = true; }
+  }
+
+  if (!encryptedUrl) return null;
+
+  const result = await decryptLinkId(encryptedUrl);
+  if (!result?.url) return null;
+  return { ...result, isDub };
+}
+
+/**
+ * GET /api/koto/stream?slug={kotoSlug}&malId={malId}&ep={episodeNumber}
+ *
+ * Primary:  native anikoto.cz API pipeline (requires slug)
+ * Fallback: mapper.nekostream.site (requires malId)
+ */
+router.get("/koto/stream", async (req, res) => {
+  const slug = (req.query.slug as string | undefined)?.trim();
+  const ep = (req.query.ep as string | undefined)?.trim();
+  const malId = (req.query.malId as string | undefined)?.trim();
+
+  req.log.info({ slug, ep, malId }, "koto/stream params");
+
+  if (!ep) {
+    return res.status(400).json({ error: "ep query param required" });
+  }
+  if (!slug && !malId) {
+    return res.status(400).json({ error: "slug or malId query param required" });
+  }
+
+  // ── Primary: native anikoto.cz API (slug-based, no mapper dependency) ─────
+  if (slug) {
+    try {
+      const result = await fetchViaAnikotoNative(slug, parseInt(ep));
+      if (result?.url) {
+        return res.json({ url: result.url, skipData: result.skipData, isDub: result.isDub ?? false });
+      }
+    } catch (err: unknown) {
+      req.log.warn({ err }, "native anikoto pipeline failed, trying mapper fallback");
+    }
+  }
+
+  // ── Fallback: mapper.nekostream.site (malId-based) ─────────────────────────
+  if (!malId) {
+    return res.status(404).json({ error: "No stream URL found for this episode" });
+  }
+
+  try {
+    const result = await fetchViaMapper(malId, ep);
+    if (result?.url) {
+      return res.json({ url: result.url, skipData: result.skipData, isDub: result.isDub ?? false });
+    }
+    return res.status(404).json({ error: "No stream URL found for this episode" });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    return res.status(502).json({ error: msg });
+  }
+});
+
+router.get("/koto/search", async (req, res) => {
+  const q = (req.query.q as string | undefined)?.trim();
+  const limit = Math.min(parseInt((req.query.limit as string) || "10"), 20);
+  if (!q) return res.status(400).json({ error: "q query param required" });
+
+  try {
+    const upstream = await fetch(
+      `https://anikoto.cz/ajax/anime/search?keyword=${encodeURIComponent(q)}`,
+      {
+        headers: {
+          ...AJAX_HEADERS,
+          Referer: "https://anikoto.cz/",
+          Host: "anikoto.cz",
+        },
+      }
+    );
+    if (!upstream.ok) {
+      return res.status(upstream.status).json({ error: `anikoto.cz returned ${upstream.status}`, results: [] });
+    }
+
+    const data = await upstream.json() as {
+      status: number;
+      result?: { html?: string } | string;
+    };
+
+    let html = "";
+    if (typeof data.result === "object" && data.result !== null) {
+      html = (data.result as { html?: string }).html ?? "";
+    } else if (typeof data.result === "string") {
+      html = data.result;
+    }
+
+    if (!html) {
+      return res.json({ results: [], query: q, total: 0 });
+    }
+
+    const results: { slug: string; title: string; thumbnail: string }[] = [];
+    const seen = new Set<string>();
+
+    const blockRe = /href="https?:\/\/anikoto\.cz\/watch\/([^"\/\s]+)"[\s\S]*?<img[^>]+src="([^"]*)"[\s\S]*?class="[^"]*d-title[^"]*"[^>]*>([^<]+)</g;
+    let m: RegExpExecArray | null;
+    while ((m = blockRe.exec(html)) !== null && results.length < limit) {
+      const slug = m[1].trim();
+      const thumbnail = m[2].trim();
+      const title = m[3].trim();
+      if (!slug || seen.has(slug)) continue;
+      seen.add(slug);
+      results.push({ slug, title, thumbnail });
+    }
+
+    if (results.length === 0) {
+      const slugRe = /href="https?:\/\/anikoto\.cz\/watch\/([^"\/\s]+)"/g;
+      while ((m = slugRe.exec(html)) !== null && results.length < limit) {
+        const slug = m[1].trim();
+        if (!slug || seen.has(slug)) continue;
+        seen.add(slug);
+        results.push({ slug, title: slug, thumbnail: "" });
+      }
+    }
+
+    return res.json({ results, query: q, total: results.length });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    return res.status(502).json({ error: msg, results: [] });
+  }
+});
+
+export default router;

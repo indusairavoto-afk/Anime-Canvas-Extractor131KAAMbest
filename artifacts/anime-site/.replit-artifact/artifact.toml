@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "Anime Canvas"
+version = "1.0.0"
+id = "artifacts/anime-site"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 19796
+
+[services.development]
+run = "pnpm --filter @workspace/anime-site run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/anime-site", "run", "build" ]
+publicDir = "artifacts/anime-site/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "19796"
+BASE_PATH = "/"

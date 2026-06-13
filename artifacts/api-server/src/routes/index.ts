@@ -1,8 +1,22 @@
 import { Router, type IRouter } from "express";
 import healthRouter from "./health";
+import animeRouter from "./anime";
+import commentsRouter from "./comments";
+import communityRouter from "./community";
+import discoveryRouter from "./discovery";
+import proxyRouter from "./proxy";
+import gogoRouter from "./gogo";
+import kotoRouter from "./koto";
 
 const router: IRouter = Router();
 
 router.use(healthRouter);
+router.use(animeRouter);
+router.use(commentsRouter);
+router.use(communityRouter);
+router.use(discoveryRouter);
+router.use(proxyRouter);
+router.use(gogoRouter);
+router.use(kotoRouter);
 
 export default router;

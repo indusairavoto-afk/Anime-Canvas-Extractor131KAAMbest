@@ -3,20 +3,30 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Anime Hub API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: anime
+    description: Anime series operations
+  - name: episodes
+    description: Episode operations
+  - name: comments
+    description: Comment operations
+  - name: community
+    description: Community post operations
+  - name: discovery
+    description: Discovery and trending operations
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +34,348 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /anime:
+    get:
+      operationId: listAnime
+      tags: [anime]
+      summary: List all anime series
+      parameters:
+        - name: genre
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of anime
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Anime"
+
+  /anime/{id}:
+    get:
+      operationId: getAnime
+      tags: [anime]
+      summary: Get a single anime series
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Anime details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Anime"
+        "404":
+          description: Not found
+
+  /anime/{id}/episodes:
+    get:
+      operationId: listEpisodes
+      tags: [episodes]
+      summary: List episodes for an anime
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of episodes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Episode"
+
+  /episodes/{id}:
+    get:
+      operationId: getEpisode
+      tags: [episodes]
+      summary: Get episode details and stream info
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Episode details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Episode"
+        "404":
+          description: Not found
+
+  /episodes/{id}/comments:
+    get:
+      operationId: listEpisodeComments
+      tags: [comments]
+      summary: List comments for an episode
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of comments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Comment"
+    post:
+      operationId: createEpisodeComment
+      tags: [comments]
+      summary: Post a comment on an episode
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommentInput"
+      responses:
+        "201":
+          description: Comment created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Comment"
+
+  /comments/{id}/like:
+    post:
+      operationId: likeComment
+      tags: [comments]
+      summary: Like a comment
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Comment liked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Comment"
+
+  /community:
+    get:
+      operationId: listCommunityPosts
+      tags: [community]
+      summary: List community posts
+      parameters:
+        - name: category
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of community posts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CommunityPost"
+    post:
+      operationId: createCommunityPost
+      tags: [community]
+      summary: Create a community post
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommunityPostInput"
+      responses:
+        "201":
+          description: Post created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommunityPost"
+
+  /community/{id}:
+    get:
+      operationId: getCommunityPost
+      tags: [community]
+      summary: Get a community post
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Community post
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommunityPost"
+
+  /community/{id}/comments:
+    get:
+      operationId: listPostComments
+      tags: [community]
+      summary: List comments for a community post
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Comments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Comment"
+    post:
+      operationId: createPostComment
+      tags: [community]
+      summary: Post comment on community post
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommentInput"
+      responses:
+        "201":
+          description: Comment created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Comment"
+
+  /discovery/trending:
+    get:
+      operationId: getTrending
+      tags: [discovery]
+      summary: Get trending anime this week
+      responses:
+        "200":
+          description: Trending anime list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Anime"
+
+  /discovery/featured:
+    get:
+      operationId: getFeatured
+      tags: [discovery]
+      summary: Get featured/spotlight anime
+      responses:
+        "200":
+          description: Featured anime
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FeaturedSpotlight"
+
+  /discovery/new-releases:
+    get:
+      operationId: getNewReleases
+      tags: [discovery]
+      summary: Get recently released episodes
+      responses:
+        "200":
+          description: New episode releases
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Episode"
+
+  /discovery/genres:
+    get:
+      operationId: getGenres
+      tags: [discovery]
+      summary: Get all available genres with counts
+      responses:
+        "200":
+          description: Genre list with counts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/GenreStat"
+
+  /discovery/stats:
+    get:
+      operationId: getSiteStats
+      tags: [discovery]
+      summary: Get site-wide stats
+      responses:
+        "200":
+          description: Site statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SiteStats"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +386,184 @@ components:
       required:
         - status
 
+    Anime:
+      type: object
+      required: [id, title, description, coverImage, bannerImage, genre, status, rating, totalEpisodes, releaseYear, studio, type]
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        japaneseTitle:
+          type: ["string", "null"]
+        description:
+          type: string
+        coverImage:
+          type: string
+        bannerImage:
+          type: string
+        trailerUrl:
+          type: ["string", "null"]
+        genre:
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+          enum: [ongoing, completed, upcoming]
+        rating:
+          type: number
+        totalEpisodes:
+          type: integer
+        releaseYear:
+          type: integer
+        studio:
+          type: string
+        type:
+          type: string
+          enum: [sub, dub, both]
+        viewCount:
+          type: integer
+        isTrending:
+          type: boolean
+        isFeatured:
+          type: boolean
+
+    Episode:
+      type: object
+      required: [id, animeId, animeTitle, title, season, episodeNumber, duration, thumbnailUrl, streamUrl, releaseDate]
+      properties:
+        id:
+          type: integer
+        animeId:
+          type: integer
+        animeTitle:
+          type: string
+        animeCover:
+          type: ["string", "null"]
+        title:
+          type: string
+        season:
+          type: integer
+        episodeNumber:
+          type: integer
+        duration:
+          type: integer
+        description:
+          type: ["string", "null"]
+        thumbnailUrl:
+          type: string
+        streamUrl:
+          type: string
+        releaseDate:
+          type: string
+        viewCount:
+          type: integer
+        type:
+          type: string
+          enum: [sub, dub]
+        rating:
+          type: ["number", "null"]
+
+    Comment:
+      type: object
+      required: [id, username, avatarUrl, content, likes, createdAt]
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+        avatarUrl:
+          type: string
+        content:
+          type: string
+        likes:
+          type: integer
+        createdAt:
+          type: string
+        parentId:
+          type: ["integer", "null"]
+
+    CommentInput:
+      type: object
+      required: [username, content]
+      properties:
+        username:
+          type: string
+        content:
+          type: string
+        parentId:
+          type: ["integer", "null"]
+
+    CommunityPost:
+      type: object
+      required: [id, username, avatarUrl, title, content, category, likes, commentCount, createdAt]
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+        avatarUrl:
+          type: string
+        title:
+          type: string
+        content:
+          type: string
+        category:
+          type: string
+        imageUrl:
+          type: ["string", "null"]
+        likes:
+          type: integer
+        commentCount:
+          type: integer
+        createdAt:
+          type: string
+
+    CommunityPostInput:
+      type: object
+      required: [username, title, content, category]
+      properties:
+        username:
+          type: string
+        title:
+          type: string
+        content:
+          type: string
+        category:
+          type: string
+        imageUrl:
+          type: ["string", "null"]
+
+    FeaturedSpotlight:
+      type: object
+      required: [anime, latestEpisode, highlightText]
+      properties:
+        anime:
+          $ref: "#/components/schemas/Anime"
+        latestEpisode:
+          $ref: "#/components/schemas/Episode"
+        highlightText:
+          type: string
+
+    GenreStat:
+      type: object
+      required: [genre, count]
+      properties:
+        genre:
+          type: string
+        count:
+          type: integer
+
+    SiteStats:
+      type: object
+      required: [totalAnime, totalEpisodes, totalCommunityPosts, totalComments]
+      properties:
+        totalAnime:
+          type: integer
+        totalEpisodes:
+          type: integer
+        totalCommunityPosts:
+          type: integer
+        totalComments:
+          type: integer
