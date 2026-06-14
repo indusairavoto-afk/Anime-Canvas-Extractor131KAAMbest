@@ -55,6 +55,7 @@ interface AniMedia {
   format?: string | null;
   studios?: { nodes: { name: string }[] };
   streamingEpisodes: StreamEpisode[];
+  externalLinks?: { url: string; site: string }[];
   relations?: {
     edges: {
       relationType: string;
@@ -112,6 +113,7 @@ query ($id: Int!) {
     studios(isMain: true) { nodes { name } }
     nextAiringEpisode { episode airingAt }
     streamingEpisodes { title thumbnail url site }
+    externalLinks { url site }
     relations {
       edges {
         relationType
@@ -328,13 +330,33 @@ export default function WatchAniList() {
     setGogoSlugInput(saved);
   }, [animeId]);
 
-  // Load saved AniDB slug from localStorage; auto-search if none saved
+  // Load saved AniDB slug from localStorage; if none saved, try to derive from externalLinks
   useEffect(() => {
     if (!animeId) return;
-    const saved = localStorage.getItem(`na_anidb_${animeId}`) ?? "";
-    setAnidbSlug(saved);
-    setAnidbSlugInput(saved);
-  }, [animeId]);
+    const saved = localStorage.getItem(`na_anidb_${animeId}`);
+    if (saved) {
+      setAnidbSlug(saved);
+      setAnidbSlugInput(saved);
+      return;
+    }
+    // Try to extract slug from AniList externalLinks (anidb.app/anime/{slug})
+    if (anime?.externalLinks) {
+      const link = anime.externalLinks.find(
+        (l) => l.url && l.url.includes("anidb.app/anime/")
+      );
+      if (link) {
+        const slug = link.url.replace(/.*anidb\.app\/anime\//, "").replace(/[/?#].*/, "").trim();
+        if (slug) {
+          setAnidbSlug(slug);
+          setAnidbSlugInput(slug);
+          localStorage.setItem(`na_anidb_${animeId}`, slug);
+          return;
+        }
+      }
+    }
+    setAnidbSlug("");
+    setAnidbSlugInput("");
+  }, [animeId, anime]);
 
   // Reset ANIDB search state when switching away or anime changes
   useEffect(() => {
