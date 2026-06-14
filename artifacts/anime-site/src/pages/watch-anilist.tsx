@@ -522,7 +522,7 @@ export default function WatchAniList() {
       .finally(() => { setKotoSearching(false); setKotoSearchDone(true); });
   }
 
-  function triggerAnizoneSearch(query: string) {
+  function triggerAnizoneSearch(query: string, currentSlug?: string) {
     if (!query) return;
     setAnizoneSearching(true);
     setAnizoneSearchDone(false);
@@ -530,7 +530,14 @@ export default function WatchAniList() {
     fetch(apiUrl(`/api/anizone/search?q=${encodeURIComponent(q)}&limit=8`))
       .then((r) => r.json())
       .then((data: { results?: { slug: string; title: string; thumbnail: string }[] }) => {
-        setAnizoneSearchResults(data.results ?? []);
+        const results = data.results ?? [];
+        setAnizoneSearchResults(results);
+        // Auto-select first result if no slug is saved yet
+        if (results.length > 0 && !currentSlug) {
+          setAnizoneSlug(results[0].slug);
+          setAnizoneSlugInput(results[0].slug);
+          localStorage.setItem(`na_anizone_${animeId}`, results[0].slug);
+        }
       })
       .catch(() => { setAnizoneSearchResults([]); })
       .finally(() => { setAnizoneSearching(false); setAnizoneSearchDone(true); });
@@ -543,6 +550,17 @@ export default function WatchAniList() {
     const saved = localStorage.getItem(`na_koto_${animeId}`) ?? "";
     if (saved) { setKotoSlug(saved); setKotoSlugInput(saved); return; }
     triggerKotoSearch(title);
+  }, [title, animeId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Pre-search AniZone as soon as the title is known so the slug is ready
+  // instantly when AniZone is selected, without requiring user interaction.
+  useEffect(() => {
+    if (!title || !animeId) return;
+    const saved = localStorage.getItem(`na_anizone_${animeId}`) ?? "";
+    if (saved) { setAnizoneSlug(saved); setAnizoneSlugInput(saved); return; }
+    // Also skip if slug already set from externalLinks
+    if (anizoneSlug) return;
+    triggerAnizoneSearch(title, "");
   }, [title, animeId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // When KOTO server is selected, ensure slug is loaded (handles server switch)
