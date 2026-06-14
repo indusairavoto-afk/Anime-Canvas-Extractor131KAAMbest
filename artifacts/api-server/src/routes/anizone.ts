@@ -345,9 +345,8 @@ router.get("/anizone/stream", async (req, res) => {
   if (!slug || !ep)
     return res.status(400).json({ error: "slug and ep query params required" });
 
-  // Support both plain numbers ("1") and prefixed ("ep-1") from callers
-  const epSegment = /^\d+$/.test(ep) ? `ep-${ep}` : ep;
-  const pageUrl = `https://anizone.to/anime/${encodeURIComponent(slug)}/${epSegment}`;
+  // AniZone episode URLs use plain numbers: /anime/{slug}/1 (NOT /ep-1)
+  const pageUrl = `https://anizone.to/anime/${encodeURIComponent(slug)}/${encodeURIComponent(ep)}`;
 
   try {
     const upstream = await fetch(pageUrl, {
