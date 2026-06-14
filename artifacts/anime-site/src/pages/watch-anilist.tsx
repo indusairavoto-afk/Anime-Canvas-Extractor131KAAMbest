@@ -157,14 +157,9 @@ export default function WatchAniList() {
   const [jikanLoading, setJikanLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [lang, setLang] = useState<"SUB" | "DUB">("SUB");
-  const [server, setServer] = useState<"GOGO" | "KOTO" | "REAN" | "MKISSA" | "CUSTOM">("GOGO");
-  const [reanSlug, setReanSlug] = useState("");
-  const [reanSlugInput, setReanSlugInput] = useState("");
-  const [mkissaId, setMkissaId] = useState("");
-  const [mkissaIdInput, setMkissaIdInput] = useState("");
-  const [mkissaSearchResults, setMkissaSearchResults] = useState<{ _id: string; name: string; thumbnail: string }[]>([]);
-  const [mkissaSearching, setMkissaSearching] = useState(false);
-  const [mkissaSearchDone, setMkissaSearchDone] = useState(false);
+  const [server, setServer] = useState<"GOGO" | "KOTO" | "ANIDB" | "CUSTOM">("GOGO");
+  const [anidbSlug, setAnidbSlug] = useState("");
+  const [anidbSlugInput, setAnidbSlugInput] = useState("");
   const [customUrl, setCustomUrl] = useState("");
   const [urlTemplate, setUrlTemplate] = useState("");
   const [templateInput, setTemplateInput] = useState("");
@@ -329,40 +324,13 @@ export default function WatchAniList() {
     setGogoSlugInput(saved);
   }, [animeId]);
 
-  // Load saved ReAnime slug from localStorage
+  // Load saved AniDB slug from localStorage
   useEffect(() => {
     if (!animeId) return;
-    const saved = localStorage.getItem(`na_rean_${animeId}`) ?? "";
-    setReanSlug(saved);
-    setReanSlugInput(saved);
+    const saved = localStorage.getItem(`na_anidb_${animeId}`) ?? "";
+    setAnidbSlug(saved);
+    setAnidbSlugInput(saved);
   }, [animeId]);
-
-  // Load saved mkissa AllAnime ID from localStorage; auto-search if none saved
-  useEffect(() => {
-    if (!animeId || !anime) return;
-    const saved = localStorage.getItem(`na_mkissa_${animeId}`) ?? "";
-    const animeTitle = anime.title.english || anime.title.romaji || "";
-    if (saved) {
-      setMkissaId(saved);
-      setMkissaIdInput(saved);
-    } else if (animeTitle) {
-      setMkissaSearching(true);
-      setMkissaSearchDone(false);
-      fetch(apiUrl(`/api/mkissa/search?q=${encodeURIComponent(animeTitle)}&limit=5`))
-        .then((r) => r.json())
-        .then((data: { results?: { _id: string; name: string; thumbnail: string }[] }) => {
-          const results = data.results ?? [];
-          setMkissaSearchResults(results);
-          if (results.length > 0) {
-            setMkissaId(results[0]._id);
-            setMkissaIdInput(results[0]._id);
-            localStorage.setItem(`na_mkissa_${animeId}`, results[0]._id);
-          }
-        })
-        .catch(() => {})
-        .finally(() => { setMkissaSearching(false); setMkissaSearchDone(true); });
-    }
-  }, [animeId, anime]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load saved URL template from localStorage when anime changes
   useEffect(() => {
@@ -865,54 +833,18 @@ export default function WatchAniList() {
           <div ref={playerContainerRef} className="w-full aspect-video bg-black relative overflow-hidden">
             {anime ? (
               <>
-                {/* External-only servers: REAN and MKISSA can't be embedded — show a launcher */}
-                {(server === "REAN" || server === "MKISSA") ? (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center z-10" style={{ background: "rgba(0,0,0,0.93)" }}>
-                    {banner && (
-                      <img src={banner} alt="" className="absolute inset-0 w-full h-full object-cover opacity-10 scale-110 blur-sm" />
-                    )}
-                    <div className="relative z-10 flex flex-col items-center gap-5 px-6 text-center">
-                      <div className={`text-[10px] font-mono uppercase tracking-[0.25em] ${server === "REAN" ? "text-violet-400/70" : "text-rose-400/70"}`}>
-                        {server === "REAN" ? "ReAnime" : "MKissa"} · Episode {currentEp} · {lang}
-                      </div>
-                      <p className="text-white/40 text-xs font-mono max-w-xs leading-relaxed">
-                        This server can't be embedded. Click below to watch in a new tab.
-                      </p>
-                      {server === "REAN" && !reanSlug ? (
-                        <p className="text-white/30 text-[11px] font-mono">Set a slug in the REAN panel below first.</p>
-                      ) : server === "MKISSA" && !mkissaId ? (
-                        <p className="text-white/30 text-[11px] font-mono">
-                          {mkissaSearching ? "Auto-searching mkissa.to…" : "No ID found — use Search in the panel below."}
-                        </p>
-                      ) : (
-                        <a
-                          href={server === "REAN"
-                            ? `https://reanime.to/watch/${reanSlug}?ep=${currentEp}&lang=${lang.toLowerCase()}`
-                            : `https://mkissa.to/anime/${mkissaId}/p-${currentEp}-${lang.toLowerCase()}`
-                          }
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className={`flex items-center gap-3 font-mono font-bold px-8 py-4 border transition-all uppercase tracking-widest text-sm ${
-                            server === "REAN"
-                              ? "border-violet-400 text-violet-400 hover:bg-violet-400 hover:text-black"
-                              : "border-rose-400 text-rose-400 hover:bg-rose-400 hover:text-black"
-                          }`}
-                        >
-                          <Play className="w-4 h-4 fill-current" />
-                          Watch Episode {currentEp}
-                        </a>
-                      )}
-                    </div>
-                  </div>
-                ) : (
                 <iframe
                   ref={iframeRef}
-                  key={`${animeId}-${anime.idMal ?? "al"}-${currentEp}-${lang}-${server}-${server === "CUSTOM" ? customUrl : ""}-${server === "GOGO" ? (cdnLoading ? "loading" : (cdnUrl ?? "fallback")) : ""}-${server === "KOTO" ? (kotoPlayerLoading ? "koto-loading" : (kotoPlayerUrl ?? "koto-missing")) : ""}`}
+                  key={`${animeId}-${anime.idMal ?? "al"}-${currentEp}-${lang}-${server}-${server === "CUSTOM" ? customUrl : ""}-${server === "GOGO" ? (cdnLoading ? "loading" : (cdnUrl ?? "fallback")) : ""}-${server === "KOTO" ? (kotoPlayerLoading ? "koto-loading" : (kotoPlayerUrl ?? "koto-missing")) : ""}-${server === "ANIDB" ? (anidbSlug || "no-slug") : ""}`}
                   src={(() => {
                     if (server === "CUSTOM") return customUrl ? `/api/proxy?url=${encodeURIComponent(customUrl)}` : "about:blank";
                     if (server === "KOTO") {
                       if (kotoPlayerLoading || !kotoPlayerUrl) return "about:blank";
                       return kotoPlayerUrl;
+                    }
+                    if (server === "ANIDB") {
+                      if (!anidbSlug) return "about:blank";
+                      return `/api/proxy?url=${encodeURIComponent(`https://anidb.app/anime/${anidbSlug}`)}`;
                     }
                     // GOGO
                     if (!gogoSlug) return "about:blank";
@@ -930,16 +862,16 @@ export default function WatchAniList() {
                   onLoad={() => {
                     if (server === "GOGO" && cdnLoading) return;
                     if (server === "KOTO" && (kotoPlayerLoading || !kotoPlayerUrl)) return;
+                    if (server === "ANIDB" && !anidbSlug) return;
                     setTimeout(() => {
                       setIframeLoaded(true);
                       if (server === "GOGO") setTimeout(() => sendCmd({ na_cmd: "query" }), 600);
                     }, 200);
                   }}
                 />
-                )}
 
 
-                {!iframeLoaded && server !== "REAN" && server !== "MKISSA" && (
+                {!iframeLoaded && (
                   <div
                     className="absolute inset-0 z-10 flex flex-col items-center justify-center"
                     style={{ background: "rgba(0,0,0,0.92)" }}
@@ -994,12 +926,15 @@ export default function WatchAniList() {
                                 ? "Loading AniKoto player…"
                                 : server === "KOTO"
                                 ? "Fetching AniKoto stream…"
+                                : server === "ANIDB"
+                                ? (anidbSlug ? "Loading AniDB player…" : "Set a slug in the ANIDB panel below.")
                                 : "Loading, please wait…"}
                             </p>
                             <p className="text-white/30 text-[11px] font-mono mt-1 uppercase tracking-widest">
                               Episode {currentEp} · {lang}
                               {server === "GOGO" && gogoSlug && ` · ${gogoSlug.toUpperCase()}`}
                               {server === "KOTO" && kotoSlug && ` · ${kotoSlug}`}
+                              {server === "ANIDB" && anidbSlug && ` · ${anidbSlug}`}
                             </p>
                           </div>
                         </>
@@ -1113,27 +1048,16 @@ export default function WatchAniList() {
               >
                 KOTO
               </button>
-              {/* ReAnime server */}
+              {/* AniDB server */}
               <button
-                onClick={() => { setServer("REAN"); setIframeLoaded(false); }}
+                onClick={() => { setServer("ANIDB"); setIframeLoaded(false); }}
                 className={`text-[10px] font-mono px-2.5 py-1 border transition-colors ${
-                  server === "REAN"
-                    ? "border-violet-400 bg-violet-400 text-black"
-                    : "border-violet-400/30 text-violet-400/60 hover:border-violet-400/70 hover:text-violet-400"
+                  server === "ANIDB"
+                    ? "border-blue-400 bg-blue-400 text-black"
+                    : "border-blue-400/30 text-blue-400/60 hover:border-blue-400/70 hover:text-blue-400"
                 }`}
               >
-                REAN
-              </button>
-              {/* mkissa.to server */}
-              <button
-                onClick={() => { setServer("MKISSA"); setIframeLoaded(false); }}
-                className={`text-[10px] font-mono px-2.5 py-1 border transition-colors ${
-                  server === "MKISSA"
-                    ? "border-rose-400 bg-rose-400 text-black"
-                    : "border-rose-400/30 text-rose-400/60 hover:border-rose-400/70 hover:text-rose-400"
-                }`}
-              >
-                MKISSA
+                ANIDB
               </button>
             </div>
           </div>
@@ -1286,150 +1210,56 @@ export default function WatchAniList() {
             </div>
           )}
 
-          {/* REAN panel */}
-          {server === "REAN" && (
-            <div className="border-b border-white/5 bg-violet-400/[0.03] px-4 py-3 space-y-2">
+          {/* ANIDB panel */}
+          {server === "ANIDB" && (
+            <div className="border-b border-white/5 bg-blue-400/[0.03] px-4 py-3 space-y-2">
               <div className="flex items-center gap-2">
-                <span className="text-[9px] font-mono text-violet-400/60 uppercase tracking-widest shrink-0 w-16">Slug</span>
+                <span className="text-[9px] font-mono text-blue-400/60 uppercase tracking-widest shrink-0 w-16">Slug</span>
                 <input
-                  value={reanSlugInput}
-                  onChange={(e) => setReanSlugInput(e.target.value)}
+                  value={anidbSlugInput}
+                  onChange={(e) => setAnidbSlugInput(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
-                      const s = reanSlugInput.trim();
-                      setReanSlug(s);
-                      localStorage.setItem(`na_rean_${animeId}`, s);
+                      const s = anidbSlugInput.trim();
+                      setAnidbSlug(s);
+                      localStorage.setItem(`na_anidb_${animeId}`, s);
                       setIframeLoaded(false);
                     }
                   }}
-                  placeholder="e.g. daemons-of-the-shadow-realm-y6uy28  (from reanime.to/watch/...)"
-                  className="flex-1 bg-white/5 border border-violet-400/20 px-3 py-1.5 text-xs text-white placeholder-white/15 focus:outline-none focus:border-violet-400/50 font-mono"
+                  placeholder="e.g. daemons-of-the-shadow-realm-1140  (from anidb.app/anime/...)"
+                  className="flex-1 bg-white/5 border border-blue-400/20 px-3 py-1.5 text-xs text-white placeholder-white/15 focus:outline-none focus:border-blue-400/50 font-mono"
                 />
                 <button
                   onClick={() => {
-                    const s = reanSlugInput.trim();
-                    setReanSlug(s);
-                    localStorage.setItem(`na_rean_${animeId}`, s);
+                    const s = anidbSlugInput.trim();
+                    setAnidbSlug(s);
+                    localStorage.setItem(`na_anidb_${animeId}`, s);
                     setIframeLoaded(false);
                   }}
-                  className="text-[10px] font-mono px-2.5 py-1.5 border border-violet-400/30 text-violet-400/60 hover:border-violet-400 hover:text-violet-400 transition-colors shrink-0"
+                  className="text-[10px] font-mono px-2.5 py-1.5 border border-blue-400/30 text-blue-400/60 hover:border-blue-400 hover:text-blue-400 transition-colors shrink-0"
                 >
                   Load
                 </button>
                 <button
                   onClick={() => {
                     const s = deriveGogoSlug(title);
-                    setReanSlug(s);
-                    setReanSlugInput(s);
-                    localStorage.setItem(`na_rean_${animeId}`, s);
+                    setAnidbSlug(s);
+                    setAnidbSlugInput(s);
+                    localStorage.setItem(`na_anidb_${animeId}`, s);
                     setIframeLoaded(false);
                   }}
-                  className="text-[10px] font-mono px-2.5 py-1.5 border border-violet-400/20 text-violet-400/40 hover:border-violet-400/60 hover:text-violet-400/80 transition-colors shrink-0"
+                  className="text-[10px] font-mono px-2.5 py-1.5 border border-blue-400/20 text-blue-400/40 hover:border-blue-400/60 hover:text-blue-400/80 transition-colors shrink-0"
                 >
                   Auto
                 </button>
               </div>
-              {reanSlug && (
-                <p className="text-[10px] font-mono text-white/20 pl-[72px]">
-                  Opens: <span className="text-violet-400/50">reanime.to/watch/{reanSlug}-episode-{currentEp}</span>
+              {anidbSlug ? (
+                <p className="text-[10px] font-mono text-blue-400/40 pl-[72px]">
+                  → anidb.app/anime/{anidbSlug}
                 </p>
-              )}
-            </div>
-          )}
-
-
-          {/* MKISSA panel */}
-          {server === "MKISSA" && (
-            <div className="border-b border-white/5 bg-rose-400/[0.03] px-4 py-3 space-y-2">
-              <div className="flex items-center gap-2">
-                <span className="text-[9px] font-mono text-rose-400/60 uppercase tracking-widest shrink-0 w-16">ID</span>
-                {mkissaSearching && (
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 border border-rose-400/40 border-t-rose-400 rounded-full animate-spin" />
-                    <span className="text-[10px] font-mono text-rose-400/50">Auto-searching mkissa.to…</span>
-                  </div>
-                )}
-                {!mkissaSearching && (
-                  <>
-                    <input
-                      value={mkissaIdInput}
-                      onChange={(e) => setMkissaIdInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          const s = mkissaIdInput.trim();
-                          setMkissaId(s);
-                          localStorage.setItem(`na_mkissa_${animeId}`, s);
-                          setIframeLoaded(false);
-                        }
-                      }}
-                      placeholder="AllAnime ID (auto-filled)"
-                      className="flex-1 bg-white/5 border border-rose-400/20 px-3 py-1.5 text-xs text-white placeholder-white/15 focus:outline-none focus:border-rose-400/50 font-mono"
-                    />
-                    <button
-                      onClick={() => {
-                        const s = mkissaIdInput.trim();
-                        setMkissaId(s);
-                        localStorage.setItem(`na_mkissa_${animeId}`, s);
-                        setIframeLoaded(false);
-                      }}
-                      className="text-[10px] font-mono px-2.5 py-1.5 border border-rose-400/30 text-rose-400/60 hover:border-rose-400 hover:text-rose-400 transition-colors shrink-0"
-                    >
-                      Load
-                    </button>
-                    <button
-                      onClick={() => {
-                        setMkissaSearching(true);
-                        setMkissaSearchDone(false);
-                        setMkissaSearchResults([]);
-                        fetch(apiUrl(`/api/mkissa/search?q=${encodeURIComponent(title)}&limit=8`))
-                          .then((r) => r.json())
-                          .then((data: { results?: { _id: string; name: string; thumbnail: string }[] }) => {
-                            setMkissaSearchResults(data.results ?? []);
-                          })
-                          .catch(() => {})
-                          .finally(() => { setMkissaSearching(false); setMkissaSearchDone(true); });
-                      }}
-                      className="text-[10px] font-mono px-2.5 py-1.5 border border-rose-400/20 text-rose-400/40 hover:border-rose-400/60 hover:text-rose-400/80 transition-colors shrink-0"
-                    >
-                      Search
-                    </button>
-                  </>
-                )}
-              </div>
-              {mkissaSearchResults.length > 0 && (
-                <div className="pl-[72px]">
-                  <div className="flex flex-col gap-1 max-h-48 overflow-y-auto">
-                    {mkissaSearchResults.map((r) => (
-                      <button
-                        key={r._id}
-                        onClick={() => {
-                          setMkissaId(r._id);
-                          setMkissaIdInput(r._id);
-                          localStorage.setItem(`na_mkissa_${animeId}`, r._id);
-                          setIframeLoaded(false);
-                          setMkissaSearchResults([]);
-                          setMkissaSearchDone(false);
-                        }}
-                        className="flex items-center gap-2 text-left px-2 py-1.5 hover:bg-rose-400/10 border border-transparent hover:border-rose-400/20 transition-colors group"
-                      >
-                        {r.thumbnail && (
-                          <img src={r.thumbnail} alt="" className="w-8 h-11 object-cover shrink-0 opacity-70 group-hover:opacity-100 transition-opacity" />
-                        )}
-                        <div className="min-w-0">
-                          <p className="text-[11px] text-white/80 group-hover:text-white truncate">{r.name}</p>
-                          <p className="text-[9px] font-mono text-rose-400/40 group-hover:text-rose-400/70 truncate">{r._id}</p>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {!mkissaSearching && mkissaSearchDone && mkissaSearchResults.length === 0 && (
-                <p className="pl-[72px] text-[10px] font-mono text-white/20 pt-1">No matches. Try editing the ID manually.</p>
-              )}
-              {mkissaId && (
+              ) : (
                 <p className="text-[10px] font-mono text-white/20 pl-[72px]">
-                  Opens: <span className="text-rose-400/50">mkissa.to/anime/{mkissaId}/p-{currentEp}-{lang.toLowerCase()}</span>
+                  Enter the slug from the anidb.app/anime/... URL, or press Auto to derive it.
                 </p>
               )}
             </div>
