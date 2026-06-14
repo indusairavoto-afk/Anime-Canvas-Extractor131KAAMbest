@@ -335,4 +335,62 @@ ${enSub ? `<track src="${enSub.src}" kind="subtitles" label="${enSub.label}" src
   }
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/anizone/stream?slug=...&ep=...
+// Returns JSON { hlsUrl, subtitles } so the frontend can drive its own player.
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/anizone/stream", async (req, res) => {
+  const slug = (req.query.slug as string | undefined)?.trim();
+  const ep = (req.query.ep as string | undefined)?.trim();
+  if (!slug || !ep)
+    return res.status(400).json({ error: "slug and ep query params required" });
+
+  // Support both plain numbers ("1") and prefixed ("ep-1") from callers
+  const epSegment = /^\d+$/.test(ep) ? `ep-${ep}` : ep;
+  const pageUrl = `https://anizone.to/anime/${encodeURIComponent(slug)}/${epSegment}`;
+
+  try {
+    const upstream = await fetch(pageUrl, {
+      headers: {
+        ...BROWSER_HEADERS,
+        Referer: "https://anizone.to/",
+        Host: "anizone.to",
+      },
+    });
+
+    if (!upstream.ok) {
+      return res.status(upstream.status).json({
+        error: `anizone.to returned ${upstream.status}`,
+      });
+    }
+
+    const html = await upstream.text();
+
+    const hlsMatch = html.match(/<media-player[^>]+\bsrc="([^"]+\.m3u8[^"]*)"/i);
+    if (!hlsMatch) {
+      return res.status(404).json({ error: "No HLS stream found for this episode" });
+    }
+    const hlsUrl = proxyUrl(hlsMatch[1]);
+
+    const subtitles: { src: string; label: string; srclang: string; isDefault: boolean }[] = [];
+    const trackRe =
+      /<track\s+src=(https:\/\/[^\s>]+\.ass)[^>]*?label="([^"]+)"[^>]*?srclang="([^"]+)"([^>]*?)\/?>/gi;
+    let trm: RegExpExecArray | null;
+    while ((trm = trackRe.exec(html)) !== null) {
+      subtitles.push({
+        src: trm[1],
+        label: trm[2],
+        srclang: trm[3],
+        isDefault: trm[4].includes("default"),
+      });
+    }
+
+    res.setHeader("Cache-Control", "no-cache");
+    return res.json({ hlsUrl, subtitles });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    return res.status(502).json({ error: msg });
+  }
+});
+
 export default router;

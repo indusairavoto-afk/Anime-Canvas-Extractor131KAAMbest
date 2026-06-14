@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useParams, useLocation } from "wouter";
+import HlsPlayer from "@/components/HlsPlayer";
 import {
   ArrowLeft, Search, Grid3X3, List, Play, Pause, SkipForward, SkipBack,
   RotateCcw, RotateCw, Scissors, Bookmark, BookmarkCheck, ChevronDown,
@@ -189,6 +190,10 @@ export default function WatchAniList() {
   const [kotoPlayerUrl, setKotoPlayerUrl] = useState<string | null>(null);
   const [kotoPlayerLoading, setKotoPlayerLoading] = useState(false);
   const [kotoPlayerError, setKotoPlayerError] = useState<string | null>(null);
+  const [anizoneHlsUrl, setAnizoneHlsUrl] = useState<string | null>(null);
+  const [anizoneSubtitles, setAnizoneSubtitles] = useState<{ src: string; label: string; srclang: string; isDefault: boolean }[]>([]);
+  const [anizoneStreamLoading, setAnizoneStreamLoading] = useState(false);
+  const [anizoneStreamError, setAnizoneStreamError] = useState<string | null>(null);
   const [gogoSearchResults, setGogoSearchResults] = useState<{ slug: string; title: string; thumbnail: string }[]>([]);
   const [gogoSearching, setGogoSearching] = useState(false);
   const [gogoSearchDone, setGogoSearchDone] = useState(false);
@@ -319,6 +324,11 @@ export default function WatchAniList() {
     setKotoPlayerUrl(null);
     setKotoPlayerLoading(false);
     setKotoPlayerError(null);
+    // Reset AniZone stream state
+    setAnizoneHlsUrl(null);
+    setAnizoneSubtitles([]);
+    setAnizoneStreamLoading(false);
+    setAnizoneStreamError(null);
   }, [animeId, currentEp, lang, server]);
 
   // Load saved GogoAnimes slug from localStorage; derive suggestion from title if none saved
@@ -613,6 +623,35 @@ export default function WatchAniList() {
     return () => { cancelled = true; };
   }, [server, kotoSlug, kotoSearching, anime, currentEp]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Fetch HLS stream JSON for AniZone when server is selected with a valid slug
+  useEffect(() => {
+    if (server !== "ANIZONE" || !anizoneSlug) {
+      setAnizoneHlsUrl(null);
+      setAnizoneSubtitles([]);
+      setAnizoneStreamError(null);
+      return;
+    }
+    let cancelled = false;
+    setAnizoneHlsUrl(null);
+    setAnizoneSubtitles([]);
+    setAnizoneStreamLoading(true);
+    setAnizoneStreamError(null);
+    fetch(apiUrl(`/api/anizone/stream?slug=${encodeURIComponent(anizoneSlug)}&ep=${currentEp}`))
+      .then((r) => r.json())
+      .then((data: { hlsUrl?: string; subtitles?: { src: string; label: string; srclang: string; isDefault: boolean }[]; error?: string }) => {
+        if (cancelled) return;
+        if (data.hlsUrl) {
+          setAnizoneHlsUrl(data.hlsUrl);
+          setAnizoneSubtitles(data.subtitles ?? []);
+        } else {
+          setAnizoneStreamError(data.error ?? "No stream found for this episode");
+        }
+      })
+      .catch((e: Error) => { if (!cancelled) setAnizoneStreamError(e.message); })
+      .finally(() => { if (!cancelled) setAnizoneStreamLoading(false); });
+    return () => { cancelled = true; };
+  }, [server, anizoneSlug, currentEp]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Listen for video state updates from the proxied CDN player via postMessage bridge
   useEffect(() => {
     const handler = (evt: MessageEvent) => {
@@ -897,18 +936,26 @@ export default function WatchAniList() {
           <div ref={playerContainerRef} className="w-full aspect-video bg-black relative overflow-hidden">
             {anime ? (
               <>
+                {/* AniZone: use the native HLS player */}
+                {server === "ANIZONE" && anizoneHlsUrl && (
+                  <HlsPlayer
+                    key={`anizone-${anizoneSlug}-${currentEp}`}
+                    hlsUrl={anizoneHlsUrl}
+                    subtitles={anizoneSubtitles}
+                    title={`${title} — Episode ${currentEp}`}
+                  />
+                )}
+
+                {/* GOGO / KOTO / CUSTOM: embed via iframe */}
+                {server !== "ANIZONE" && (
                 <iframe
                   ref={iframeRef}
-                  key={`${animeId}-${anime.idMal ?? "al"}-${currentEp}-${lang}-${server}-${server === "CUSTOM" ? customUrl : ""}-${server === "GOGO" ? (cdnLoading ? "loading" : (cdnUrl ?? "fallback")) : ""}-${server === "KOTO" ? (kotoPlayerLoading ? "koto-loading" : (kotoPlayerUrl ?? "koto-missing")) : ""}-${server === "ANIZONE" ? (anizoneSlug || "no-slug") : ""}`}
+                  key={`${animeId}-${anime.idMal ?? "al"}-${currentEp}-${lang}-${server}-${server === "CUSTOM" ? customUrl : ""}-${server === "GOGO" ? (cdnLoading ? "loading" : (cdnUrl ?? "fallback")) : ""}-${server === "KOTO" ? (kotoPlayerLoading ? "koto-loading" : (kotoPlayerUrl ?? "koto-missing")) : ""}`}
                   src={(() => {
                     if (server === "CUSTOM") return customUrl ? `/api/proxy?url=${encodeURIComponent(customUrl)}` : "about:blank";
                     if (server === "KOTO") {
                       if (kotoPlayerLoading || !kotoPlayerUrl) return "about:blank";
                       return kotoPlayerUrl;
-                    }
-                    if (server === "ANIZONE") {
-                      if (!anizoneSlug) return "about:blank";
-                      return `/api/anizone/player?slug=${encodeURIComponent(anizoneSlug)}&ep=${currentEp}`;
                     }
                     // GOGO
                     if (!gogoSlug) return "about:blank";
@@ -926,16 +973,43 @@ export default function WatchAniList() {
                   onLoad={() => {
                     if (server === "GOGO" && cdnLoading) return;
                     if (server === "KOTO" && (kotoPlayerLoading || !kotoPlayerUrl)) return;
-                    if (server === "ANIZONE" && !anizoneSlug) return;
                     setTimeout(() => {
                       setIframeLoaded(true);
                       if (server === "GOGO") setTimeout(() => sendCmd({ na_cmd: "query" }), 600);
                     }, 200);
                   }}
                 />
+                )}
 
 
-                {!iframeLoaded && (
+                {/* AniZone loading/error overlay (HlsPlayer handles its own state once loaded) */}
+                {server === "ANIZONE" && (anizoneStreamLoading || anizoneStreamError || !anizoneHlsUrl) && (
+                  <div className="absolute inset-0 z-10 flex flex-col items-center justify-center" style={{ background: "rgba(0,0,0,0.92)" }}>
+                    {banner && <img src={banner} alt="" className="absolute inset-0 w-full h-full object-cover opacity-10 scale-110 blur-sm" />}
+                    <div className="relative z-10 flex flex-col items-center gap-4">
+                      {anizoneStreamError ? (
+                        <div className="text-center space-y-2">
+                          <p className="text-white/70 text-sm font-semibold tracking-wide">AniZone stream not found</p>
+                          <p className="text-white/30 text-[11px] font-mono">{anizoneStreamError}</p>
+                          <p className="text-white/20 text-[10px] font-mono max-w-[260px] text-center">Try a different slug or check the ANIZONE panel below.</p>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="relative w-14 h-14">
+                            <div className="absolute inset-0 rounded-full border-2 border-white/10" />
+                            <div className="absolute inset-0 rounded-full border-2 border-t-blue-400 border-r-transparent border-b-transparent border-l-transparent animate-spin" />
+                          </div>
+                          <p className="text-white text-sm font-semibold tracking-wide">
+                            {anizoneSlug ? "Fetching AniZone stream…" : "Set a slug in the ANIZONE panel below."}
+                          </p>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* iframe-based loading overlay (GOGO / KOTO / CUSTOM only) */}
+                {server !== "ANIZONE" && !iframeLoaded && (
                   <div
                     className="absolute inset-0 z-10 flex flex-col items-center justify-center"
                     style={{ background: "rgba(0,0,0,0.92)" }}
@@ -990,8 +1064,6 @@ export default function WatchAniList() {
                                 ? "Loading AniKoto player…"
                                 : server === "KOTO"
                                 ? "Fetching AniKoto stream…"
-                                : server === "ANIZONE"
-                                ? (anizoneSlug ? "Loading AniZone stream…" : "Set a slug in the ANIZONE panel below.")
                                 : "Loading, please wait…"}
                             </p>
                             <p className="text-white/30 text-[11px] font-mono mt-1 uppercase tracking-widest">
