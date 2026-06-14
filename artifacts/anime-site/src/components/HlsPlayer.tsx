@@ -3,7 +3,7 @@ import Hls, { type Level } from "hls.js";
 import {
   Play, Pause, Volume2, VolumeX, Maximize, Minimize,
   SkipForward, SkipBack, Settings, Subtitles, Loader2,
-  AlertTriangle,
+  AlertTriangle, RotateCcw,
 } from "lucide-react";
 
 interface SubTrack {
@@ -17,7 +17,14 @@ interface Props {
   hlsUrl: string;
   subtitles?: SubTrack[];
   title?: string;
+  progressKey?: string;
   onEnded?: () => void;
+}
+
+interface SavedProgress {
+  position: number;
+  duration: number;
+  ts: number;
 }
 
 function fmtTime(s: number): string {
@@ -27,11 +34,40 @@ function fmtTime(s: number): string {
   return `${m}:${sec.toString().padStart(2, "0")}`;
 }
 
-export default function HlsPlayer({ hlsUrl, subtitles = [], title, onEnded }: Props) {
+function loadProgress(key: string): SavedProgress | null {
+  try {
+    const raw = localStorage.getItem(`watch_progress_${key}`);
+    if (!raw) return null;
+    return JSON.parse(raw) as SavedProgress;
+  } catch { return null; }
+}
+
+function saveProgress(key: string, position: number, duration: number) {
+  try {
+    if (position < 5 || duration <= 0) return;
+    const data: SavedProgress = { position, duration, ts: Date.now() };
+    localStorage.setItem(`watch_progress_${key}`, JSON.stringify(data));
+  } catch { /* ignore */ }
+}
+
+function clearProgress(key: string) {
+  try { localStorage.removeItem(`watch_progress_${key}`); } catch { /* ignore */ }
+}
+
+export function getEpisodeProgressPct(progressKey: string): number | null {
+  const p = loadProgress(progressKey);
+  if (!p || p.duration <= 0) return null;
+  const pct = p.position / p.duration;
+  if (pct < 0.02 || pct > 0.97) return null;
+  return pct;
+}
+
+export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, onEnded }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSavedAt = useRef<number>(0);
 
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -50,6 +86,7 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, onEnded }: Pr
   const [activeSub, setActiveSub] = useState<string | null>(
     subtitles.find((s) => s.isDefault)?.src ?? (subtitles.length === 1 ? subtitles[0].src : null)
   );
+  const [resumeToast, setResumeToast] = useState<string | null>(null);
 
   const resetHideTimer = useCallback(() => {
     setShowControls(true);
@@ -60,6 +97,18 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, onEnded }: Pr
     }, 3000);
   }, []);
 
+  const flushProgress = useCallback(() => {
+    const video = videoRef.current;
+    if (!progressKey || !video || video.currentTime < 5 || video.duration <= 0) return;
+    const pct = video.currentTime / video.duration;
+    if (pct > 0.97) {
+      clearProgress(progressKey);
+    } else {
+      saveProgress(progressKey, video.currentTime, video.duration);
+    }
+    lastSavedAt.current = Date.now();
+  }, [progressKey]);
+
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !hlsUrl) return;
@@ -68,6 +117,7 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, onEnded }: Pr
     setLoading(true);
     setLevels([]);
     setCurrentLevel(-1);
+    setResumeToast(null);
 
     if (hlsRef.current) {
       hlsRef.current.destroy();
@@ -83,6 +133,24 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, onEnded }: Pr
       hls.on(Hls.Events.MANIFEST_PARSED, (_, data) => {
         setLevels(data.levels);
         setLoading(false);
+
+        if (progressKey) {
+          const saved = loadProgress(progressKey);
+          const vidDuration = video.duration || data.levels[0]?.details?.totalduration;
+          if (saved && saved.position > 5) {
+            const effectiveDuration = vidDuration || saved.duration;
+            const pct = saved.position / (effectiveDuration || saved.duration);
+            if (pct < 0.95) {
+              video.currentTime = saved.position;
+              const remaining = saved.duration > 0
+                ? `${fmtTime(saved.duration - saved.position)} remaining`
+                : "";
+              setResumeToast(`Resumed from ${fmtTime(saved.position)}${remaining ? " · " + remaining : ""}`);
+              setTimeout(() => setResumeToast(null), 4000);
+            }
+          }
+        }
+
         video.play().catch(() => {});
       });
 
@@ -98,34 +166,52 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, onEnded }: Pr
       });
     } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
       video.src = hlsUrl;
-      video.addEventListener("loadedmetadata", () => setLoading(false), { once: true });
+      video.addEventListener("loadedmetadata", () => {
+        setLoading(false);
+        if (progressKey) {
+          const saved = loadProgress(progressKey);
+          if (saved && saved.position > 5 && video.duration > 0 && saved.position / video.duration < 0.95) {
+            video.currentTime = saved.position;
+            setResumeToast(`Resumed from ${fmtTime(saved.position)}`);
+            setTimeout(() => setResumeToast(null), 4000);
+          }
+        }
+      }, { once: true });
     } else {
       setError("Your browser does not support HLS playback.");
       setLoading(false);
     }
 
     return () => {
+      flushProgress();
       hlsRef.current?.destroy();
       hlsRef.current = null;
     };
-  }, [hlsUrl]);
+  }, [hlsUrl]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
     const onPlay = () => setPlaying(true);
-    const onPause = () => setPlaying(false);
+    const onPause = () => { setPlaying(false); flushProgress(); };
     const onTimeUpdate = () => {
       setCurrentTime(video.currentTime);
       if (video.buffered.length > 0) {
         setBuffered(video.buffered.end(video.buffered.length - 1));
       }
+      if (progressKey && Date.now() - lastSavedAt.current > 5000) {
+        flushProgress();
+      }
     };
     const onDuration = () => setDuration(video.duration);
     const onWaiting = () => setLoading(true);
     const onCanPlay = () => setLoading(false);
-    const onEnded_ = () => { setPlaying(false); onEnded?.(); };
+    const onEnded_ = () => {
+      setPlaying(false);
+      if (progressKey) clearProgress(progressKey);
+      onEnded?.();
+    };
 
     video.addEventListener("play", onPlay);
     video.addEventListener("pause", onPause);
@@ -144,7 +230,7 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, onEnded }: Pr
       video.removeEventListener("canplay", onCanPlay);
       video.removeEventListener("ended", onEnded_);
     };
-  }, [onEnded]);
+  }, [onEnded, progressKey, flushProgress]);
 
   useEffect(() => {
     const onFsChange = () => setFullscreen(!!document.fullscreenElement);
@@ -168,6 +254,12 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, onEnded }: Pr
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [resetHideTimer]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const handleUnload = () => flushProgress();
+    window.addEventListener("beforeunload", handleUnload);
+    return () => window.removeEventListener("beforeunload", handleUnload);
+  }, [flushProgress]);
 
   const togglePlay = () => {
     const video = videoRef.current;
@@ -277,6 +369,19 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, onEnded }: Pr
         >
           <div className="w-16 h-16 rounded-full bg-black/60 border border-white/20 flex items-center justify-center backdrop-blur-sm">
             <Play className="w-7 h-7 text-white fill-white ml-1" />
+          </div>
+        </div>
+      )}
+
+      {/* Resume toast */}
+      {resumeToast && (
+        <div
+          className="absolute top-14 left-1/2 -translate-x-1/2 z-40 pointer-events-none"
+          style={{ animation: "fadeInOut 4s ease forwards" }}
+        >
+          <div className="flex items-center gap-2 bg-black/80 border border-white/15 backdrop-blur-sm px-3 py-1.5 rounded-full">
+            <RotateCcw className="w-3 h-3 text-blue-400 shrink-0" />
+            <span className="text-white/80 text-[11px] font-mono">{resumeToast}</span>
           </div>
         </div>
       )}
@@ -400,7 +505,7 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, onEnded }: Pr
                   <Subtitles className="w-4 h-4" />
                 </button>
                 {showSubs && (
-                  <div className="absolute bottom-full right-0 mb-2 min-w-[140px] bg-zinc-900 border border-white/10 rounded overflow-hidden shadow-xl z-50">
+                  <div className="absolute bottom-full right-0 mb-2 min-w-[140px] max-h-52 overflow-y-auto bg-zinc-900 border border-white/10 rounded overflow-hidden shadow-xl z-50">
                     <button
                       onClick={() => { setActiveSub(null); setShowSubs(false); }}
                       className={`w-full text-left px-3 py-2 text-[11px] font-mono transition-colors hover:bg-white/10 ${!activeSub ? "text-blue-400" : "text-white/60"}`}

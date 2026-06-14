@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useParams, useLocation } from "wouter";
-import HlsPlayer from "@/components/HlsPlayer";
+import HlsPlayer, { getEpisodeProgressPct } from "@/components/HlsPlayer";
 import {
   ArrowLeft, Search, Grid3X3, List, Play, Pause, SkipForward, SkipBack,
   RotateCcw, RotateCw, Scissors, Bookmark, BookmarkCheck, ChevronDown,
@@ -943,6 +943,7 @@ export default function WatchAniList() {
                     hlsUrl={anizoneHlsUrl}
                     subtitles={anizoneSubtitles}
                     title={`${title} — Episode ${currentEp}`}
+                    progressKey={`al_${animeId}_${currentEp}`}
                   />
                 )}
 
@@ -1704,12 +1705,13 @@ export default function WatchAniList() {
                   const active = ep === currentEp;
                   const watched = isWatched(ep);
                   const filler = isEpFiller(ep);
+                  const progressPct = !active && !watched ? getEpisodeProgressPct(`al_${animeId}_${ep}`) : null;
                   return (
                     <Link key={ep} href={`/watch/al/${animeId}/${ep}`}>
                       <div
                         data-active={active}
                         title={getEpTitle(ep)}
-                        className={`aspect-square flex items-center justify-center text-xs font-mono cursor-pointer transition-colors border relative ${
+                        className={`aspect-square flex items-center justify-center text-xs font-mono cursor-pointer transition-colors border relative overflow-hidden ${
                           active
                             ? "bg-white text-black border-white font-bold"
                             : filler
@@ -1722,6 +1724,11 @@ export default function WatchAniList() {
                         {ep}
                         {filler && !active && (
                           <span className="absolute top-0.5 right-0.5 text-[6px] text-yellow-500/60">F</span>
+                        )}
+                        {progressPct !== null && (
+                          <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-white/10">
+                            <div className="h-full bg-blue-400/70" style={{ width: `${progressPct * 100}%` }} />
+                          </div>
                         )}
                       </div>
                     </Link>
@@ -1739,6 +1746,7 @@ export default function WatchAniList() {
                   const score = getEpScore(ep);
                   const filler = isEpFiller(ep);
                   const recap = isEpRecap(ep);
+                  const progressPct = !active && !watched ? getEpisodeProgressPct(`al_${animeId}_${ep}`) : null;
                   return (
                     <Link key={ep} href={`/watch/al/${animeId}/${ep}`}>
                       <div
@@ -1770,6 +1778,11 @@ export default function WatchAniList() {
                               <span className="text-[8px] font-mono text-white/50">★{score.toFixed(1)}</span>
                             )}
                           </div>
+                          {progressPct !== null && (
+                            <div className="absolute bottom-0 left-0 right-0 h-0.5">
+                              <div className="h-full bg-blue-400" style={{ width: `${progressPct * 100}%` }} />
+                            </div>
+                          )}
                         </div>
                         {/* Info */}
                         <div className="flex-1 min-w-0 pt-0.5">
