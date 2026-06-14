@@ -160,6 +160,10 @@ export default function WatchAniList() {
   const [server, setServer] = useState<"GOGO" | "KOTO" | "ANIDB" | "CUSTOM">("GOGO");
   const [anidbSlug, setAnidbSlug] = useState("");
   const [anidbSlugInput, setAnidbSlugInput] = useState("");
+  const [anidbSearching, setAnidbSearching] = useState(false);
+  const [anidbSearchDone, setAnidbSearchDone] = useState(false);
+  const [anidbSearchBlocked, setAnidbSearchBlocked] = useState(false);
+  const [anidbSearchResults, setAnidbSearchResults] = useState<{ slug: string; title: string; thumbnail: string }[]>([]);
   const [customUrl, setCustomUrl] = useState("");
   const [urlTemplate, setUrlTemplate] = useState("");
   const [templateInput, setTemplateInput] = useState("");
@@ -324,13 +328,21 @@ export default function WatchAniList() {
     setGogoSlugInput(saved);
   }, [animeId]);
 
-  // Load saved AniDB slug from localStorage
+  // Load saved AniDB slug from localStorage; auto-search if none saved
   useEffect(() => {
     if (!animeId) return;
     const saved = localStorage.getItem(`na_anidb_${animeId}`) ?? "";
     setAnidbSlug(saved);
     setAnidbSlugInput(saved);
   }, [animeId]);
+
+  // Reset ANIDB search state when switching away or anime changes
+  useEffect(() => {
+    setAnidbSearchResults([]);
+    setAnidbSearchDone(false);
+    setAnidbSearching(false);
+    setAnidbSearchBlocked(false);
+  }, [server, animeId]);
 
   // Load saved URL template from localStorage when anime changes
   useEffect(() => {
@@ -488,6 +500,22 @@ export default function WatchAniList() {
       })
       .catch(() => { setKotoSearchResults([]); })
       .finally(() => { setKotoSearching(false); setKotoSearchDone(true); });
+  }
+
+  function triggerAnidbSearch(query: string) {
+    if (!query) return;
+    setAnidbSearching(true);
+    setAnidbSearchDone(false);
+    setAnidbSearchBlocked(false);
+    const q = query.replace(/\s*season\s*\d+/i, "").replace(/\s*\d+(st|nd|rd|th)\s*season/i, "").trim();
+    fetch(apiUrl(`/api/anidb/search?q=${encodeURIComponent(q)}&limit=8`))
+      .then((r) => r.json())
+      .then((data: { results?: { slug: string; title: string; thumbnail: string }[]; blocked?: boolean }) => {
+        setAnidbSearchResults(data.results ?? []);
+        setAnidbSearchBlocked(data.blocked ?? false);
+      })
+      .catch(() => { setAnidbSearchResults([]); })
+      .finally(() => { setAnidbSearching(false); setAnidbSearchDone(true); });
   }
 
   // Pre-search KOTO as soon as the title is known (regardless of current server)
@@ -1241,6 +1269,13 @@ export default function WatchAniList() {
                   Load
                 </button>
                 <button
+                  onClick={() => triggerAnidbSearch(title)}
+                  disabled={anidbSearching}
+                  className="text-[10px] font-mono px-2.5 py-1.5 border border-blue-400/20 text-blue-400/40 hover:border-blue-400/60 hover:text-blue-400/80 transition-colors shrink-0 disabled:opacity-40"
+                >
+                  {anidbSearching ? "…" : "Search"}
+                </button>
+                <button
                   onClick={() => {
                     const s = deriveGogoSlug(title);
                     setAnidbSlug(s);
@@ -1259,7 +1294,65 @@ export default function WatchAniList() {
                 </p>
               ) : (
                 <p className="text-[10px] font-mono text-white/20 pl-[72px]">
-                  Enter the slug from the anidb.app/anime/... URL, or press Auto to derive it.
+                  Press Search to find the slug, or Auto to derive it from the title.
+                </p>
+              )}
+
+              {/* Search loading */}
+              {anidbSearching && (
+                <div className="pl-[72px] flex items-center gap-2 pt-1">
+                  <div className="w-3 h-3 border border-blue-400/40 border-t-blue-400 rounded-full animate-spin" />
+                  <span className="text-[10px] font-mono text-blue-400/50">Searching anidb.app…</span>
+                </div>
+              )}
+
+              {/* Blocked by Cloudflare */}
+              {!anidbSearching && anidbSearchDone && anidbSearchBlocked && (
+                <div className="pl-[72px] pt-1">
+                  <p className="text-[10px] font-mono text-white/25">
+                    anidb.app is Cloudflare-protected — auto-search unavailable.
+                    Visit <span className="text-blue-400/50">anidb.app</span> to find the slug, then paste it above.
+                    Or press <span className="text-blue-400/50">Auto</span> to derive from the title.
+                  </p>
+                </div>
+              )}
+
+              {/* Search results */}
+              {!anidbSearching && anidbSearchDone && !anidbSearchBlocked && anidbSearchResults.length > 0 && (
+                <div className="pl-[72px] pt-1 space-y-1">
+                  <p className="text-[9px] font-mono text-blue-400/40 uppercase tracking-widest mb-1.5">
+                    {anidbSearchResults.length} match{anidbSearchResults.length !== 1 ? "es" : ""} — pick one to load:
+                  </p>
+                  <div className="flex flex-col gap-1 max-h-[180px] overflow-y-auto pr-1">
+                    {anidbSearchResults.map((r) => (
+                      <button
+                        key={r.slug}
+                        onClick={() => {
+                          setAnidbSlug(r.slug);
+                          setAnidbSlugInput(r.slug);
+                          localStorage.setItem(`na_anidb_${animeId}`, r.slug);
+                          setIframeLoaded(false);
+                          setAnidbSearchResults([]);
+                          setAnidbSearchDone(false);
+                        }}
+                        className="flex items-center gap-2 text-left px-2 py-1.5 hover:bg-blue-400/10 border border-transparent hover:border-blue-400/20 transition-colors group"
+                      >
+                        {r.thumbnail && (
+                          <img src={r.thumbnail} alt="" className="w-8 h-11 object-cover shrink-0 opacity-70 group-hover:opacity-100 transition-opacity" />
+                        )}
+                        <div className="min-w-0">
+                          <p className="text-[11px] text-white/80 group-hover:text-white truncate">{r.title}</p>
+                          <p className="text-[9px] font-mono text-blue-400/40 group-hover:text-blue-400/70 truncate">{r.slug}</p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {!anidbSearching && anidbSearchDone && !anidbSearchBlocked && anidbSearchResults.length === 0 && (
+                <p className="pl-[72px] text-[10px] font-mono text-white/20 pt-1">
+                  No matches. Try editing the slug manually or use Auto.
                 </p>
               )}
             </div>
