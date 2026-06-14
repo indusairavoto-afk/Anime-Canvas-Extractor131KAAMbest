@@ -8,7 +8,7 @@ import proxyRouter from "./proxy";
 import gogoRouter from "./gogo";
 import kotoRouter from "./koto";
 import mkissaRouter from "./mkissa";
-import anidbRouter from "./anidb";
+import anizoneRouter from "./anizone";
 
 const router: IRouter = Router();
 
@@ -21,6 +21,6 @@ router.use(proxyRouter);
 router.use(gogoRouter);
 router.use(kotoRouter);
 router.use(mkissaRouter);
-router.use(anidbRouter);
+router.use(anizoneRouter);
 
 export default router;

@@ -159,13 +159,12 @@ export default function WatchAniList() {
   const [jikanLoading, setJikanLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [lang, setLang] = useState<"SUB" | "DUB">("SUB");
-  const [server, setServer] = useState<"GOGO" | "KOTO" | "ANIDB" | "CUSTOM">("GOGO");
-  const [anidbSlug, setAnidbSlug] = useState("");
-  const [anidbSlugInput, setAnidbSlugInput] = useState("");
-  const [anidbSearching, setAnidbSearching] = useState(false);
-  const [anidbSearchDone, setAnidbSearchDone] = useState(false);
-  const [anidbSearchBlocked, setAnidbSearchBlocked] = useState(false);
-  const [anidbSearchResults, setAnidbSearchResults] = useState<{ slug: string; title: string; thumbnail: string }[]>([]);
+  const [server, setServer] = useState<"GOGO" | "KOTO" | "ANIZONE" | "CUSTOM">("GOGO");
+  const [anizoneSlug, setAnizoneSlug] = useState("");
+  const [anizoneSlugInput, setAnizoneSlugInput] = useState("");
+  const [anizoneSearching, setAnizoneSearching] = useState(false);
+  const [anizoneSearchDone, setAnizoneSearchDone] = useState(false);
+  const [anizoneSearchResults, setAnizoneSearchResults] = useState<{ slug: string; title: string; thumbnail: string }[]>([]);
   const [customUrl, setCustomUrl] = useState("");
   const [urlTemplate, setUrlTemplate] = useState("");
   const [templateInput, setTemplateInput] = useState("");
@@ -330,40 +329,39 @@ export default function WatchAniList() {
     setGogoSlugInput(saved);
   }, [animeId]);
 
-  // Load saved AniDB slug from localStorage; if none saved, try to derive from externalLinks
+  // Load saved AniZone slug from localStorage; if none saved, try to derive from externalLinks
   useEffect(() => {
     if (!animeId) return;
-    const saved = localStorage.getItem(`na_anidb_${animeId}`);
+    const saved = localStorage.getItem(`na_anizone_${animeId}`);
     if (saved) {
-      setAnidbSlug(saved);
-      setAnidbSlugInput(saved);
+      setAnizoneSlug(saved);
+      setAnizoneSlugInput(saved);
       return;
     }
-    // Try to extract slug from AniList externalLinks (anidb.app/anime/{slug})
+    // Try to extract slug from AniList externalLinks (anizone.to/anime/{slug})
     if (anime?.externalLinks) {
       const link = anime.externalLinks.find(
-        (l) => l.url && l.url.includes("anidb.app/anime/")
+        (l) => l.url && l.url.includes("anizone.to/anime/")
       );
       if (link) {
-        const slug = link.url.replace(/.*anidb\.app\/anime\//, "").replace(/[/?#].*/, "").trim();
+        const slug = link.url.replace(/.*anizone\.to\/anime\//, "").replace(/[/?#].*/, "").trim();
         if (slug) {
-          setAnidbSlug(slug);
-          setAnidbSlugInput(slug);
-          localStorage.setItem(`na_anidb_${animeId}`, slug);
+          setAnizoneSlug(slug);
+          setAnizoneSlugInput(slug);
+          localStorage.setItem(`na_anizone_${animeId}`, slug);
           return;
         }
       }
     }
-    setAnidbSlug("");
-    setAnidbSlugInput("");
+    setAnizoneSlug("");
+    setAnizoneSlugInput("");
   }, [animeId, anime]);
 
-  // Reset ANIDB search state when switching away or anime changes
+  // Reset AniZone search state when switching away or anime changes
   useEffect(() => {
-    setAnidbSearchResults([]);
-    setAnidbSearchDone(false);
-    setAnidbSearching(false);
-    setAnidbSearchBlocked(false);
+    setAnizoneSearchResults([]);
+    setAnizoneSearchDone(false);
+    setAnizoneSearching(false);
   }, [server, animeId]);
 
   // Load saved URL template from localStorage when anime changes
@@ -524,20 +522,18 @@ export default function WatchAniList() {
       .finally(() => { setKotoSearching(false); setKotoSearchDone(true); });
   }
 
-  function triggerAnidbSearch(query: string) {
+  function triggerAnizoneSearch(query: string) {
     if (!query) return;
-    setAnidbSearching(true);
-    setAnidbSearchDone(false);
-    setAnidbSearchBlocked(false);
+    setAnizoneSearching(true);
+    setAnizoneSearchDone(false);
     const q = query.replace(/\s*season\s*\d+/i, "").replace(/\s*\d+(st|nd|rd|th)\s*season/i, "").trim();
-    fetch(apiUrl(`/api/anidb/search?q=${encodeURIComponent(q)}&limit=8`))
+    fetch(apiUrl(`/api/anizone/search?q=${encodeURIComponent(q)}&limit=8`))
       .then((r) => r.json())
-      .then((data: { results?: { slug: string; title: string; thumbnail: string }[]; blocked?: boolean }) => {
-        setAnidbSearchResults(data.results ?? []);
-        setAnidbSearchBlocked(data.blocked ?? false);
+      .then((data: { results?: { slug: string; title: string; thumbnail: string }[] }) => {
+        setAnizoneSearchResults(data.results ?? []);
       })
-      .catch(() => { setAnidbSearchResults([]); })
-      .finally(() => { setAnidbSearching(false); setAnidbSearchDone(true); });
+      .catch(() => { setAnizoneSearchResults([]); })
+      .finally(() => { setAnizoneSearching(false); setAnizoneSearchDone(true); });
   }
 
   // Pre-search KOTO as soon as the title is known (regardless of current server)
@@ -885,16 +881,16 @@ export default function WatchAniList() {
               <>
                 <iframe
                   ref={iframeRef}
-                  key={`${animeId}-${anime.idMal ?? "al"}-${currentEp}-${lang}-${server}-${server === "CUSTOM" ? customUrl : ""}-${server === "GOGO" ? (cdnLoading ? "loading" : (cdnUrl ?? "fallback")) : ""}-${server === "KOTO" ? (kotoPlayerLoading ? "koto-loading" : (kotoPlayerUrl ?? "koto-missing")) : ""}-${server === "ANIDB" ? (anidbSlug || "no-slug") : ""}`}
+                  key={`${animeId}-${anime.idMal ?? "al"}-${currentEp}-${lang}-${server}-${server === "CUSTOM" ? customUrl : ""}-${server === "GOGO" ? (cdnLoading ? "loading" : (cdnUrl ?? "fallback")) : ""}-${server === "KOTO" ? (kotoPlayerLoading ? "koto-loading" : (kotoPlayerUrl ?? "koto-missing")) : ""}-${server === "ANIZONE" ? (anizoneSlug || "no-slug") : ""}`}
                   src={(() => {
                     if (server === "CUSTOM") return customUrl ? `/api/proxy?url=${encodeURIComponent(customUrl)}` : "about:blank";
                     if (server === "KOTO") {
                       if (kotoPlayerLoading || !kotoPlayerUrl) return "about:blank";
                       return kotoPlayerUrl;
                     }
-                    if (server === "ANIDB") {
-                      if (!anidbSlug) return "about:blank";
-                      return `/api/proxy?url=${encodeURIComponent(`https://anidb.app/anime/${anidbSlug}`)}`;
+                    if (server === "ANIZONE") {
+                      if (!anizoneSlug) return "about:blank";
+                      return `/api/anizone/player?slug=${encodeURIComponent(anizoneSlug)}&ep=${currentEp}`;
                     }
                     // GOGO
                     if (!gogoSlug) return "about:blank";
@@ -912,7 +908,7 @@ export default function WatchAniList() {
                   onLoad={() => {
                     if (server === "GOGO" && cdnLoading) return;
                     if (server === "KOTO" && (kotoPlayerLoading || !kotoPlayerUrl)) return;
-                    if (server === "ANIDB" && !anidbSlug) return;
+                    if (server === "ANIZONE" && !anizoneSlug) return;
                     setTimeout(() => {
                       setIframeLoaded(true);
                       if (server === "GOGO") setTimeout(() => sendCmd({ na_cmd: "query" }), 600);
@@ -976,15 +972,15 @@ export default function WatchAniList() {
                                 ? "Loading AniKoto player…"
                                 : server === "KOTO"
                                 ? "Fetching AniKoto stream…"
-                                : server === "ANIDB"
-                                ? (anidbSlug ? "Loading AniDB player…" : "Set a slug in the ANIDB panel below.")
+                                : server === "ANIZONE"
+                                ? (anizoneSlug ? "Loading AniZone stream…" : "Set a slug in the ANIZONE panel below.")
                                 : "Loading, please wait…"}
                             </p>
                             <p className="text-white/30 text-[11px] font-mono mt-1 uppercase tracking-widest">
                               Episode {currentEp} · {lang}
                               {server === "GOGO" && gogoSlug && ` · ${gogoSlug.toUpperCase()}`}
                               {server === "KOTO" && kotoSlug && ` · ${kotoSlug}`}
-                              {server === "ANIDB" && anidbSlug && ` · ${anidbSlug}`}
+                              {server === "ANIZONE" && anizoneSlug && ` · ${anizoneSlug}`}
                             </p>
                           </div>
                         </>
@@ -1098,16 +1094,16 @@ export default function WatchAniList() {
               >
                 KOTO
               </button>
-              {/* AniDB server */}
+              {/* AniZone server */}
               <button
-                onClick={() => { setServer("ANIDB"); setIframeLoaded(false); }}
+                onClick={() => { setServer("ANIZONE"); setIframeLoaded(false); }}
                 className={`text-[10px] font-mono px-2.5 py-1 border transition-colors ${
-                  server === "ANIDB"
+                  server === "ANIZONE"
                     ? "border-blue-400 bg-blue-400 text-black"
                     : "border-blue-400/30 text-blue-400/60 hover:border-blue-400/70 hover:text-blue-400"
                 }`}
               >
-                ANIDB
+                ANIZONE
               </button>
             </div>
           </div>
@@ -1260,30 +1256,30 @@ export default function WatchAniList() {
             </div>
           )}
 
-          {/* ANIDB panel */}
-          {server === "ANIDB" && (
+          {/* ANIZONE panel */}
+          {server === "ANIZONE" && (
             <div className="border-b border-white/5 bg-blue-400/[0.03] px-4 py-3 space-y-2">
               <div className="flex items-center gap-2">
                 <span className="text-[9px] font-mono text-blue-400/60 uppercase tracking-widest shrink-0 w-16">Slug</span>
                 <input
-                  value={anidbSlugInput}
-                  onChange={(e) => setAnidbSlugInput(e.target.value)}
+                  value={anizoneSlugInput}
+                  onChange={(e) => setAnizoneSlugInput(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
-                      const s = anidbSlugInput.trim();
-                      setAnidbSlug(s);
-                      localStorage.setItem(`na_anidb_${animeId}`, s);
+                      const s = anizoneSlugInput.trim();
+                      setAnizoneSlug(s);
+                      localStorage.setItem(`na_anizone_${animeId}`, s);
                       setIframeLoaded(false);
                     }
                   }}
-                  placeholder="e.g. daemons-of-the-shadow-realm-1140  (from anidb.app/anime/...)"
+                  placeholder="e.g. 3rvkiqfs  (from anizone.to/anime/...)"
                   className="flex-1 bg-white/5 border border-blue-400/20 px-3 py-1.5 text-xs text-white placeholder-white/15 focus:outline-none focus:border-blue-400/50 font-mono"
                 />
                 <button
                   onClick={() => {
-                    const s = anidbSlugInput.trim();
-                    setAnidbSlug(s);
-                    localStorage.setItem(`na_anidb_${animeId}`, s);
+                    const s = anizoneSlugInput.trim();
+                    setAnizoneSlug(s);
+                    localStorage.setItem(`na_anizone_${animeId}`, s);
                     setIframeLoaded(false);
                   }}
                   className="text-[10px] font-mono px-2.5 py-1.5 border border-blue-400/30 text-blue-400/60 hover:border-blue-400 hover:text-blue-400 transition-colors shrink-0"
@@ -1291,71 +1287,48 @@ export default function WatchAniList() {
                   Load
                 </button>
                 <button
-                  onClick={() => triggerAnidbSearch(title)}
-                  disabled={anidbSearching}
+                  onClick={() => triggerAnizoneSearch(title)}
+                  disabled={anizoneSearching}
                   className="text-[10px] font-mono px-2.5 py-1.5 border border-blue-400/20 text-blue-400/40 hover:border-blue-400/60 hover:text-blue-400/80 transition-colors shrink-0 disabled:opacity-40"
                 >
-                  {anidbSearching ? "…" : "Search"}
-                </button>
-                <button
-                  onClick={() => {
-                    const s = deriveGogoSlug(title);
-                    setAnidbSlug(s);
-                    setAnidbSlugInput(s);
-                    localStorage.setItem(`na_anidb_${animeId}`, s);
-                    setIframeLoaded(false);
-                  }}
-                  className="text-[10px] font-mono px-2.5 py-1.5 border border-blue-400/20 text-blue-400/40 hover:border-blue-400/60 hover:text-blue-400/80 transition-colors shrink-0"
-                >
-                  Auto
+                  {anizoneSearching ? "…" : "Search"}
                 </button>
               </div>
-              {anidbSlug ? (
+              {anizoneSlug ? (
                 <p className="text-[10px] font-mono text-blue-400/40 pl-[72px]">
-                  → anidb.app/anime/{anidbSlug}
+                  → anizone.to/anime/{anizoneSlug}/ep-{currentEp}
                 </p>
               ) : (
                 <p className="text-[10px] font-mono text-white/20 pl-[72px]">
-                  Press Search to find the slug, or Auto to derive it from the title.
+                  Press Search to find the slug, or paste it from anizone.to/anime/…
                 </p>
               )}
 
               {/* Search loading */}
-              {anidbSearching && (
+              {anizoneSearching && (
                 <div className="pl-[72px] flex items-center gap-2 pt-1">
                   <div className="w-3 h-3 border border-blue-400/40 border-t-blue-400 rounded-full animate-spin" />
-                  <span className="text-[10px] font-mono text-blue-400/50">Searching anidb.app…</span>
-                </div>
-              )}
-
-              {/* Blocked by Cloudflare */}
-              {!anidbSearching && anidbSearchDone && anidbSearchBlocked && (
-                <div className="pl-[72px] pt-1">
-                  <p className="text-[10px] font-mono text-white/25">
-                    anidb.app is Cloudflare-protected — auto-search unavailable.
-                    Visit <span className="text-blue-400/50">anidb.app</span> to find the slug, then paste it above.
-                    Or press <span className="text-blue-400/50">Auto</span> to derive from the title.
-                  </p>
+                  <span className="text-[10px] font-mono text-blue-400/50">Searching anizone.to…</span>
                 </div>
               )}
 
               {/* Search results */}
-              {!anidbSearching && anidbSearchDone && !anidbSearchBlocked && anidbSearchResults.length > 0 && (
+              {!anizoneSearching && anizoneSearchDone && anizoneSearchResults.length > 0 && (
                 <div className="pl-[72px] pt-1 space-y-1">
                   <p className="text-[9px] font-mono text-blue-400/40 uppercase tracking-widest mb-1.5">
-                    {anidbSearchResults.length} match{anidbSearchResults.length !== 1 ? "es" : ""} — pick one to load:
+                    {anizoneSearchResults.length} match{anizoneSearchResults.length !== 1 ? "es" : ""} — pick one to load:
                   </p>
                   <div className="flex flex-col gap-1 max-h-[180px] overflow-y-auto pr-1">
-                    {anidbSearchResults.map((r) => (
+                    {anizoneSearchResults.map((r) => (
                       <button
                         key={r.slug}
                         onClick={() => {
-                          setAnidbSlug(r.slug);
-                          setAnidbSlugInput(r.slug);
-                          localStorage.setItem(`na_anidb_${animeId}`, r.slug);
+                          setAnizoneSlug(r.slug);
+                          setAnizoneSlugInput(r.slug);
+                          localStorage.setItem(`na_anizone_${animeId}`, r.slug);
                           setIframeLoaded(false);
-                          setAnidbSearchResults([]);
-                          setAnidbSearchDone(false);
+                          setAnizoneSearchResults([]);
+                          setAnizoneSearchDone(false);
                         }}
                         className="flex items-center gap-2 text-left px-2 py-1.5 hover:bg-blue-400/10 border border-transparent hover:border-blue-400/20 transition-colors group"
                       >
@@ -1372,9 +1345,9 @@ export default function WatchAniList() {
                 </div>
               )}
 
-              {!anidbSearching && anidbSearchDone && !anidbSearchBlocked && anidbSearchResults.length === 0 && (
+              {!anizoneSearching && anizoneSearchDone && anizoneSearchResults.length === 0 && (
                 <p className="pl-[72px] text-[10px] font-mono text-white/20 pt-1">
-                  No matches. Try editing the slug manually or use Auto.
+                  No matches found. Try a shorter title or paste the slug directly from anizone.to.
                 </p>
               )}
             </div>
