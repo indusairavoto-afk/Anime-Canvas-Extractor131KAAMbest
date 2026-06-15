@@ -6,7 +6,7 @@ import path from "path";
 const isBuild = process.argv.includes("build");
 
 const rawPort = process.env.PORT;
-const port = rawPort ? Number(rawPort) : 5173;
+const port = rawPort ? Number(rawPort) : 5000;
 
 const basePath = process.env.BASE_PATH ?? "/";
 

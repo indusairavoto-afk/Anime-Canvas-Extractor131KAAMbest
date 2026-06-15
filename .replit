@@ -46,7 +46,7 @@ outputType = "webview"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "pnpm --filter @workspace/anime-site run dev"
-waitForPort = 5173
+waitForPort = 5000
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
@@ -71,6 +71,10 @@ externalPort = 80
 [[ports]]
 localPort = 19796
 externalPort = 3000
+
+[[ports]]
+localPort = 5000
+externalPort = 80
 
 [nix]
 channel = "stable-25_05"
