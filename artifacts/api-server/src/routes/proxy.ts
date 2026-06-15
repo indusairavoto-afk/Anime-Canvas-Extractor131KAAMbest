@@ -18,6 +18,11 @@ const BLOCKED_RESPONSE_HEADERS = new Set([
   "content-security-policy",
   "content-security-policy-report-only",
   "x-content-type-options",
+  // We modify the response body (inject scripts/styles), so the upstream
+  // Content-Length is always wrong. Dropping it lets Express re-calculate it.
+  // Also drop Transfer-Encoding — combining both causes a Node.js parse error.
+  "content-length",
+  "transfer-encoding",
 ]);
 
 // Injected into anikoto.cz pages to strip the website chrome and show only the #player div.
@@ -64,6 +69,35 @@ a,button,[onclick],[data-bs-toggle]{pointer-events:all!important}
     /* Other absolute URLs (CDN players, etc.) — pass through unchanged */
     if(/^https?:\/\//i.test(u)||/^\/\//.test(u))return u;
     /* Relative URLs — resolve against anikoto.cz and proxy */
+    var resolved=K+(u.charAt(0)==='/'?'':'/')+u;
+    return P+encodeURIComponent(resolved);
+  }
+  var ox=XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open=function(m,u){
+    var a=Array.prototype.slice.call(arguments,2);
+    return ox.apply(this,[m,fix(String(u||''))].concat(a));
+  };
+  if(window.fetch){
+    var of=window.fetch;
+    window.fetch=function(i,o){return of.call(window,typeof i==='string'?fix(i):i,o);};
+  }
+})();
+</script>`;
+
+// Injected into megaplay.buzz pages — routes all megaplay.buzz API calls through our proxy
+// so the obfuscated client.js can fetch video sources without hitting CORS.
+const MEGAPLAY_INJECT = `<script>
+(function(){
+  var K='https://megaplay.buzz';
+  var P='/api/proxy?url=';
+  function fix(u){
+    if(!u||typeof u!=='string')return u;
+    if(/^(?:data:|blob:)/.test(u))return u;
+    if(/^https?:\/\/megaplay\.buzz/i.test(u)||/^\/\/megaplay\.buzz/i.test(u)){
+      var abs=u.startsWith('//')?'https:'+u:u;
+      return P+encodeURIComponent(abs);
+    }
+    if(/^https?:\/\//i.test(u)||/^\/\//.test(u))return u;
     var resolved=K+(u.charAt(0)==='/'?'':'/')+u;
     return P+encodeURIComponent(resolved);
   }
@@ -404,6 +438,16 @@ router.get("/proxy", async (req, res) => {
           html = html.replace(/<\/head>/i, `${GOGO_VIDEO_ONLY}</head>`);
         } else {
           html = GOGO_VIDEO_ONLY + html;
+        }
+      }
+
+      // For megaplay.buzz — inject BEFORE client.js runs so the monkey-patch
+      // is in place before any API calls are made.
+      if (targetUrl.hostname.includes("megaplay")) {
+        if (/<head>/i.test(html)) {
+          html = html.replace(/<head>/i, `<head>${MEGAPLAY_INJECT}`);
+        } else {
+          html = MEGAPLAY_INJECT + html;
         }
       }
 

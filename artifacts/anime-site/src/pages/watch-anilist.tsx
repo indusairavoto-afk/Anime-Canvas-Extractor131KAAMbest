@@ -961,6 +961,21 @@ export default function WatchAniList() {
                   />
                 )}
 
+                {/* KOTO fallback iframe: player URL found but no extractable HLS — proxy it */}
+                {server === "KOTO" && kotoPlayerUrl && !kotoHlsUrl && (
+                  <iframe
+                    ref={iframeRef}
+                    key={`koto-iframe-${kotoSlug || "mal"}-${currentEp}`}
+                    src={`/api/proxy?url=${encodeURIComponent(kotoPlayerUrl)}&hideChrome=1`}
+                    className="w-full h-full"
+                    allowFullScreen
+                    allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
+                    referrerPolicy="no-referrer"
+                    title={`${title} Episode ${currentEp}`}
+                    onLoad={() => setTimeout(() => setIframeLoaded(true), 200)}
+                  />
+                )}
+
                 {/* GOGO / CUSTOM: embed via iframe (KOTO never uses iframe — avoids cross-origin error pages) */}
                 {(server === "GOGO" || server === "CUSTOM") && (
                 <iframe
@@ -968,7 +983,10 @@ export default function WatchAniList() {
                   key={`${animeId}-${anime.idMal ?? "al"}-${currentEp}-${lang}-${server}-${server === "CUSTOM" ? customUrl : ""}-${server === "GOGO" ? (cdnLoading ? "loading" : (cdnUrl ?? "fallback")) : ""}`}
                   src={(() => {
                     if (server === "CUSTOM") return customUrl ? `/api/proxy?url=${encodeURIComponent(customUrl)}` : "about:blank";
-                    // GOGO
+                    // GOGO — load megaplay.buzz directly: it has no X-Frame-Options,
+                    // and its player JS makes same-origin API calls (cookies included).
+                    // Proxying it would shift the iframe origin to our domain and break
+                    // those cookie-gated API calls.
                     if (!gogoSlug) return "about:blank";
                     if (cdnLoading) return "about:blank";
                     if (cdnUrl) return cdnUrl;
@@ -1017,8 +1035,8 @@ export default function WatchAniList() {
                   </div>
                 )}
 
-                {/* KOTO loading / error / unavailable overlay */}
-                {server === "KOTO" && !kotoHlsUrl && (
+                {/* KOTO loading / error overlay — only shown when no URL at all */}
+                {server === "KOTO" && !kotoHlsUrl && !kotoPlayerUrl && (
                   <div className="absolute inset-0 z-10 flex flex-col items-center justify-center" style={{ background: "rgba(0,0,0,0.92)" }}>
                     {banner && <img src={banner} alt="" className="absolute inset-0 w-full h-full object-cover opacity-10 scale-110 blur-sm" />}
                     <div className="relative z-10 flex flex-col items-center gap-4">
@@ -1027,14 +1045,6 @@ export default function WatchAniList() {
                           <p className="text-white/70 text-sm font-semibold tracking-wide">AniKoto unavailable</p>
                           <p className="text-white/30 text-[11px] font-mono max-w-[260px] text-center">{kotoPlayerError}</p>
                           <p className="text-white/20 text-[10px] font-mono max-w-[260px] text-center">Try switching to GogoAnimeS or AniZone.</p>
-                        </div>
-                      ) : kotoPlayerUrl && !kotoHlsUrl ? (
-                        <div className="text-center space-y-2">
-                          <p className="text-white/70 text-sm font-semibold tracking-wide">Episode not available on AniKoto</p>
-                          <p className="text-white/30 text-[11px] font-mono max-w-[260px] text-center">
-                            This episode may have been removed or isn't hosted on AniKoto yet.
-                          </p>
-                          <p className="text-white/20 text-[10px] font-mono max-w-[260px] text-center">Try GogoAnimeS or AniZone below.</p>
                         </div>
                       ) : (
                         <>

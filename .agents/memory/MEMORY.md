@@ -1,0 +1,2 @@
+- [GoGo iframe origin rule](gogo-iframe-origin.md) — megaplay.buzz must load directly in iframe (no proxy); proxying breaks cookie-gated player API calls.
+- [Koto player fallback](koto-player-fallback.md) — kotoPlayerUrl (iframe fallback) vs kotoHlsUrl (HLS); overlay only when both are null.
