@@ -968,7 +968,6 @@ export default function WatchAniList() {
                   style={{ opacity: iframeLoaded ? 1 : 0, transition: "opacity 0.5s ease" }}
                   allowFullScreen
                   allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
-                  sandbox="allow-scripts allow-same-origin allow-forms allow-presentation"
                   referrerPolicy="no-referrer"
                   title={`${title} Episode ${currentEp}`}
                   onLoad={() => {
