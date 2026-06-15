@@ -983,10 +983,9 @@ export default function WatchAniList() {
                   key={`${animeId}-${anime.idMal ?? "al"}-${currentEp}-${lang}-${server}-${server === "CUSTOM" ? customUrl : ""}-${server === "GOGO" ? (cdnLoading ? "loading" : (cdnUrl ?? "fallback")) : ""}`}
                   src={(() => {
                     if (server === "CUSTOM") return customUrl ? `/api/proxy?url=${encodeURIComponent(customUrl)}` : "about:blank";
-                    // GOGO — load megaplay.buzz directly: it has no X-Frame-Options,
-                    // and its player JS makes same-origin API calls (cookies included).
-                    // Proxying it would shift the iframe origin to our domain and break
-                    // those cookie-gated API calls.
+                    // GOGO — load streaming.php directly (no X-Frame-Options, no frame detection).
+                    // streaming.php wraps megaplay.buzz in its natural context, letting the
+                    // player's internal API calls work correctly.
                     if (!gogoSlug) return "about:blank";
                     if (cdnLoading) return "about:blank";
                     if (cdnUrl) return cdnUrl;

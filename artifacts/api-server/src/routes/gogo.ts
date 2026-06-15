@@ -134,11 +134,11 @@ async function probeCdnUrl(slug: string, ep: string): Promise<{ cdnUrl: string; 
     const streamingUrl = extractCdnUrl(html);
     if (!streamingUrl) return null;
 
-    // Drill one level deeper: streaming.php embeds the real player via an inner
-    // iframe (e.g. megaplay.buzz). Fetching it here and returning the inner src
-    // skips the fitsamongst.com sandbox-detection script that runs on streaming.php.
+    // Drill into streaming.php to extract the actual inner player URL (megaplay.buzz).
+    // streaming.php loads mewcdn.online scripts that 403 when embedded from a
+    // non-gogoanimes.cv origin — so we skip it and embed the inner player directly.
     const innerUrl = await extractInnerPlayerUrl(streamingUrl);
-    return { cdnUrl: innerUrl ?? streamingUrl, slug };
+    return { cdnUrl: innerUrl ?? decodeHtmlEntities(streamingUrl), slug };
   } catch {
     return null;
   }
