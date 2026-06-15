@@ -41,6 +41,40 @@ function extractCdnUrl(html: string): string | null {
   return null;
 }
 
+function decodeHtmlEntities(s: string): string {
+  return s
+    .replace(/&#0*38;/g, "&")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+}
+
+/**
+ * Given a streaming.php URL, fetch it and extract the inner player iframe src.
+ * This skips the sandbox-detection script (fitsamongst.com) on streaming.php and
+ * returns the real player URL (e.g. megaplay.buzz/stream/...) directly.
+ */
+async function extractInnerPlayerUrl(streamingUrl: string): Promise<string | null> {
+  try {
+    const cleanUrl = decodeHtmlEntities(streamingUrl);
+    const resp = await fetch(cleanUrl, {
+      headers: {
+        ...BROWSER_HEADERS,
+        Referer: "https://gogoanimes.cv/",
+      },
+    });
+    if (!resp.ok) return null;
+    const html = await resp.text();
+    const m = html.match(/<iframe[^>]*?\bsrc=["']([^"']+)["'][^>]*>/i);
+    if (m?.[1]) return normalizeUrl(m[1]);
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 function toOrdinal(n: number): string {
   if (n === 1) return "1st";
   if (n === 2) return "2nd";
@@ -97,9 +131,14 @@ async function probeCdnUrl(slug: string, ep: string): Promise<{ cdnUrl: string; 
     });
     if (!upstream.ok) return null;
     const html = await upstream.text();
-    const cdnUrl = extractCdnUrl(html);
-    if (!cdnUrl) return null;
-    return { cdnUrl, slug };
+    const streamingUrl = extractCdnUrl(html);
+    if (!streamingUrl) return null;
+
+    // Drill one level deeper: streaming.php embeds the real player via an inner
+    // iframe (e.g. megaplay.buzz). Fetching it here and returning the inner src
+    // skips the fitsamongst.com sandbox-detection script that runs on streaming.php.
+    const innerUrl = await extractInnerPlayerUrl(streamingUrl);
+    return { cdnUrl: innerUrl ?? streamingUrl, slug };
   } catch {
     return null;
   }
