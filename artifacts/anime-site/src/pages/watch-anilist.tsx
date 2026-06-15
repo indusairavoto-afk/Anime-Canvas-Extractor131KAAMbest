@@ -961,17 +961,13 @@ export default function WatchAniList() {
                   />
                 )}
 
-                {/* GOGO / KOTO (fallback) / CUSTOM: embed via iframe */}
-                {server !== "ANIZONE" && !(server === "KOTO" && kotoHlsUrl) && (
+                {/* GOGO / CUSTOM: embed via iframe (KOTO never uses iframe — avoids cross-origin error pages) */}
+                {(server === "GOGO" || server === "CUSTOM") && (
                 <iframe
                   ref={iframeRef}
-                  key={`${animeId}-${anime.idMal ?? "al"}-${currentEp}-${lang}-${server}-${server === "CUSTOM" ? customUrl : ""}-${server === "GOGO" ? (cdnLoading ? "loading" : (cdnUrl ?? "fallback")) : ""}-${server === "KOTO" ? (kotoPlayerLoading ? "koto-loading" : (kotoPlayerUrl ?? "koto-missing")) : ""}`}
+                  key={`${animeId}-${anime.idMal ?? "al"}-${currentEp}-${lang}-${server}-${server === "CUSTOM" ? customUrl : ""}-${server === "GOGO" ? (cdnLoading ? "loading" : (cdnUrl ?? "fallback")) : ""}`}
                   src={(() => {
                     if (server === "CUSTOM") return customUrl ? `/api/proxy?url=${encodeURIComponent(customUrl)}` : "about:blank";
-                    if (server === "KOTO") {
-                      if (kotoPlayerLoading || !kotoPlayerUrl) return "about:blank";
-                      return kotoPlayerUrl;
-                    }
                     // GOGO
                     if (!gogoSlug) return "about:blank";
                     if (cdnLoading) return "about:blank";
@@ -986,7 +982,6 @@ export default function WatchAniList() {
                   title={`${title} Episode ${currentEp}`}
                   onLoad={() => {
                     if (server === "GOGO" && cdnLoading) return;
-                    if (server === "KOTO" && (kotoPlayerLoading || !kotoPlayerUrl)) return;
                     setTimeout(() => {
                       setIframeLoaded(true);
                       if (server === "GOGO") setTimeout(() => sendCmd({ na_cmd: "query" }), 600);
@@ -1022,8 +1017,44 @@ export default function WatchAniList() {
                   </div>
                 )}
 
-                {/* iframe-based loading overlay (GOGO / KOTO fallback / CUSTOM only) */}
-                {server !== "ANIZONE" && !(server === "KOTO" && kotoHlsUrl) && !iframeLoaded && (
+                {/* KOTO loading / error / unavailable overlay */}
+                {server === "KOTO" && !kotoHlsUrl && (
+                  <div className="absolute inset-0 z-10 flex flex-col items-center justify-center" style={{ background: "rgba(0,0,0,0.92)" }}>
+                    {banner && <img src={banner} alt="" className="absolute inset-0 w-full h-full object-cover opacity-10 scale-110 blur-sm" />}
+                    <div className="relative z-10 flex flex-col items-center gap-4">
+                      {kotoPlayerError ? (
+                        <div className="text-center space-y-2">
+                          <p className="text-white/70 text-sm font-semibold tracking-wide">AniKoto unavailable</p>
+                          <p className="text-white/30 text-[11px] font-mono max-w-[260px] text-center">{kotoPlayerError}</p>
+                          <p className="text-white/20 text-[10px] font-mono max-w-[260px] text-center">Try switching to GogoAnimeS or AniZone.</p>
+                        </div>
+                      ) : kotoPlayerUrl && !kotoHlsUrl ? (
+                        <div className="text-center space-y-2">
+                          <p className="text-white/70 text-sm font-semibold tracking-wide">Episode not available on AniKoto</p>
+                          <p className="text-white/30 text-[11px] font-mono max-w-[260px] text-center">
+                            This episode may have been removed or isn't hosted on AniKoto yet.
+                          </p>
+                          <p className="text-white/20 text-[10px] font-mono max-w-[260px] text-center">Try GogoAnimeS or AniZone below.</p>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="relative w-14 h-14">
+                            <div className="absolute inset-0 rounded-full border-2 border-white/10" />
+                            <div className="absolute inset-0 rounded-full border-2 border-t-teal-400 border-r-transparent border-b-transparent border-l-transparent animate-spin" />
+                            <div className="absolute inset-2 rounded-full border border-white/20 border-t-teal-400/60 animate-spin" style={{ animationDuration: "0.6s", animationDirection: "reverse" }} />
+                          </div>
+                          <p className="text-white/70 text-sm font-semibold tracking-wide">Fetching AniKoto stream…</p>
+                        </>
+                      )}
+                      <p className="text-white/20 text-[11px] font-mono uppercase tracking-widest">
+                        Episode {currentEp} · {lang}{kotoSlug ? ` · ${kotoSlug}` : ""}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* iframe-based loading overlay (GOGO / CUSTOM only) */}
+                {(server === "GOGO" || server === "CUSTOM") && !iframeLoaded && (
                   <div
                     className="absolute inset-0 z-10 flex flex-col items-center justify-center"
                     style={{ background: "rgba(0,0,0,0.92)" }}
@@ -1070,21 +1101,11 @@ export default function WatchAniList() {
                                 ? "Fetching stream link…"
                                 : server === "GOGO"
                                 ? (cdnUrl ? "Loading stream…" : "Connecting to GogoAnimeS…")
-                                : server === "KOTO" && kotoPlayerLoading
-                                ? "Fetching AniKoto stream…"
-                                : server === "KOTO" && kotoPlayerError
-                                ? `AniKoto error: ${kotoPlayerError}`
-                                : server === "KOTO" && kotoPlayerUrl
-                                ? "Loading AniKoto player…"
-                                : server === "KOTO"
-                                ? "Fetching AniKoto stream…"
                                 : "Loading, please wait…"}
                             </p>
                             <p className="text-white/30 text-[11px] font-mono mt-1 uppercase tracking-widest">
                               Episode {currentEp} · {lang}
                               {server === "GOGO" && gogoSlug && ` · ${gogoSlug.toUpperCase()}`}
-                              {server === "KOTO" && kotoSlug && ` · ${kotoSlug}`}
-                              {server === "ANIZONE" && anizoneSlug && ` · ${anizoneSlug}`}
                             </p>
                           </div>
                         </>
