@@ -29,7 +29,7 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "pnpm --filter @workspace/anime-site run dev"
+args = "pnpm --filter @workspace/api-server run dev & pnpm --filter @workspace/anime-site run dev"
 waitForPort = 5000
 
 [agent]
@@ -43,10 +43,6 @@ timeoutMs = 20000
 [[ports]]
 localPort = 5000
 externalPort = 80
-
-[[ports]]
-localPort = 5173
-externalPort = 5173
 
 [[ports]]
 localPort = 8080
