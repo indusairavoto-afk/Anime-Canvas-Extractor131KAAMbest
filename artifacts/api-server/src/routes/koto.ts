@@ -2,6 +2,36 @@ import { Router } from "express";
 
 const router = Router();
 
+function encodeProxyUrl(url: string): string {
+  return Buffer.from(url).toString("base64url");
+}
+
+/**
+ * Proxy a KOTO HLS URL through the shared anizone HLS proxy endpoint.
+ * This avoids CORS issues since the browser fetches from our own origin.
+ */
+function proxyHlsUrl(hlsUrl: string): string {
+  return `/api/anizone/hls?u=${encodeProxyUrl(hlsUrl)}`;
+}
+
+/**
+ * Extract the raw HLS URL embedded in a mewcdn.online player URL.
+ * Format: https://mewcdn.online/player/plyr.php#BASE64[#]
+ */
+function extractHlsFromPlayerUrl(playerUrl: string): string | null {
+  const hashIdx = playerUrl.indexOf("#");
+  if (hashIdx === -1) return null;
+  const fragment = playerUrl.slice(hashIdx + 1).replace(/#$/, "");
+  if (!fragment) return null;
+  try {
+    const decoded = Buffer.from(fragment, "base64").toString("utf-8");
+    if (decoded.startsWith("http://") || decoded.startsWith("https://")) return decoded;
+  } catch {
+    // not valid base64
+  }
+  return null;
+}
+
 const BROWSER_HEADERS = {
   "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
   Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
@@ -233,12 +263,22 @@ router.get("/koto/stream", async (req, res) => {
     return res.status(400).json({ error: "slug or malId query param required" });
   }
 
+  function buildResponse(result: { url: string; skipData: unknown; isDub?: boolean }) {
+    const rawHls = extractHlsFromPlayerUrl(result.url);
+    return {
+      url: result.url,
+      hlsUrl: rawHls ? proxyHlsUrl(rawHls) : null,
+      skipData: result.skipData,
+      isDub: result.isDub ?? false,
+    };
+  }
+
   // ── Primary: native anikoto.cz API (slug-based, no mapper dependency) ─────
   if (slug) {
     try {
       const result = await fetchViaAnikotoNative(slug, parseInt(ep));
       if (result?.url) {
-        return res.json({ url: result.url, skipData: result.skipData, isDub: result.isDub ?? false });
+        return res.json(buildResponse(result));
       }
     } catch (err: unknown) {
       req.log.warn({ err }, "native anikoto pipeline failed, trying mapper fallback");
@@ -253,7 +293,7 @@ router.get("/koto/stream", async (req, res) => {
   try {
     const result = await fetchViaMapper(malId, ep);
     if (result?.url) {
-      return res.json({ url: result.url, skipData: result.skipData, isDub: result.isDub ?? false });
+      return res.json(buildResponse(result));
     }
     return res.status(404).json({ error: "No stream URL found for this episode" });
   } catch (err: unknown) {

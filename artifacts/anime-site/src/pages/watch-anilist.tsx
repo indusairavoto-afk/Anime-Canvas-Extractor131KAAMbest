@@ -188,6 +188,7 @@ export default function WatchAniList() {
   const [kotoSearching, setKotoSearching] = useState(false);
   const [kotoSearchDone, setKotoSearchDone] = useState(false);
   const [kotoPlayerUrl, setKotoPlayerUrl] = useState<string | null>(null);
+  const [kotoHlsUrl, setKotoHlsUrl] = useState<string | null>(null);
   const [kotoPlayerLoading, setKotoPlayerLoading] = useState(false);
   const [kotoPlayerError, setKotoPlayerError] = useState<string | null>(null);
   const [anizoneHlsUrl, setAnizoneHlsUrl] = useState<string | null>(null);
@@ -322,6 +323,7 @@ export default function WatchAniList() {
     setCdnLoading(false);
     // Reset KOTO player state so stale errors don't persist across episodes/server switches
     setKotoPlayerUrl(null);
+    setKotoHlsUrl(null);
     setKotoPlayerLoading(false);
     setKotoPlayerError(null);
     // Reset AniZone stream state
@@ -610,10 +612,11 @@ export default function WatchAniList() {
     let cancelled = false;
     fetch(apiUrl(`/api/koto/stream?${params}`))
       .then((r) => r.json())
-      .then((data: { url?: string; error?: string }) => {
+      .then((data: { url?: string; hlsUrl?: string | null; error?: string }) => {
         if (cancelled) return;
         if (data.url) {
           setKotoPlayerUrl(data.url);
+          setKotoHlsUrl(data.hlsUrl ?? null);
         } else {
           setKotoPlayerError(data.error ?? "No player URL found");
         }
@@ -947,8 +950,19 @@ export default function WatchAniList() {
                   />
                 )}
 
-                {/* GOGO / KOTO / CUSTOM: embed via iframe */}
-                {server !== "ANIZONE" && (
+                {/* KOTO native HLS player (bypasses mewcdn cross-origin player) */}
+                {server === "KOTO" && kotoHlsUrl && (
+                  <HlsPlayer
+                    key={`koto-${kotoSlug || "mal"}-${currentEp}`}
+                    hlsUrl={kotoHlsUrl}
+                    subtitles={[]}
+                    title={`${title} — Episode ${currentEp}`}
+                    progressKey={`al_${animeId}_${currentEp}`}
+                  />
+                )}
+
+                {/* GOGO / KOTO (fallback) / CUSTOM: embed via iframe */}
+                {server !== "ANIZONE" && !(server === "KOTO" && kotoHlsUrl) && (
                 <iframe
                   ref={iframeRef}
                   key={`${animeId}-${anime.idMal ?? "al"}-${currentEp}-${lang}-${server}-${server === "CUSTOM" ? customUrl : ""}-${server === "GOGO" ? (cdnLoading ? "loading" : (cdnUrl ?? "fallback")) : ""}-${server === "KOTO" ? (kotoPlayerLoading ? "koto-loading" : (kotoPlayerUrl ?? "koto-missing")) : ""}`}
@@ -1008,8 +1022,8 @@ export default function WatchAniList() {
                   </div>
                 )}
 
-                {/* iframe-based loading overlay (GOGO / KOTO / CUSTOM only) */}
-                {server !== "ANIZONE" && !iframeLoaded && (
+                {/* iframe-based loading overlay (GOGO / KOTO fallback / CUSTOM only) */}
+                {server !== "ANIZONE" && !(server === "KOTO" && kotoHlsUrl) && !iframeLoaded && (
                   <div
                     className="absolute inset-0 z-10 flex flex-col items-center justify-center"
                     style={{ background: "rgba(0,0,0,0.92)" }}
