@@ -219,7 +219,7 @@ export function Topbar() {
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     onKeyDown={handleKeyDown}
-                    className="flex-1 bg-transparent text-white text-sm placeholder:text-white/30 focus:outline-none"
+                    className="flex-1 bg-transparent text-white text-sm placeholder:text-white/30 focus:outline-none appearance-none"
                     autoComplete="off"
                   />
                   {query && (
