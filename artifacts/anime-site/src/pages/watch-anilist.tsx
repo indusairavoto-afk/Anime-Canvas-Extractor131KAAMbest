@@ -171,6 +171,7 @@ export default function WatchAniList() {
   const [templateInput, setTemplateInput] = useState("");
   const [gogoSlug, setGogoSlug] = useState("");
   const [gogoSlugInput, setGogoSlugInput] = useState("");
+  const [gogoStreamError, setGogoStreamError] = useState(false);
   const [epSearch, setEpSearch] = useState("");
   const [epGridView, setEpGridView] = useState(false);
   const [commentText, setCommentText] = useState("");
@@ -321,6 +322,7 @@ export default function WatchAniList() {
     setVideoState({ paused: true, time: 0, duration: 0, buffered: 0, volume: 1, muted: false });
     setCdnUrl(null);
     setCdnLoading(false);
+    setGogoStreamError(false);
     // Reset KOTO player state so stale errors don't persist across episodes/server switches
     setKotoPlayerUrl(null);
     setKotoHlsUrl(null);
@@ -1062,10 +1064,52 @@ export default function WatchAniList() {
                         </>
                       )}
                       <p className="text-white/20 text-[11px] font-mono uppercase tracking-widest">
-                        Episode {currentEp} · {lang}{kotoSlug ? ` · ${kotoSlug}` : ""}
+                        Episode {currentEp} · {lang}
                       </p>
                     </div>
                   </div>
+                )}
+
+                {/* GoGo stream broken — custom themed error overlay */}
+                {server === "GOGO" && gogoStreamError && iframeLoaded && (
+                  <div className="absolute inset-0 z-20 flex flex-col items-center justify-center" style={{ background: "rgba(0,0,0,0.96)" }}>
+                    {banner && <img src={banner} alt="" className="absolute inset-0 w-full h-full object-cover opacity-8 scale-110 blur-md" />}
+                    <div className="relative z-10 flex flex-col items-center gap-5 px-6 text-center max-w-sm">
+                      <div className="w-14 h-14 border border-white/10 flex items-center justify-center">
+                        <span className="text-2xl">✕</span>
+                      </div>
+                      <div className="space-y-2">
+                        <p className="text-white text-base font-semibold tracking-wide">Stream Unavailable</p>
+                        <p className="text-white/40 text-xs font-mono leading-relaxed">
+                          This episode stream could not be loaded.<br />It may have been removed or is temporarily unavailable.
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2 justify-center">
+                        <button
+                          onClick={() => { setGogoStreamError(false); setIframeLoaded(false); setCdnNotFound(false); }}
+                          className="text-[11px] font-mono px-4 py-2 border border-white/20 text-white/60 hover:border-white hover:text-white transition-colors uppercase tracking-widest"
+                        >
+                          Retry
+                        </button>
+                        <button
+                          onClick={() => { setServer("KOTO"); setGogoStreamError(false); setIframeLoaded(false); }}
+                          className="flex items-center gap-2 text-[11px] font-mono font-bold px-4 py-2 border border-teal-400 text-teal-400 hover:bg-teal-400 hover:text-black transition-all uppercase tracking-widest"
+                        >
+                          <Play className="w-3 h-3 fill-current" /> Try AniKoto
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Floating "not working?" button — shown after GOGO iframe loads */}
+                {server === "GOGO" && iframeLoaded && !gogoStreamError && (
+                  <button
+                    onClick={() => setGogoStreamError(true)}
+                    className="absolute bottom-3 right-3 z-10 text-[9px] font-mono uppercase tracking-widest text-white/30 hover:text-white/60 border border-white/10 hover:border-white/25 px-2.5 py-1.5 transition-colors bg-black/60"
+                  >
+                    Stream broken?
+                  </button>
                 )}
 
                 {/* iframe-based loading overlay (GOGO / CUSTOM only) */}
@@ -1255,7 +1299,7 @@ export default function WatchAniList() {
           {server === "GOGO" && (
             <div className="border-b border-white/5 bg-orange-400/[0.03] px-4 py-3 space-y-2">
               <div className="flex items-center gap-2">
-                <span className="text-[9px] font-mono text-orange-400/60 uppercase tracking-widest shrink-0 w-16">Slug</span>
+                <span className="text-[9px] font-mono text-orange-400/60 uppercase tracking-widest shrink-0 w-16">Series</span>
                 <input
                   value={gogoSlugInput}
                   onChange={(e) => setGogoSlugInput(e.target.value)}
@@ -1292,11 +1336,11 @@ export default function WatchAniList() {
               </div>
               {gogoSlug ? (
                 <p className="text-[10px] font-mono text-orange-400/40 pl-[72px]">
-                  → gogoanimes.cv/{gogoSlug}-episode-{currentEp}/
+                  ✓ Series code active · Episode {currentEp}
                 </p>
               ) : (
                 <p className="text-[10px] font-mono text-white/20 pl-[72px]">
-                  Enter the show slug from the gogoanimes.cv URL and press Load.
+                  Press Search or enter the series code manually and press Load.
                 </p>
               )}
 
@@ -1335,7 +1379,6 @@ export default function WatchAniList() {
                         )}
                         <div className="min-w-0">
                           <p className="text-[11px] text-white/80 group-hover:text-white truncate">{r.title}</p>
-                          <p className="text-[9px] font-mono text-orange-400/40 group-hover:text-orange-400/70 truncate">{r.slug}</p>
                         </div>
                       </button>
                     ))}
@@ -1403,7 +1446,7 @@ export default function WatchAniList() {
           {server === "ANIZONE" && (
             <div className="border-b border-white/5 bg-blue-400/[0.03] px-4 py-3 space-y-2">
               <div className="flex items-center gap-2">
-                <span className="text-[9px] font-mono text-blue-400/60 uppercase tracking-widest shrink-0 w-16">Slug</span>
+                <span className="text-[9px] font-mono text-blue-400/60 uppercase tracking-widest shrink-0 w-16">Series</span>
                 <input
                   value={anizoneSlugInput}
                   onChange={(e) => setAnizoneSlugInput(e.target.value)}
@@ -1415,7 +1458,7 @@ export default function WatchAniList() {
                       setIframeLoaded(false);
                     }
                   }}
-                  placeholder="e.g. 3rvkiqfs  (from anizone.to/anime/...)"
+                  placeholder="e.g. 3rvkiqfs"
                   className="flex-1 bg-white/5 border border-blue-400/20 px-3 py-1.5 text-xs text-white placeholder-white/15 focus:outline-none focus:border-blue-400/50 font-mono"
                 />
                 <button
@@ -1439,11 +1482,11 @@ export default function WatchAniList() {
               </div>
               {anizoneSlug ? (
                 <p className="text-[10px] font-mono text-blue-400/40 pl-[72px]">
-                  → anizone.to/anime/{anizoneSlug}/ep-{currentEp}
+                  ✓ Series code active · Episode {currentEp}
                 </p>
               ) : (
                 <p className="text-[10px] font-mono text-white/20 pl-[72px]">
-                  Press Search to find the slug, or paste it from anizone.to/anime/…
+                  Press Search to find the series or enter the code manually.
                 </p>
               )}
 
@@ -1451,7 +1494,7 @@ export default function WatchAniList() {
               {anizoneSearching && (
                 <div className="pl-[72px] flex items-center gap-2 pt-1">
                   <div className="w-3 h-3 border border-blue-400/40 border-t-blue-400 rounded-full animate-spin" />
-                  <span className="text-[10px] font-mono text-blue-400/50">Searching anizone.to…</span>
+                  <span className="text-[10px] font-mono text-blue-400/50">Searching series…</span>
                 </div>
               )}
 
@@ -1480,7 +1523,6 @@ export default function WatchAniList() {
                         )}
                         <div className="min-w-0">
                           <p className="text-[11px] text-white/80 group-hover:text-white truncate">{r.title}</p>
-                          <p className="text-[9px] font-mono text-blue-400/40 group-hover:text-blue-400/70 truncate">{r.slug}</p>
                         </div>
                       </button>
                     ))}
@@ -1490,7 +1532,7 @@ export default function WatchAniList() {
 
               {!anizoneSearching && anizoneSearchDone && anizoneSearchResults.length === 0 && (
                 <p className="pl-[72px] text-[10px] font-mono text-white/20 pt-1">
-                  No matches found. Try a shorter title or paste the slug directly from anizone.to.
+                  No matches found. Try a shorter title.
                 </p>
               )}
             </div>
