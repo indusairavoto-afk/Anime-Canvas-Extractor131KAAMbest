@@ -1311,245 +1311,68 @@ export default function WatchAniList() {
             </div>
           </div>
 
-          {/* GOGO panel */}
+          {/* GOGO status panel */}
           {server === "GOGO" && (
-            <div className="border-b border-white/5 bg-orange-400/[0.03] px-4 py-3 space-y-2">
-              <div className="flex items-center gap-2">
-                <span className="text-[9px] font-mono text-orange-400/60 uppercase tracking-widest shrink-0 w-16">Series</span>
-                <input
-                  value={gogoSlugInput}
-                  onChange={(e) => setGogoSlugInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      const s = gogoSlugInput.trim();
-                      setGogoSlug(s);
-                      localStorage.setItem(`na_gogo_${animeId}`, s);
-                      setIframeLoaded(false);
-                    }
-                  }}
-                  placeholder="e.g. rezero-starting-life-in-another-world-season-4"
-                  className="flex-1 bg-white/5 border border-orange-400/20 px-3 py-1.5 text-xs text-white placeholder-white/15 focus:outline-none focus:border-orange-400/50 font-mono"
-                />
-                <button
-                  onClick={() => {
-                    const s = gogoSlugInput.trim();
-                    setGogoSlug(s);
-                    localStorage.setItem(`na_gogo_${animeId}`, s);
-                    setIframeLoaded(false);
-                  }}
-                  className="text-[10px] font-mono px-2.5 py-1.5 border border-orange-400/30 text-orange-400/60 hover:border-orange-400 hover:text-orange-400 transition-colors shrink-0"
-                >
-                  Load
-                </button>
-                <button
-                  onClick={() => triggerGogoSearch(title)}
-                  disabled={gogoSearching}
-                  title="Search GogoAnimes by title"
-                  className="text-[10px] font-mono px-2.5 py-1.5 border border-orange-400/20 text-orange-400/40 hover:border-orange-400/60 hover:text-orange-400/80 transition-colors shrink-0 disabled:opacity-40"
-                >
-                  {gogoSearching ? "…" : "Search"}
-                </button>
-              </div>
-              {gogoSlug ? (
-                <p className="text-[10px] font-mono text-orange-400/40 pl-[72px]">
-                  ✓ Series code active · Episode {currentEp}
-                </p>
+            <div className="border-b border-white/5 px-4 py-2.5 flex items-center gap-2.5">
+              {cdnLoading ? (
+                <>
+                  <div className="w-2 h-2 rounded-full bg-orange-400/40 animate-pulse shrink-0" />
+                  <span className="text-[10px] font-mono text-white/30 uppercase tracking-widest">Connecting…</span>
+                </>
+              ) : cdnUrl && !gogoStreamError ? (
+                <>
+                  <div className="w-2 h-2 rounded-full bg-orange-400 shrink-0" />
+                  <span className="text-[10px] font-mono text-orange-400/70 uppercase tracking-widest">Stream Connected</span>
+                </>
               ) : (
-                <p className="text-[10px] font-mono text-white/20 pl-[72px]">
-                  Press Search or enter the series code manually and press Load.
-                </p>
-              )}
-
-              {/* Search results */}
-              {gogoSearching && (
-                <div className="pl-[72px] flex items-center gap-2 pt-1">
-                  <div className="w-3 h-3 border border-orange-400/40 border-t-orange-400 rounded-full animate-spin" />
-                  <span className="text-[10px] font-mono text-orange-400/50">Searching GogoAnimes…</span>
-                </div>
-              )}
-              {!gogoSearching && gogoSearchDone && gogoSearchResults.length > 0 && (
-                <div className="pl-[72px] pt-1 space-y-1">
-                  <p className="text-[9px] font-mono text-orange-400/40 uppercase tracking-widest mb-1.5">
-                    {gogoSearchResults.length} match{gogoSearchResults.length !== 1 ? "es" : ""} found — pick one to load:
-                  </p>
-                  <div className="flex flex-col gap-1 max-h-[180px] overflow-y-auto pr-1">
-                    {gogoSearchResults.map((r) => (
-                      <button
-                        key={r.slug}
-                        onClick={() => {
-                          setGogoSlug(r.slug);
-                          setGogoSlugInput(r.slug);
-                          localStorage.setItem(`na_gogo_${animeId}`, r.slug);
-                          setIframeLoaded(false);
-                          setGogoSearchResults([]);
-                          setGogoSearchDone(false);
-                        }}
-                        className="flex items-center gap-2 text-left px-2 py-1.5 hover:bg-orange-400/10 border border-transparent hover:border-orange-400/20 transition-colors group"
-                      >
-                        {r.thumbnail && (
-                          <img
-                            src={r.thumbnail}
-                            alt=""
-                            className="w-8 h-11 object-cover shrink-0 opacity-70 group-hover:opacity-100 transition-opacity"
-                          />
-                        )}
-                        <div className="min-w-0">
-                          <p className="text-[11px] text-white/80 group-hover:text-white truncate">{r.title}</p>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {!gogoSearching && gogoSearchDone && gogoSearchResults.length === 0 && (
-                <p className="pl-[72px] text-[10px] font-mono text-white/20 pt-1">
-                  No matches found. Try editing the slug manually above.
-                </p>
+                <>
+                  <div className="w-2 h-2 rounded-full bg-white/20 shrink-0" />
+                  <span className="text-[10px] font-mono text-white/30 uppercase tracking-widest">Not Connected</span>
+                </>
               )}
             </div>
           )}
 
-          {/* KOTO panel */}
+          {/* KOTO status panel */}
           {server === "KOTO" && (
-            <div className="border-b border-white/5 bg-teal-400/[0.03] px-4 py-3 space-y-2">
-              {/* Stream status row */}
-              <div className="flex items-center gap-2">
-                <span className="text-[9px] font-mono text-teal-400/60 uppercase tracking-widest shrink-0 w-16">Stream</span>
-                {kotoPlayerLoading && (
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 border border-teal-400/40 border-t-teal-400 rounded-full animate-spin" />
-                    <span className="text-[10px] font-mono text-teal-400/50">Fetching via mapper…</span>
-                  </div>
-                )}
-                {!kotoPlayerLoading && kotoPlayerUrl && (
-                  <span className="text-[10px] font-mono text-teal-400/70 truncate">✓ CDN stream ready</span>
-                )}
-                {!kotoPlayerLoading && kotoPlayerError && (
-                  <span className="text-[10px] font-mono text-red-400/70 truncate">{kotoPlayerError}</span>
-                )}
-                {!kotoPlayerLoading && !kotoPlayerUrl && !kotoPlayerError && !anime?.idMal && (
-                  <span className="text-[10px] font-mono text-white/30">No MAL ID — KOTO unavailable for this title</span>
-                )}
-              </div>
-
-              {/* Retry button on error */}
-              {kotoPlayerError && anime?.idMal && (
-                <div className="pl-[72px] pt-0.5">
-                  <button
-                    onClick={() => {
-                      setKotoPlayerUrl(null);
-                      setKotoPlayerLoading(true);
-                      setKotoPlayerError(null);
-                      fetch(apiUrl(`/api/koto/stream?malId=${anime.idMal}&ep=${currentEp}`))
-                        .then((r) => r.json())
-                        .then((data: { url?: string; error?: string }) => {
-                          if (data.url) setKotoPlayerUrl(data.url);
-                          else setKotoPlayerError(data.error ?? "No player URL found");
-                        })
-                        .catch((e: Error) => setKotoPlayerError(e.message))
-                        .finally(() => setKotoPlayerLoading(false));
-                    }}
-                    className="text-[10px] font-mono px-2.5 py-1 border border-teal-400/30 text-teal-400/60 hover:border-teal-400 hover:text-teal-400 transition-colors"
-                  >
-                    Retry
-                  </button>
-                </div>
+            <div className="border-b border-white/5 px-4 py-2.5 flex items-center gap-2.5">
+              {kotoPlayerLoading ? (
+                <>
+                  <div className="w-2 h-2 rounded-full bg-teal-400/40 animate-pulse shrink-0" />
+                  <span className="text-[10px] font-mono text-white/30 uppercase tracking-widest">Connecting…</span>
+                </>
+              ) : (kotoPlayerUrl || kotoHlsUrl) ? (
+                <>
+                  <div className="w-2 h-2 rounded-full bg-teal-400 shrink-0" />
+                  <span className="text-[10px] font-mono text-teal-400/70 uppercase tracking-widest">Stream Connected</span>
+                </>
+              ) : (
+                <>
+                  <div className="w-2 h-2 rounded-full bg-white/20 shrink-0" />
+                  <span className="text-[10px] font-mono text-white/30 uppercase tracking-widest">Not Connected</span>
+                </>
               )}
             </div>
           )}
 
-          {/* ANIZONE panel */}
+          {/* ANIZONE status panel */}
           {server === "ANIZONE" && (
-            <div className="border-b border-white/5 bg-blue-400/[0.03] px-4 py-3 space-y-2">
-              <div className="flex items-center gap-2">
-                <span className="text-[9px] font-mono text-blue-400/60 uppercase tracking-widest shrink-0 w-16">Series</span>
-                <input
-                  value={anizoneSlugInput}
-                  onChange={(e) => setAnizoneSlugInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      const s = anizoneSlugInput.trim();
-                      setAnizoneSlug(s);
-                      localStorage.setItem(`na_anizone_${animeId}`, s);
-                      setIframeLoaded(false);
-                    }
-                  }}
-                  placeholder="e.g. 3rvkiqfs"
-                  className="flex-1 bg-white/5 border border-blue-400/20 px-3 py-1.5 text-xs text-white placeholder-white/15 focus:outline-none focus:border-blue-400/50 font-mono"
-                />
-                <button
-                  onClick={() => {
-                    const s = anizoneSlugInput.trim();
-                    setAnizoneSlug(s);
-                    localStorage.setItem(`na_anizone_${animeId}`, s);
-                    setIframeLoaded(false);
-                  }}
-                  className="text-[10px] font-mono px-2.5 py-1.5 border border-blue-400/30 text-blue-400/60 hover:border-blue-400 hover:text-blue-400 transition-colors shrink-0"
-                >
-                  Load
-                </button>
-                <button
-                  onClick={() => triggerAnizoneSearch(title)}
-                  disabled={anizoneSearching}
-                  className="text-[10px] font-mono px-2.5 py-1.5 border border-blue-400/20 text-blue-400/40 hover:border-blue-400/60 hover:text-blue-400/80 transition-colors shrink-0 disabled:opacity-40"
-                >
-                  {anizoneSearching ? "…" : "Search"}
-                </button>
-              </div>
-              {anizoneSlug ? (
-                <p className="text-[10px] font-mono text-blue-400/40 pl-[72px]">
-                  ✓ Series code active · Episode {currentEp}
-                </p>
+            <div className="border-b border-white/5 px-4 py-2.5 flex items-center gap-2.5">
+              {anizoneStreamLoading ? (
+                <>
+                  <div className="w-2 h-2 rounded-full bg-blue-400/40 animate-pulse shrink-0" />
+                  <span className="text-[10px] font-mono text-white/30 uppercase tracking-widest">Connecting…</span>
+                </>
+              ) : anizoneHlsUrl ? (
+                <>
+                  <div className="w-2 h-2 rounded-full bg-blue-400 shrink-0" />
+                  <span className="text-[10px] font-mono text-blue-400/70 uppercase tracking-widest">Stream Connected</span>
+                </>
               ) : (
-                <p className="text-[10px] font-mono text-white/20 pl-[72px]">
-                  Press Search to find the series or enter the code manually.
-                </p>
-              )}
-
-              {/* Search loading */}
-              {anizoneSearching && (
-                <div className="pl-[72px] flex items-center gap-2 pt-1">
-                  <div className="w-3 h-3 border border-blue-400/40 border-t-blue-400 rounded-full animate-spin" />
-                  <span className="text-[10px] font-mono text-blue-400/50">Searching series…</span>
-                </div>
-              )}
-
-              {/* Search results */}
-              {!anizoneSearching && anizoneSearchDone && anizoneSearchResults.length > 0 && (
-                <div className="pl-[72px] pt-1 space-y-1">
-                  <p className="text-[9px] font-mono text-blue-400/40 uppercase tracking-widest mb-1.5">
-                    {anizoneSearchResults.length} match{anizoneSearchResults.length !== 1 ? "es" : ""} — pick one to load:
-                  </p>
-                  <div className="flex flex-col gap-1 max-h-[180px] overflow-y-auto pr-1">
-                    {anizoneSearchResults.map((r) => (
-                      <button
-                        key={r.slug}
-                        onClick={() => {
-                          setAnizoneSlug(r.slug);
-                          setAnizoneSlugInput(r.slug);
-                          localStorage.setItem(`na_anizone_${animeId}`, r.slug);
-                          setIframeLoaded(false);
-                          setAnizoneSearchResults([]);
-                          setAnizoneSearchDone(false);
-                        }}
-                        className="flex items-center gap-2 text-left px-2 py-1.5 hover:bg-blue-400/10 border border-transparent hover:border-blue-400/20 transition-colors group"
-                      >
-                        {r.thumbnail && (
-                          <img src={r.thumbnail} alt="" className="w-8 h-11 object-cover shrink-0 opacity-70 group-hover:opacity-100 transition-opacity" />
-                        )}
-                        <div className="min-w-0">
-                          <p className="text-[11px] text-white/80 group-hover:text-white truncate">{r.title}</p>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {!anizoneSearching && anizoneSearchDone && anizoneSearchResults.length === 0 && (
-                <p className="pl-[72px] text-[10px] font-mono text-white/20 pt-1">
-                  No matches found. Try a shorter title.
-                </p>
+                <>
+                  <div className="w-2 h-2 rounded-full bg-white/20 shrink-0" />
+                  <span className="text-[10px] font-mono text-white/30 uppercase tracking-widest">Not Connected</span>
+                </>
               )}
             </div>
           )}
