@@ -961,16 +961,22 @@ export default function WatchAniList() {
                   />
                 )}
 
-                {/* KOTO fallback iframe: player URL found but no extractable HLS — proxy it */}
+                {/* KOTO fallback iframe: player URL found but no extractable HLS.
+                    vidtube.site has no X-Frame-Options so it embeds directly — the browser
+                    handles cookies + same-origin API calls correctly without our proxy.
+                    Other player URLs go through the proxy as before. */}
                 {server === "KOTO" && kotoPlayerUrl && !kotoHlsUrl && (
                   <iframe
                     ref={iframeRef}
                     key={`koto-iframe-${kotoSlug || "mal"}-${currentEp}`}
-                    src={`/api/proxy?url=${encodeURIComponent(kotoPlayerUrl)}&hideChrome=1`}
+                    src={
+                      /^https?:\/\/vidtube\.site/i.test(kotoPlayerUrl)
+                        ? kotoPlayerUrl
+                        : `/api/proxy?url=${encodeURIComponent(kotoPlayerUrl)}&hideChrome=1`
+                    }
                     className="w-full h-full"
                     allowFullScreen
                     allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
-                    referrerPolicy="no-referrer"
                     title={`${title} Episode ${currentEp}`}
                     onLoad={() => setTimeout(() => setIframeLoaded(true), 200)}
                   />
