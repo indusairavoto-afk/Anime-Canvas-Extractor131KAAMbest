@@ -476,16 +476,22 @@ export default function WatchAniList() {
     localStorage.setItem(`na_gogo_${animeId}`, slug);
   }, [title, animeId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-detect: race all 3 servers simultaneously; auto-connect to whichever responds first
+  // Auto-detect: race all 3 servers; preferred server (saved from last visit) gets 800ms head start
   useEffect(() => {
     if (!title || !animeId || !anime) return;
     let cancelled = false;
     let won = false;
     setAutoDetecting(true);
 
+    const preferred = localStorage.getItem(`na_preferred_${animeId}`) as "GOGO" | "KOTO" | "ANIZONE" | null;
+    // Non-preferred servers wait this long before their fetch fires, giving preferred a head start
+    const HEAD_START = preferred ? 800 : 0;
+
     const tryWin = (srv: "GOGO" | "KOTO" | "ANIZONE") => {
       if (cancelled || won || userPickedRef.current) return;
       won = true;
+      // Remember the winner for this anime so next visit it gets the head start
+      localStorage.setItem(`na_preferred_${animeId}`, srv);
       setAutoDetecting(false);
       setServer(srv);
       setIframeLoaded(false);
@@ -496,62 +502,63 @@ export default function WatchAniList() {
     const aSlug = localStorage.getItem(`na_anizone_${animeId}`) || "";
     const malId = anime?.idMal ?? null;
 
+    const timers: ReturnType<typeof setTimeout>[] = [];
+
+    const schedule = (delay: number, fn: () => void) => {
+      if (delay === 0) { fn(); return; }
+      timers.push(setTimeout(() => { if (!cancelled && !won) fn(); }, delay));
+    };
+
     // GOGO
     if (gSlug) {
-      fetch(apiUrl(`/api/gogo/cdn-url?slug=${encodeURIComponent(gSlug)}&ep=${currentEp}`))
-        .then(r => r.json())
-        .then((data: { cdnUrl?: string; resolvedSlug?: string }) => {
-          if (cancelled) return;
-          if (data.cdnUrl) {
-            raceCache.current.gogo = data;
-            tryWin("GOGO");
-          } else {
-            raceCache.current.gogo = null;
-          }
-        })
-        .catch(() => { if (!cancelled) raceCache.current.gogo = null; });
+      schedule(preferred === "GOGO" ? 0 : HEAD_START, () => {
+        fetch(apiUrl(`/api/gogo/cdn-url?slug=${encodeURIComponent(gSlug)}&ep=${currentEp}`))
+          .then(r => r.json())
+          .then((data: { cdnUrl?: string; resolvedSlug?: string }) => {
+            if (cancelled) return;
+            if (data.cdnUrl) { raceCache.current.gogo = data; tryWin("GOGO"); }
+            else raceCache.current.gogo = null;
+          })
+          .catch(() => { if (!cancelled) raceCache.current.gogo = null; });
+      });
     } else {
       raceCache.current.gogo = null;
     }
 
     // KOTO
     if (malId) {
-      const params = new URLSearchParams({ ep: String(currentEp), malId: String(malId) });
-      fetch(apiUrl(`/api/koto/stream?${params}`))
-        .then(r => r.json())
-        .then((data: { url?: string; hlsUrl?: string | null; error?: string }) => {
-          if (cancelled) return;
-          if (data.url || data.hlsUrl) {
-            raceCache.current.koto = data;
-            tryWin("KOTO");
-          } else {
-            raceCache.current.koto = null;
-          }
-        })
-        .catch(() => { if (!cancelled) raceCache.current.koto = null; });
+      schedule(preferred === "KOTO" ? 0 : HEAD_START, () => {
+        const params = new URLSearchParams({ ep: String(currentEp), malId: String(malId) });
+        fetch(apiUrl(`/api/koto/stream?${params}`))
+          .then(r => r.json())
+          .then((data: { url?: string; hlsUrl?: string | null; error?: string }) => {
+            if (cancelled) return;
+            if (data.url || data.hlsUrl) { raceCache.current.koto = data; tryWin("KOTO"); }
+            else raceCache.current.koto = null;
+          })
+          .catch(() => { if (!cancelled) raceCache.current.koto = null; });
+      });
     } else {
       raceCache.current.koto = null;
     }
 
     // ANIZONE
     if (aSlug) {
-      fetch(apiUrl(`/api/anizone/stream?slug=${encodeURIComponent(aSlug)}&ep=${currentEp}`))
-        .then(r => r.json())
-        .then((data: { hlsUrl?: string; subtitles?: { src: string; label: string; srclang: string; isDefault: boolean }[]; error?: string }) => {
-          if (cancelled) return;
-          if (data.hlsUrl) {
-            raceCache.current.anizone = data;
-            tryWin("ANIZONE");
-          } else {
-            raceCache.current.anizone = null;
-          }
-        })
-        .catch(() => { if (!cancelled) raceCache.current.anizone = null; });
+      schedule(preferred === "ANIZONE" ? 0 : HEAD_START, () => {
+        fetch(apiUrl(`/api/anizone/stream?slug=${encodeURIComponent(aSlug)}&ep=${currentEp}`))
+          .then(r => r.json())
+          .then((data: { hlsUrl?: string; subtitles?: { src: string; label: string; srclang: string; isDefault: boolean }[]; error?: string }) => {
+            if (cancelled) return;
+            if (data.hlsUrl) { raceCache.current.anizone = data; tryWin("ANIZONE"); }
+            else raceCache.current.anizone = null;
+          })
+          .catch(() => { if (!cancelled) raceCache.current.anizone = null; });
+      });
     } else {
       raceCache.current.anizone = null;
     }
 
-    // If nothing wins after 15s, stop the spinner and fall back to GOGO
+    // If nothing wins after 15s, stop the spinner and stay on current server
     const fallback = setTimeout(() => {
       if (!cancelled && !won && !userPickedRef.current) {
         won = true;
@@ -559,7 +566,7 @@ export default function WatchAniList() {
       }
     }, 15000);
 
-    return () => { cancelled = true; clearTimeout(fallback); };
+    return () => { cancelled = true; timers.forEach(clearTimeout); clearTimeout(fallback); };
   }, [animeId, currentEp, title, anime?.idMal]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // When GOGO server is selected, fetch the CDN player iframe URL from the gogoanimes.cv page
@@ -1462,6 +1469,15 @@ export default function WatchAniList() {
                 <div className="w-1.5 h-1.5 rounded-full bg-blue-400/70 animate-bounce [animation-delay:300ms]" />
               </div>
               <span className="text-[10px] font-mono text-white/40 uppercase tracking-widest">Auto-detecting best server…</span>
+              {(() => {
+                const pref = localStorage.getItem(`na_preferred_${animeId}`) as "GOGO" | "KOTO" | "ANIZONE" | null;
+                const color = pref === "GOGO" ? "text-orange-400/50" : pref === "KOTO" ? "text-teal-400/50" : pref === "ANIZONE" ? "text-blue-400/50" : null;
+                return pref && color ? (
+                  <span className={`text-[9px] font-mono uppercase tracking-widest ml-auto ${color}`}>
+                    trying {pref} first
+                  </span>
+                ) : null;
+              })()}
             </div>
           )}
 
