@@ -205,6 +205,13 @@ export default function WatchAniList() {
   const controlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const playerContainerRef = useRef<HTMLDivElement>(null);
   const bridgeLiveRef = useRef(false);
+  const userPickedRef = useRef(false);
+  const raceCache = useRef<{
+    gogo?: { cdnUrl: string; resolvedSlug?: string } | null;
+    koto?: { url?: string; hlsUrl?: string | null } | null;
+    anizone?: { hlsUrl?: string; subtitles?: { src: string; label: string; srclang: string; isDefault: boolean }[] } | null;
+  }>({});
+  const [autoDetecting, setAutoDetecting] = useState(false);
   const [newEpNotice, setNewEpNotice] = useState<number | null>(null);
   const prevNextAiringEpRef = useRef<number | null>(null);
   const [countdownSecs, setCountdownSecs] = useState<number | null>(null);
@@ -337,6 +344,13 @@ export default function WatchAniList() {
     setAnizoneStreamError(null);
   }, [animeId, currentEp, lang, server]);
 
+  // Reset auto-detect state whenever the episode or anime changes
+  useEffect(() => {
+    userPickedRef.current = false;
+    raceCache.current = {};
+    setAutoDetecting(false);
+  }, [animeId, currentEp]);
+
   // Load saved GogoAnimes slug from localStorage; derive suggestion from title if none saved
   useEffect(() => {
     if (!animeId) return;
@@ -462,10 +476,113 @@ export default function WatchAniList() {
     localStorage.setItem(`na_gogo_${animeId}`, slug);
   }, [title, animeId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Auto-detect: race all 3 servers simultaneously; auto-connect to whichever responds first
+  useEffect(() => {
+    if (!title || !animeId || !anime) return;
+    let cancelled = false;
+    let won = false;
+    setAutoDetecting(true);
+
+    const tryWin = (srv: "GOGO" | "KOTO" | "ANIZONE") => {
+      if (cancelled || won || userPickedRef.current) return;
+      won = true;
+      setAutoDetecting(false);
+      setServer(srv);
+      setIframeLoaded(false);
+      bridgeLiveRef.current = false;
+    };
+
+    const gSlug = localStorage.getItem(`na_gogo_${animeId}`) || deriveGogoSlug(title);
+    const aSlug = localStorage.getItem(`na_anizone_${animeId}`) || "";
+    const malId = anime?.idMal ?? null;
+
+    // GOGO
+    if (gSlug) {
+      fetch(apiUrl(`/api/gogo/cdn-url?slug=${encodeURIComponent(gSlug)}&ep=${currentEp}`))
+        .then(r => r.json())
+        .then((data: { cdnUrl?: string; resolvedSlug?: string }) => {
+          if (cancelled) return;
+          if (data.cdnUrl) {
+            raceCache.current.gogo = data;
+            tryWin("GOGO");
+          } else {
+            raceCache.current.gogo = null;
+          }
+        })
+        .catch(() => { if (!cancelled) raceCache.current.gogo = null; });
+    } else {
+      raceCache.current.gogo = null;
+    }
+
+    // KOTO
+    if (malId) {
+      const params = new URLSearchParams({ ep: String(currentEp), malId: String(malId) });
+      fetch(apiUrl(`/api/koto/stream?${params}`))
+        .then(r => r.json())
+        .then((data: { url?: string; hlsUrl?: string | null; error?: string }) => {
+          if (cancelled) return;
+          if (data.url || data.hlsUrl) {
+            raceCache.current.koto = data;
+            tryWin("KOTO");
+          } else {
+            raceCache.current.koto = null;
+          }
+        })
+        .catch(() => { if (!cancelled) raceCache.current.koto = null; });
+    } else {
+      raceCache.current.koto = null;
+    }
+
+    // ANIZONE
+    if (aSlug) {
+      fetch(apiUrl(`/api/anizone/stream?slug=${encodeURIComponent(aSlug)}&ep=${currentEp}`))
+        .then(r => r.json())
+        .then((data: { hlsUrl?: string; subtitles?: { src: string; label: string; srclang: string; isDefault: boolean }[]; error?: string }) => {
+          if (cancelled) return;
+          if (data.hlsUrl) {
+            raceCache.current.anizone = data;
+            tryWin("ANIZONE");
+          } else {
+            raceCache.current.anizone = null;
+          }
+        })
+        .catch(() => { if (!cancelled) raceCache.current.anizone = null; });
+    } else {
+      raceCache.current.anizone = null;
+    }
+
+    // If nothing wins after 15s, stop the spinner and fall back to GOGO
+    const fallback = setTimeout(() => {
+      if (!cancelled && !won && !userPickedRef.current) {
+        won = true;
+        setAutoDetecting(false);
+      }
+    }, 15000);
+
+    return () => { cancelled = true; clearTimeout(fallback); };
+  }, [animeId, currentEp, title, anime?.idMal]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // When GOGO server is selected, fetch the CDN player iframe URL from the gogoanimes.cv page
   // so we can embed only the CDN player (with our control bridge) instead of the full site.
   useEffect(() => {
     if (server !== "GOGO" || !gogoSlug) { setCdnUrl(null); setCdnLoading(false); setCdnNotFound(false); return; }
+    // Use race-cached result if available (avoids double network call)
+    const cached = raceCache.current.gogo;
+    if (cached !== undefined) {
+      if (cached?.cdnUrl) {
+        setCdnUrl(cached.cdnUrl);
+        setCdnLoading(false);
+        setCdnNotFound(false);
+        if (cached.resolvedSlug && cached.resolvedSlug !== gogoSlug) {
+          setGogoSlug(cached.resolvedSlug);
+          setGogoSlugInput(cached.resolvedSlug);
+          localStorage.setItem(`na_gogo_${animeId}`, cached.resolvedSlug);
+        }
+        raceCache.current.gogo = undefined;
+        return;
+      }
+      raceCache.current.gogo = undefined;
+    }
     setCdnUrl(null);
     setCdnLoading(true);
     setCdnNotFound(false);
@@ -604,9 +721,21 @@ export default function WatchAniList() {
     if (anime === null) return;
     const malId = anime?.idMal ?? null;
     if (!malId) {
-      // Anime loaded but has no MAL ID — KOTO mapper can't be used
       setKotoPlayerError("No MAL ID for this anime — KOTO unavailable");
       return;
+    }
+    // Use race-cached result if available
+    const cached = raceCache.current.koto;
+    if (cached !== undefined) {
+      if (cached?.url || cached?.hlsUrl) {
+        setKotoPlayerUrl(cached.url ?? null);
+        setKotoHlsUrl(cached.hlsUrl ?? null);
+        setKotoPlayerLoading(false);
+        setKotoPlayerError(null);
+        raceCache.current.koto = undefined;
+        return;
+      }
+      raceCache.current.koto = undefined;
     }
     setKotoPlayerUrl(null);
     setKotoPlayerLoading(true);
@@ -637,6 +766,19 @@ export default function WatchAniList() {
       setAnizoneSubtitles([]);
       setAnizoneStreamError(null);
       return;
+    }
+    // Use race-cached result if available
+    const cached = raceCache.current.anizone;
+    if (cached !== undefined) {
+      if (cached?.hlsUrl) {
+        setAnizoneHlsUrl(cached.hlsUrl);
+        setAnizoneSubtitles(cached.subtitles ?? []);
+        setAnizoneStreamLoading(false);
+        setAnizoneStreamError(null);
+        raceCache.current.anizone = undefined;
+        return;
+      }
+      raceCache.current.anizone = undefined;
     }
     let cancelled = false;
     setAnizoneHlsUrl(null);
@@ -1277,7 +1419,7 @@ export default function WatchAniList() {
               </div>
               {/* GOGO server */}
               <button
-                onClick={() => { setServer("GOGO"); setCdnNotFound(false); setIframeLoaded(false); }}
+                onClick={() => { userPickedRef.current = true; setServer("GOGO"); setCdnNotFound(false); setIframeLoaded(false); }}
                 className={`text-[10px] font-mono px-2.5 py-1 border transition-colors ${
                   server === "GOGO"
                     ? "border-orange-400 bg-orange-400 text-black"
@@ -1288,7 +1430,7 @@ export default function WatchAniList() {
               </button>
               {/* KOTO server */}
               <button
-                onClick={() => { setServer("KOTO"); setIframeLoaded(false); }}
+                onClick={() => { userPickedRef.current = true; setServer("KOTO"); setIframeLoaded(false); }}
                 className={`text-[10px] font-mono px-2.5 py-1 border transition-colors ${
                   server === "KOTO"
                     ? "border-teal-400 bg-teal-400 text-black"
@@ -1299,7 +1441,7 @@ export default function WatchAniList() {
               </button>
               {/* AniZone server */}
               <button
-                onClick={() => { setServer("ANIZONE"); setIframeLoaded(false); }}
+                onClick={() => { userPickedRef.current = true; setServer("ANIZONE"); setIframeLoaded(false); }}
                 className={`text-[10px] font-mono px-2.5 py-1 border transition-colors ${
                   server === "ANIZONE"
                     ? "border-blue-400 bg-blue-400 text-black"
@@ -1311,8 +1453,20 @@ export default function WatchAniList() {
             </div>
           </div>
 
+          {/* Auto-detect banner — shown while race is running */}
+          {autoDetecting && (
+            <div className="border-b border-white/5 px-4 py-2.5 flex items-center gap-2.5">
+              <div className="flex gap-[3px] items-center shrink-0">
+                <div className="w-1.5 h-1.5 rounded-full bg-orange-400/70 animate-bounce [animation-delay:0ms]" />
+                <div className="w-1.5 h-1.5 rounded-full bg-teal-400/70 animate-bounce [animation-delay:150ms]" />
+                <div className="w-1.5 h-1.5 rounded-full bg-blue-400/70 animate-bounce [animation-delay:300ms]" />
+              </div>
+              <span className="text-[10px] font-mono text-white/40 uppercase tracking-widest">Auto-detecting best server…</span>
+            </div>
+          )}
+
           {/* GOGO status panel */}
-          {server === "GOGO" && (
+          {!autoDetecting && server === "GOGO" && (
             <div className="border-b border-white/5 px-4 py-2.5 flex items-center gap-2.5">
               {cdnLoading ? (
                 <>
@@ -1334,7 +1488,7 @@ export default function WatchAniList() {
           )}
 
           {/* KOTO status panel */}
-          {server === "KOTO" && (
+          {!autoDetecting && server === "KOTO" && (
             <div className="border-b border-white/5 px-4 py-2.5 flex items-center gap-2.5">
               {kotoPlayerLoading ? (
                 <>
@@ -1356,7 +1510,7 @@ export default function WatchAniList() {
           )}
 
           {/* ANIZONE status panel */}
-          {server === "ANIZONE" && (
+          {!autoDetecting && server === "ANIZONE" && (
             <div className="border-b border-white/5 px-4 py-2.5 flex items-center gap-2.5">
               {anizoneStreamLoading ? (
                 <>
