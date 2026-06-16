@@ -441,9 +441,9 @@ router.get("/proxy", async (req, res) => {
         }
       }
 
-      // For megaplay.buzz — inject BEFORE client.js runs so the monkey-patch
-      // is in place before any API calls are made.
-      if (targetUrl.hostname.includes("megaplay")) {
+      // For megaplay.buzz (or any page that loads megaplay.buzz scripts, e.g. vidtube.site) —
+      // inject BEFORE client.js runs so the monkey-patch is in place before any API calls.
+      if (targetUrl.hostname.includes("megaplay") || html.includes("megaplay.buzz")) {
         if (/<head>/i.test(html)) {
           html = html.replace(/<head>/i, `<head>${MEGAPLAY_INJECT}`);
         } else {
