@@ -113,6 +113,41 @@ const MEGAPLAY_INJECT = `<script>
 })();
 </script>`;
 
+// Injected into vidtube.site pages — routes vidtube.site API calls through our proxy
+// while letting megaplay.buzz calls go directly (megaplay has CORS: * so the browser
+// can reach it without a proxy). MEGAPLAY_INJECT must NOT be used for vidtube.site
+// because it mis-routes vidtube.site relative URLs to megaplay.buzz.
+const VIDTUBE_INJECT = `<script>
+(function(){
+  var K='https://vidtube.site';
+  var P='/api/proxy?url=';
+  function fix(u){
+    if(!u||typeof u!=='string')return u;
+    if(/^(?:data:|blob:)/.test(u))return u;
+    /* vidtube.site absolute URLs → proxy */
+    if(/^https?:\/\/vidtube\.site/i.test(u)||/^\/\/vidtube\.site/i.test(u)){
+      var abs=u.startsWith('//')?'https:'+u:u;
+      return P+encodeURIComponent(abs);
+    }
+    /* megaplay.buzz and all other absolute URLs → pass through unchanged
+       (megaplay.buzz has CORS: *, browser can call it directly with cookies) */
+    if(/^https?:\/\//i.test(u)||/^\/\//.test(u))return u;
+    /* Relative URLs → resolve against vidtube.site and proxy */
+    var resolved=K+(u.charAt(0)==='/'?'':'/')+u;
+    return P+encodeURIComponent(resolved);
+  }
+  var ox=XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open=function(m,u){
+    var a=Array.prototype.slice.call(arguments,2);
+    return ox.apply(this,[m,fix(String(u||''))].concat(a));
+  };
+  if(window.fetch){
+    var of=window.fetch;
+    window.fetch=function(i,o){return of.call(window,typeof i==='string'?fix(i):i,o);};
+  }
+})();
+</script>`;
+
 // Injected into gogoanimes.cv pages to strip the website chrome and show only the video
 const GOGO_VIDEO_ONLY = `<style>
 html,body{margin:0!important;padding:0!important;background:#000!important;overflow:hidden!important}
@@ -441,9 +476,18 @@ router.get("/proxy", async (req, res) => {
         }
       }
 
-      // For megaplay.buzz (or any page that loads megaplay.buzz scripts, e.g. vidtube.site) —
-      // inject BEFORE client.js runs so the monkey-patch is in place before any API calls.
-      if (targetUrl.hostname.includes("megaplay") || html.includes("megaplay.buzz")) {
+      // For vidtube.site pages — use VIDTUBE_INJECT (routes vidtube.site calls through proxy,
+      // lets megaplay.buzz calls go directly since megaplay has CORS: *).
+      // MEGAPLAY_INJECT must NOT be used here — it mis-routes vidtube.site relative URLs to megaplay.buzz.
+      if (targetUrl.hostname.includes("vidtube")) {
+        if (/<head>/i.test(html)) {
+          html = html.replace(/<head>/i, `<head>${VIDTUBE_INJECT}`);
+        } else {
+          html = VIDTUBE_INJECT + html;
+        }
+      }
+      // For megaplay.buzz pages (not vidtube.site) — route megaplay.buzz API calls through our proxy.
+      else if (targetUrl.hostname.includes("megaplay") || html.includes("megaplay.buzz")) {
         if (/<head>/i.test(html)) {
           html = html.replace(/<head>/i, `<head>${MEGAPLAY_INJECT}`);
         } else {
