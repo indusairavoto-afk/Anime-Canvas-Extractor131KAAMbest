@@ -18,6 +18,7 @@ import Community from "@/pages/community";
 import CommunityPostDetail from "@/pages/community-post-detail";
 import Schedule from "@/pages/schedule";
 import Watchlist from "@/pages/watchlist";
+import Ranking from "@/pages/ranking";
 
 const queryClient = new QueryClient();
 
@@ -26,6 +27,7 @@ function Router() {
     <Switch>
       <Route path="/" component={Home} />
       <Route path="/browse" component={Browse} />
+      <Route path="/ranking" component={Ranking} />
       <Route path="/anime/al/:id" component={AnimeDetailAniList} />
       <Route path="/anime/:id" component={AnimeDetail} />
       <Route path="/character/:id" component={CharacterDetail} />

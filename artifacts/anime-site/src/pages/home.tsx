@@ -829,7 +829,7 @@ export default function Home() {
                   ))}
                 </div>
               </div>
-              <Link href="/browse">
+              <Link href="/ranking">
                 <span className="flex items-center gap-1 text-[10px] font-mono uppercase tracking-widest text-white/30 hover:text-white transition-colors">
                   See all <ChevronRight className="w-3 h-3" />
                 </span>
