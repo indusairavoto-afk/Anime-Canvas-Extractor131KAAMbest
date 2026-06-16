@@ -945,7 +945,7 @@ export default function WatchAniList() {
                     key={`anizone-${anizoneSlug}-${currentEp}`}
                     hlsUrl={anizoneHlsUrl}
                     subtitles={anizoneSubtitles}
-                    title={`${title} — Episode ${currentEp}`}
+                    title={getEpTitle(currentEp) !== `Episode ${currentEp}` ? `${title} — Ep ${currentEp}: ${getEpTitle(currentEp)}` : `${title} — Episode ${currentEp}`}
                     progressKey={`al_${animeId}_${currentEp}`}
                   />
                 )}
@@ -956,7 +956,7 @@ export default function WatchAniList() {
                     key={`koto-${kotoSlug || "mal"}-${currentEp}`}
                     hlsUrl={kotoHlsUrl}
                     subtitles={[]}
-                    title={`${title} — Episode ${currentEp}`}
+                    title={getEpTitle(currentEp) !== `Episode ${currentEp}` ? `${title} — Ep ${currentEp}: ${getEpTitle(currentEp)}` : `${title} — Episode ${currentEp}`}
                     progressKey={`al_${animeId}_${currentEp}`}
                   />
                 )}
@@ -1191,6 +1191,9 @@ export default function WatchAniList() {
                 Episode {currentEp}
                 {epCount > 0 && <span className="text-white/30 font-normal"> / {epCount}</span>}
               </p>
+              {getEpTitle(currentEp) !== `Episode ${currentEp}` && (
+                <p className="text-[11px] text-white/50 mt-0.5 line-clamp-1">{getEpTitle(currentEp)}</p>
+              )}
               <p className="text-[10px] text-white/25 mt-0.5">
                 If the current server doesn't work, try another server below.
               </p>
@@ -1846,7 +1849,7 @@ export default function WatchAniList() {
                           <p className={`text-[11px] font-medium line-clamp-2 leading-snug ${
                             active ? "text-white" : watched ? "text-white/40" : "text-white/80"
                           }`}>
-                            {ep}. {epTitle}
+                            {epTitle !== `Episode ${ep}` ? `${ep}. ${epTitle}` : <span className={active ? "text-white/60" : "text-white/35"}>Episode {ep}</span>}
                           </p>
                           {aired && (
                             <p className="text-[9px] font-mono text-white/25 mt-0.5">Aired: {aired}</p>
