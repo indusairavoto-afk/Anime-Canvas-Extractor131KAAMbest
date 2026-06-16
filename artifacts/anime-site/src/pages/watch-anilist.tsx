@@ -212,6 +212,7 @@ export default function WatchAniList() {
     anizone?: { hlsUrl?: string; subtitles?: { src: string; label: string; srclang: string; isDefault: boolean }[] } | null;
   }>({});
   const [autoDetecting, setAutoDetecting] = useState(false);
+  const [serverHealth, setServerHealth] = useState<{ GOGO: "unknown" | "checking" | "ok" | "fail"; KOTO: "unknown" | "checking" | "ok" | "fail"; ANIZONE: "unknown" | "checking" | "ok" | "fail" }>({ GOGO: "unknown", KOTO: "unknown", ANIZONE: "unknown" });
   const [newEpNotice, setNewEpNotice] = useState<number | null>(null);
   const prevNextAiringEpRef = useRef<number | null>(null);
   const [countdownSecs, setCountdownSecs] = useState<number | null>(null);
@@ -349,6 +350,7 @@ export default function WatchAniList() {
     userPickedRef.current = false;
     raceCache.current = {};
     setAutoDetecting(false);
+    setServerHealth({ GOGO: "unknown", KOTO: "unknown", ANIZONE: "unknown" });
   }, [animeId, currentEp]);
 
   // Load saved GogoAnimes slug from localStorage; derive suggestion from title if none saved
@@ -490,7 +492,6 @@ export default function WatchAniList() {
     const tryWin = (srv: "GOGO" | "KOTO" | "ANIZONE") => {
       if (cancelled || won || userPickedRef.current) return;
       won = true;
-      // Remember the winner for this anime so next visit it gets the head start
       localStorage.setItem(`na_preferred_${animeId}`, srv);
       setAutoDetecting(false);
       setServer(srv);
@@ -511,51 +512,75 @@ export default function WatchAniList() {
 
     // GOGO
     if (gSlug) {
+      setServerHealth(h => ({ ...h, GOGO: "checking" }));
       schedule(preferred === "GOGO" ? 0 : HEAD_START, () => {
         fetch(apiUrl(`/api/gogo/cdn-url?slug=${encodeURIComponent(gSlug)}&ep=${currentEp}`))
           .then(r => r.json())
           .then((data: { cdnUrl?: string; resolvedSlug?: string }) => {
             if (cancelled) return;
-            if (data.cdnUrl) { raceCache.current.gogo = data; tryWin("GOGO"); }
-            else raceCache.current.gogo = null;
+            if (data.cdnUrl) {
+              raceCache.current.gogo = data;
+              setServerHealth(h => ({ ...h, GOGO: "ok" }));
+              tryWin("GOGO");
+            } else {
+              raceCache.current.gogo = null;
+              setServerHealth(h => ({ ...h, GOGO: "fail" }));
+            }
           })
-          .catch(() => { if (!cancelled) raceCache.current.gogo = null; });
+          .catch(() => { if (!cancelled) { raceCache.current.gogo = null; setServerHealth(h => ({ ...h, GOGO: "fail" })); } });
       });
     } else {
       raceCache.current.gogo = null;
+      setServerHealth(h => ({ ...h, GOGO: "fail" }));
     }
 
     // KOTO
     if (malId) {
+      setServerHealth(h => ({ ...h, KOTO: "checking" }));
       schedule(preferred === "KOTO" ? 0 : HEAD_START, () => {
         const params = new URLSearchParams({ ep: String(currentEp), malId: String(malId) });
         fetch(apiUrl(`/api/koto/stream?${params}`))
           .then(r => r.json())
           .then((data: { url?: string; hlsUrl?: string | null; error?: string }) => {
             if (cancelled) return;
-            if (data.url || data.hlsUrl) { raceCache.current.koto = data; tryWin("KOTO"); }
-            else raceCache.current.koto = null;
+            if (data.url || data.hlsUrl) {
+              raceCache.current.koto = data;
+              setServerHealth(h => ({ ...h, KOTO: "ok" }));
+              tryWin("KOTO");
+            } else {
+              raceCache.current.koto = null;
+              setServerHealth(h => ({ ...h, KOTO: "fail" }));
+            }
           })
-          .catch(() => { if (!cancelled) raceCache.current.koto = null; });
+          .catch(() => { if (!cancelled) { raceCache.current.koto = null; setServerHealth(h => ({ ...h, KOTO: "fail" })); } });
       });
     } else {
       raceCache.current.koto = null;
+      setServerHealth(h => ({ ...h, KOTO: "fail" }));
     }
 
     // ANIZONE
     if (aSlug) {
+      setServerHealth(h => ({ ...h, ANIZONE: "checking" }));
       schedule(preferred === "ANIZONE" ? 0 : HEAD_START, () => {
         fetch(apiUrl(`/api/anizone/stream?slug=${encodeURIComponent(aSlug)}&ep=${currentEp}`))
           .then(r => r.json())
           .then((data: { hlsUrl?: string; subtitles?: { src: string; label: string; srclang: string; isDefault: boolean }[]; error?: string }) => {
             if (cancelled) return;
-            if (data.hlsUrl) { raceCache.current.anizone = data; tryWin("ANIZONE"); }
-            else raceCache.current.anizone = null;
+            if (data.hlsUrl) {
+              raceCache.current.anizone = data;
+              setServerHealth(h => ({ ...h, ANIZONE: "ok" }));
+              tryWin("ANIZONE");
+            } else {
+              raceCache.current.anizone = null;
+              setServerHealth(h => ({ ...h, ANIZONE: "fail" }));
+            }
           })
-          .catch(() => { if (!cancelled) raceCache.current.anizone = null; });
+          .catch(() => { if (!cancelled) { raceCache.current.anizone = null; setServerHealth(h => ({ ...h, ANIZONE: "fail" })); } });
       });
     } else {
       raceCache.current.anizone = null;
+      setServerHealth(h => ({ ...h, ANIZONE: "fail" }));
     }
 
     // If nothing wins after 15s, stop the spinner and stay on current server
@@ -1427,35 +1452,56 @@ export default function WatchAniList() {
               {/* GOGO server */}
               <button
                 onClick={() => { userPickedRef.current = true; setServer("GOGO"); setCdnNotFound(false); setIframeLoaded(false); }}
-                className={`text-[10px] font-mono px-2.5 py-1 border transition-colors ${
+                className={`relative text-[10px] font-mono px-2.5 py-1 border transition-colors ${
                   server === "GOGO"
                     ? "border-orange-400 bg-orange-400 text-black"
                     : "border-orange-400/30 text-orange-400/60 hover:border-orange-400/70 hover:text-orange-400"
                 }`}
               >
                 GOGO
+                {serverHealth.GOGO !== "unknown" && (
+                  <span className={`absolute -top-1 -right-1 w-2 h-2 rounded-full border border-black ${
+                    serverHealth.GOGO === "ok" ? "bg-green-400" :
+                    serverHealth.GOGO === "fail" ? "bg-red-500" :
+                    "bg-yellow-400 animate-pulse"
+                  }`} />
+                )}
               </button>
               {/* KOTO server */}
               <button
                 onClick={() => { userPickedRef.current = true; setServer("KOTO"); setIframeLoaded(false); }}
-                className={`text-[10px] font-mono px-2.5 py-1 border transition-colors ${
+                className={`relative text-[10px] font-mono px-2.5 py-1 border transition-colors ${
                   server === "KOTO"
                     ? "border-teal-400 bg-teal-400 text-black"
                     : "border-teal-400/30 text-teal-400/60 hover:border-teal-400/70 hover:text-teal-400"
                 }`}
               >
                 KOTO
+                {serverHealth.KOTO !== "unknown" && (
+                  <span className={`absolute -top-1 -right-1 w-2 h-2 rounded-full border border-black ${
+                    serverHealth.KOTO === "ok" ? "bg-green-400" :
+                    serverHealth.KOTO === "fail" ? "bg-red-500" :
+                    "bg-yellow-400 animate-pulse"
+                  }`} />
+                )}
               </button>
               {/* AniZone server */}
               <button
                 onClick={() => { userPickedRef.current = true; setServer("ANIZONE"); setIframeLoaded(false); }}
-                className={`text-[10px] font-mono px-2.5 py-1 border transition-colors ${
+                className={`relative text-[10px] font-mono px-2.5 py-1 border transition-colors ${
                   server === "ANIZONE"
                     ? "border-blue-400 bg-blue-400 text-black"
                     : "border-blue-400/30 text-blue-400/60 hover:border-blue-400/70 hover:text-blue-400"
                 }`}
               >
                 ANIZONE
+                {serverHealth.ANIZONE !== "unknown" && (
+                  <span className={`absolute -top-1 -right-1 w-2 h-2 rounded-full border border-black ${
+                    serverHealth.ANIZONE === "ok" ? "bg-green-400" :
+                    serverHealth.ANIZONE === "fail" ? "bg-red-500" :
+                    "bg-yellow-400 animate-pulse"
+                  }`} />
+                )}
               </button>
             </div>
           </div>
