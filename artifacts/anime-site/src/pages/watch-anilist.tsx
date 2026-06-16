@@ -204,6 +204,7 @@ export default function WatchAniList() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const controlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const playerContainerRef = useRef<HTMLDivElement>(null);
+  const bridgeLiveRef = useRef(false);
   const [newEpNotice, setNewEpNotice] = useState<number | null>(null);
   const prevNextAiringEpRef = useRef<number | null>(null);
   const [countdownSecs, setCountdownSecs] = useState<number | null>(null);
@@ -323,6 +324,7 @@ export default function WatchAniList() {
     setCdnUrl(null);
     setCdnLoading(false);
     setGogoStreamError(false);
+    bridgeLiveRef.current = false;
     // Reset KOTO player state so stale errors don't persist across episodes/server switches
     setKotoPlayerUrl(null);
     setKotoHlsUrl(null);
@@ -661,6 +663,7 @@ export default function WatchAniList() {
   useEffect(() => {
     const handler = (evt: MessageEvent) => {
       if (evt.data?.type !== "na_video_state") return;
+      bridgeLiveRef.current = true;
       setVideoState({
         paused: evt.data.paused ?? true,
         time: evt.data.time ?? 0,
@@ -673,6 +676,19 @@ export default function WatchAniList() {
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
   }, []);
+
+  // Auto-detect GoGo stream errors: if the postMessage bridge never responds
+  // within 9 seconds of the iframe loading, the player is likely showing an error
+  // page (e.g. 410 copyright removal) — automatically show our themed overlay.
+  useEffect(() => {
+    if (server !== "GOGO" || !iframeLoaded || gogoStreamError || cdnNotFound || cdnLoading) return;
+    const timer = setTimeout(() => {
+      if (!bridgeLiveRef.current) {
+        setGogoStreamError(true);
+      }
+    }, 9000);
+    return () => clearTimeout(timer);
+  }, [server, iframeLoaded, gogoStreamError, cdnNotFound, cdnLoading]);
 
   // Send a command to the CDN player iframe via postMessage
   const sendCmd = (cmd: Record<string, unknown>) => {
