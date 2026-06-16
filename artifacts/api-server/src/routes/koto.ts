@@ -274,11 +274,23 @@ router.get("/koto/stream", async (req, res) => {
   }
 
   // ── Primary: native anikoto.cz API (slug-based, no mapper dependency) ─────
+  // If the native path finds a URL but can't extract HLS from it (e.g. vidtube.site
+  // player URLs), save it as a last-resort fallback and continue to the mapper so we
+  // can try to get a proper HLS stream instead of falling back to a proxied iframe.
+  let nativeFallbackResult: StreamResult | null = null;
+
   if (slug) {
     try {
       const result = await fetchViaAnikotoNative(slug, parseInt(ep));
       if (result?.url) {
-        return res.json(buildResponse(result));
+        const rawHls = extractHlsFromPlayerUrl(result.url);
+        if (rawHls) {
+          // HLS extractable → return immediately, no need for mapper
+          return res.json(buildResponse(result));
+        }
+        // URL found but no extractable HLS (e.g. vidtube.site) → try mapper first
+        nativeFallbackResult = result;
+        req.log.info({ url: result.url }, "native anikoto returned non-HLS URL, trying mapper for HLS");
       }
     } catch (err: unknown) {
       req.log.warn({ err }, "native anikoto pipeline failed, trying mapper fallback");
@@ -286,20 +298,24 @@ router.get("/koto/stream", async (req, res) => {
   }
 
   // ── Fallback: mapper.nekostream.site (malId-based) ─────────────────────────
-  if (!malId) {
-    return res.status(404).json({ error: "No stream URL found for this episode" });
+  if (malId) {
+    try {
+      const result = await fetchViaMapper(malId, ep);
+      if (result?.url) {
+        return res.json(buildResponse(result));
+      }
+    } catch (err: unknown) {
+      req.log.warn({ err }, "mapper fallback also failed");
+    }
   }
 
-  try {
-    const result = await fetchViaMapper(malId, ep);
-    if (result?.url) {
-      return res.json(buildResponse(result));
-    }
-    return res.status(404).json({ error: "No stream URL found for this episode" });
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : "Unknown error";
-    return res.status(502).json({ error: msg });
+  // ── Last resort: return the native non-HLS URL (proxied iframe will handle it) ─
+  if (nativeFallbackResult) {
+    req.log.info("mapper yielded no stream, using native non-HLS URL as last resort");
+    return res.json(buildResponse(nativeFallbackResult));
   }
+
+  return res.status(404).json({ error: "No stream URL found for this episode" });
 });
 
 router.get("/koto/search", async (req, res) => {
