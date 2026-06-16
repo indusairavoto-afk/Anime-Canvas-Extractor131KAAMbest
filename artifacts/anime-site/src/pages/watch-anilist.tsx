@@ -1048,8 +1048,27 @@ export default function WatchAniList() {
 
   return (
     <div className="min-h-screen bg-[#0d0d0d] text-white">
-      {/* Top breadcrumb */}
-      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-white/5 text-[11px] font-mono uppercase tracking-widest text-white/30">
+      {/* Mobile: back button bar */}
+      <div className="flex md:hidden items-center gap-3 px-3 py-2.5 border-b border-white/[0.06]">
+        <Link href={`/anime/al/${animeId}`}>
+          <button className="p-1.5 -ml-1 text-white/60 active:text-white transition-colors">
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+        </Link>
+        <div className="flex-1 min-w-0">
+          <p className="text-[13px] font-semibold text-white truncate leading-tight">{title}</p>
+          <p className="text-[10px] text-white/35 font-mono">Episode {currentEp}{epCount > 0 ? ` / ${epCount}` : ""}</p>
+        </div>
+        <button
+          onClick={() => toggle(animeId)}
+          className="p-2 text-white/40 active:text-white transition-colors"
+        >
+          {saved ? <BookmarkCheck className="w-5 h-5 text-white" /> : <Bookmark className="w-5 h-5" />}
+        </button>
+      </div>
+
+      {/* Desktop: breadcrumb */}
+      <div className="hidden md:flex items-center gap-2 px-4 py-2.5 border-b border-white/5 text-[11px] font-mono uppercase tracking-widest text-white/30">
         <Link href="/">
           <span className="hover:text-white transition-colors cursor-pointer">Home</span>
         </Link>
@@ -1374,14 +1393,102 @@ export default function WatchAniList() {
             )}
           </div>
 
-          {/* Warning banner */}
-          <div className="flex items-center gap-2 px-4 py-2 bg-white/[0.03] border-b border-white/5 text-[10px] text-white/30">
+          {/* ── MOBILE: YouTube-style info strip below player ── */}
+          <div className="flex md:hidden flex-col">
+            {/* Episode title + nav */}
+            <div className="px-4 pt-3 pb-2">
+              {getEpTitle(currentEp) !== `Episode ${currentEp}` ? (
+                <p className="text-[13px] font-semibold text-white leading-snug line-clamp-2">
+                  {currentEp}. {getEpTitle(currentEp)}
+                </p>
+              ) : (
+                <p className="text-[13px] font-semibold text-white/70">Episode {currentEp}</p>
+              )}
+              {getEpAired(currentEp) && (
+                <p className="text-[10px] text-white/30 font-mono mt-0.5">{getEpAired(currentEp)}</p>
+              )}
+            </div>
+            {/* Prev / Next + sub/dub */}
+            <div className="flex items-center gap-2 px-4 pb-3 border-b border-white/[0.06]">
+              <Link href={`/watch/al/${animeId}/${currentEp - 1}`}>
+                <button
+                  disabled={currentEp <= 1}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/8 text-white/50 disabled:opacity-30 text-[11px] font-mono uppercase tracking-widest active:bg-white/15"
+                >
+                  <SkipBack className="w-3.5 h-3.5" /> Prev
+                </button>
+              </Link>
+              <Link href={`/watch/al/${animeId}/${currentEp + 1}`}>
+                <button
+                  disabled={totalEps > 0 && currentEp >= totalEps}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/8 text-white/50 disabled:opacity-30 text-[11px] font-mono uppercase tracking-widest active:bg-white/15"
+                >
+                  Next <SkipForward className="w-3.5 h-3.5" />
+                </button>
+              </Link>
+              {/* SUB/DUB */}
+              <div className="ml-auto flex items-center gap-1">
+                {(["SUB", "DUB"] as const).map((l) => (
+                  <button
+                    key={l}
+                    onClick={() => setLang(l)}
+                    className={`text-[10px] font-mono px-3 py-1.5 rounded-full transition-colors ${
+                      lang === l
+                        ? "bg-white text-black font-bold"
+                        : "bg-white/8 text-white/40"
+                    }`}
+                  >
+                    {l}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {/* Server pills */}
+            <div className="flex items-center gap-2 px-4 py-2.5 border-b border-white/[0.06] overflow-x-auto no-scrollbar">
+              <span className="text-[9px] font-mono text-white/25 uppercase tracking-widest shrink-0">Server</span>
+              {([
+                { key: "GOGO", label: "GogoAnime", color: "orange" },
+                { key: "KOTO", label: "AniKoto", color: "teal" },
+                { key: "ANIZONE", label: "AniZone", color: "blue" },
+              ] as const).map(({ key, label, color }) => {
+                const active = server === key;
+                const health = serverHealth[key];
+                const colorMap = {
+                  orange: { active: "bg-orange-500/90 text-white", idle: "bg-white/6 text-white/50", dot: { ok: "bg-green-400", fail: "bg-red-500", checking: "bg-yellow-400 animate-pulse" } },
+                  teal:   { active: "bg-teal-500/90 text-white",   idle: "bg-white/6 text-white/50", dot: { ok: "bg-green-400", fail: "bg-red-500", checking: "bg-yellow-400 animate-pulse" } },
+                  blue:   { active: "bg-blue-500/90 text-white",   idle: "bg-white/6 text-white/50", dot: { ok: "bg-green-400", fail: "bg-red-500", checking: "bg-yellow-400 animate-pulse" } },
+                };
+                const c = colorMap[color];
+                return (
+                  <button
+                    key={key}
+                    onClick={() => {
+                      userPickedRef.current = true;
+                      setServer(key);
+                      if (key !== "ANIZONE") setIframeLoaded(false);
+                    }}
+                    className={`relative flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-[11px] font-mono shrink-0 transition-colors ${active ? c.active : c.idle}`}
+                  >
+                    {health !== "unknown" && (
+                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                        health === "ok" ? c.dot.ok : health === "fail" ? c.dot.fail : c.dot.checking
+                      }`} />
+                    )}
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Warning banner — desktop only */}
+          <div className="hidden md:flex items-center gap-2 px-4 py-2 bg-white/[0.03] border-b border-white/5 text-[10px] text-white/30">
             <MessageSquare className="w-3 h-3 shrink-0" />
             If the episode is not working, please try a different server below.
           </div>
 
-          {/* Player control bar */}
-          <div className="flex items-center justify-between px-4 py-2.5 border-b border-white/5">
+          {/* Player control bar — desktop only */}
+          <div className="hidden md:flex items-center justify-between px-4 py-2.5 border-b border-white/5">
             <div className="flex items-center gap-1.5">
               {currentEp > 1 && (
                 <Link href={`/watch/al/${animeId}/${currentEp - 1}`}>
@@ -1417,8 +1524,8 @@ export default function WatchAniList() {
             </button>
           </div>
 
-          {/* "You are watching" + SUB/DUB + Quality */}
-          <div className="flex flex-wrap items-center gap-x-6 gap-y-3 px-4 py-3 border-b border-white/5">
+          {/* "You are watching" + SUB/DUB + Quality — desktop only */}
+          <div className="hidden md:flex flex-wrap items-center gap-x-6 gap-y-3 px-4 py-3 border-b border-white/5">
             <div>
               <p className="text-[10px] text-white/30 font-mono uppercase tracking-widest mb-0.5">You are watching</p>
               <p className="text-sm font-semibold text-white">
@@ -1647,6 +1754,64 @@ export default function WatchAniList() {
             </div>
           )}
 
+          {/* ── MOBILE: Up Next episode list (YouTube style) ── */}
+          <div className="flex md:hidden flex-col border-t border-white/[0.06]">
+            <div className="flex items-center justify-between px-4 py-3">
+              <h3 className="text-[13px] font-semibold text-white">Up Next</h3>
+              <span className="text-[10px] font-mono text-white/30">{epCount > 0 ? `${epCount} episodes` : ""}</span>
+            </div>
+            <div className="overflow-x-auto no-scrollbar">
+              <div className="flex gap-3 px-4 pb-4">
+                {filteredEps.slice(0, 20).map((ep) => {
+                  const active = ep === currentEp;
+                  const watched = isWatched(ep);
+                  const thumb = getEpThumb(ep);
+                  const epTitle = getEpTitle(ep);
+                  const progressPct = !active && !watched ? getEpisodeProgressPct(`al_${animeId}_${ep}`) : null;
+                  return (
+                    <Link key={ep} href={`/watch/al/${animeId}/${ep}`}>
+                      <div className={`flex flex-col gap-1.5 w-36 shrink-0 cursor-pointer ${active ? "opacity-100" : "opacity-80 active:opacity-100"}`}>
+                        <div className="relative w-36 h-[81px] rounded-lg overflow-hidden bg-zinc-900">
+                          <img src={thumb} alt={`EP ${ep}`} className="w-full h-full object-cover" />
+                          {active && (
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-lg">
+                              <div className="w-8 h-8 rounded-full bg-white/90 flex items-center justify-center">
+                                <Play className="w-4 h-4 text-black fill-black ml-0.5" />
+                              </div>
+                            </div>
+                          )}
+                          {watched && !active && (
+                            <div className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full bg-black/70 flex items-center justify-center">
+                              <span className="text-[8px] text-white/80">✓</span>
+                            </div>
+                          )}
+                          {progressPct !== null && (
+                            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-white/10">
+                              <div className="h-full bg-blue-400" style={{ width: `${progressPct * 100}%` }} />
+                            </div>
+                          )}
+                          <div className="absolute bottom-1 left-1.5">
+                            <span className={`text-[9px] font-mono font-bold px-1 py-0.5 rounded ${active ? "bg-white text-black" : "bg-black/60 text-white/70"}`}>EP {ep}</span>
+                          </div>
+                        </div>
+                        <p className={`text-[11px] leading-snug line-clamp-2 ${active ? "text-white font-semibold" : "text-white/60"}`}>
+                          {epTitle !== `Episode ${ep}` ? epTitle : <span className="text-white/35">Episode {ep}</span>}
+                        </p>
+                      </div>
+                    </Link>
+                  );
+                })}
+                {filteredEps.length > 20 && (
+                  <Link href={`/watch/al/${animeId}/${filteredEps[20]}`}>
+                    <div className="flex flex-col items-center justify-center w-28 h-[81px] shrink-0 rounded-lg bg-white/5 border border-white/10 gap-2 cursor-pointer active:bg-white/10">
+                      <span className="text-white/50 text-[11px] font-mono">+{filteredEps.length - 20} more</span>
+                    </div>
+                  </Link>
+                )}
+              </div>
+            </div>
+          </div>
+
           {/* ── BELOW PLAYER: Comments + Related ── */}
           <div className="flex flex-col lg:flex-row gap-0">
             {/* Comments */}
@@ -1767,8 +1932,8 @@ export default function WatchAniList() {
           </div>
         </div>
 
-        {/* ── RIGHT: Episode list ── */}
-        <div className="xl:w-80 shrink-0 border-l border-white/5 flex flex-col">
+        {/* ── RIGHT: Episode list — desktop only ── */}
+        <div className="hidden xl:flex flex-col xl:w-80 shrink-0 border-l border-white/5">
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
             <div className="flex items-center gap-2 flex-wrap">
