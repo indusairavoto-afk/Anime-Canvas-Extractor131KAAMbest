@@ -162,7 +162,7 @@ export default function WatchAniList() {
   const [jikanLoading, setJikanLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [lang, setLang] = useState<"SUB" | "DUB">("SUB");
-  const [server, setServer] = useState<"GOGO" | "KOTO" | "ANIZONE" | "CUSTOM">("GOGO");
+  const [server, setServer] = useState<"GOGO" | "KOTO" | "ANIZONE" | "MIRURO" | "CUSTOM">("GOGO");
   const [anizoneSlug, setAnizoneSlug] = useState("");
   const [anizoneSlugInput, setAnizoneSlugInput] = useState("");
   const [anizoneSearching, setAnizoneSearching] = useState(false);
@@ -194,6 +194,10 @@ export default function WatchAniList() {
   const [kotoHlsUrl, setKotoHlsUrl] = useState<string | null>(null);
   const [kotoPlayerLoading, setKotoPlayerLoading] = useState(false);
   const [kotoPlayerError, setKotoPlayerError] = useState<string | null>(null);
+  const [miruroHlsUrl, setMiruroHlsUrl] = useState<string | null>(null);
+  const [miruroSubtitles, setMiruroSubtitles] = useState<{ src: string; label: string; srclang: string; isDefault: boolean }[]>([]);
+  const [miruroLoading, setMiruroLoading] = useState(false);
+  const [miruroError, setMiruroError] = useState<string | null>(null);
   const [anizoneHlsUrl, setAnizoneHlsUrl] = useState<string | null>(null);
   const [anizoneSubtitles, setAnizoneSubtitles] = useState<{ src: string; label: string; srclang: string; isDefault: boolean }[]>([]);
   const [anizoneStreamLoading, setAnizoneStreamLoading] = useState(false);
@@ -212,9 +216,10 @@ export default function WatchAniList() {
     gogo?: { cdnUrl: string; resolvedSlug?: string; pageTitle?: string | null } | null;
     koto?: { url?: string; hlsUrl?: string | null } | null;
     anizone?: { hlsUrl?: string; subtitles?: { src: string; label: string; srclang: string; isDefault: boolean }[] } | null;
+    miruro?: { hlsUrl?: string; subtitles?: { src: string; label: string; srclang: string; isDefault: boolean }[] } | null;
   }>({});
   const [autoDetecting, setAutoDetecting] = useState(false);
-  const [serverHealth, setServerHealth] = useState<{ GOGO: "unknown" | "checking" | "ok" | "fail"; KOTO: "unknown" | "checking" | "ok" | "fail"; ANIZONE: "unknown" | "checking" | "ok" | "fail" }>({ GOGO: "unknown", KOTO: "unknown", ANIZONE: "unknown" });
+  const [serverHealth, setServerHealth] = useState<{ GOGO: "unknown" | "checking" | "ok" | "fail"; KOTO: "unknown" | "checking" | "ok" | "fail"; ANIZONE: "unknown" | "checking" | "ok" | "fail"; MIRURO: "unknown" | "checking" | "ok" | "fail" }>({ GOGO: "unknown", KOTO: "unknown", ANIZONE: "unknown", MIRURO: "unknown" });
   const [sourcePageTitle, setSourcePageTitle] = useState<string | null>(null);
   const [verifyResult, setVerifyResult] = useState<{ correct: boolean; confidence: "high" | "medium" | "low"; reason: string; extractedEpisode: number | null } | null>(null);
   const [newEpNotice, setNewEpNotice] = useState<number | null>(null);
@@ -358,7 +363,7 @@ export default function WatchAniList() {
     userPickedRef.current = false;
     raceCache.current = {};
     setAutoDetecting(false);
-    setServerHealth({ GOGO: "unknown", KOTO: "unknown", ANIZONE: "unknown" });
+    setServerHealth({ GOGO: "unknown", KOTO: "unknown", ANIZONE: "unknown", MIRURO: "unknown" });
     setSourcePageTitle(null);
     setVerifyResult(null);
   }, [animeId, currentEp]);
@@ -495,11 +500,11 @@ export default function WatchAniList() {
     let won = false;
     setAutoDetecting(true);
 
-    const preferred = localStorage.getItem(`na_preferred_${animeId}`) as "GOGO" | "KOTO" | "ANIZONE" | null;
+    const preferred = localStorage.getItem(`na_preferred_${animeId}`) as "GOGO" | "KOTO" | "ANIZONE" | "MIRURO" | null;
     // Non-preferred servers wait this long before their fetch fires, giving preferred a head start
     const HEAD_START = preferred ? 800 : 0;
 
-    const tryWin = (srv: "GOGO" | "KOTO" | "ANIZONE") => {
+    const tryWin = (srv: "GOGO" | "KOTO" | "ANIZONE" | "MIRURO") => {
       if (cancelled || won || userPickedRef.current) return;
       won = true;
       localStorage.setItem(`na_preferred_${animeId}`, srv);
@@ -602,6 +607,25 @@ export default function WatchAniList() {
       raceCache.current.anizone = null;
       setServerHealth(h => ({ ...h, ANIZONE: "fail" }));
     }
+
+    // MIRURO — uses AniList ID directly, no slug needed
+    setServerHealth(h => ({ ...h, MIRURO: "checking" }));
+    schedule(preferred === "MIRURO" ? 0 : HEAD_START, () => {
+      fetch(apiUrl(`/api/miruro/stream?anilistId=${animeId}&ep=${currentEp}`))
+        .then(r => r.json())
+        .then((data: { hlsUrl?: string; subtitles?: { src: string; label: string; srclang: string; isDefault: boolean }[]; error?: string }) => {
+          if (cancelled) return;
+          if (data.hlsUrl) {
+            raceCache.current.miruro = data;
+            setServerHealth(h => ({ ...h, MIRURO: "ok" }));
+            tryWin("MIRURO");
+          } else {
+            raceCache.current.miruro = null;
+            setServerHealth(h => ({ ...h, MIRURO: "fail" }));
+          }
+        })
+        .catch(() => { if (!cancelled) { raceCache.current.miruro = null; setServerHealth(h => ({ ...h, MIRURO: "fail" })); } });
+    });
 
     // If nothing wins after 15s, stop the spinner and stay on current server
     const fallback = setTimeout(() => {
@@ -933,6 +957,47 @@ export default function WatchAniList() {
       .finally(() => { if (!cancelled) setAnizoneStreamLoading(false); });
     return () => { cancelled = true; };
   }, [server, anizoneSlug, currentEp]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fetch Miruro HLS stream when server is MIRURO
+  useEffect(() => {
+    if (server !== "MIRURO") {
+      setMiruroHlsUrl(null);
+      setMiruroSubtitles([]);
+      setMiruroError(null);
+      return;
+    }
+    const cached = raceCache.current.miruro;
+    if (cached !== undefined) {
+      if (cached?.hlsUrl) {
+        setMiruroHlsUrl(cached.hlsUrl);
+        setMiruroSubtitles(cached.subtitles ?? []);
+        setMiruroLoading(false);
+        setMiruroError(null);
+        raceCache.current.miruro = undefined;
+        return;
+      }
+      raceCache.current.miruro = undefined;
+    }
+    let cancelled = false;
+    setMiruroHlsUrl(null);
+    setMiruroSubtitles([]);
+    setMiruroLoading(true);
+    setMiruroError(null);
+    fetch(apiUrl(`/api/miruro/stream?anilistId=${animeId}&ep=${currentEp}`))
+      .then((r) => r.json())
+      .then((data: { hlsUrl?: string; subtitles?: { src: string; label: string; srclang: string; isDefault: boolean }[]; error?: string }) => {
+        if (cancelled) return;
+        if (data.hlsUrl) {
+          setMiruroHlsUrl(data.hlsUrl);
+          setMiruroSubtitles(data.subtitles ?? []);
+        } else {
+          setMiruroError(data.error ?? "No stream found for this episode");
+        }
+      })
+      .catch((e: Error) => { if (!cancelled) setMiruroError(e.message); })
+      .finally(() => { if (!cancelled) setMiruroLoading(false); });
+    return () => { cancelled = true; };
+  }, [server, animeId, currentEp]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // AI episode verification: when a source page title arrives, verify the episode matches
   useEffect(() => {
@@ -1367,6 +1432,17 @@ export default function WatchAniList() {
                   />
                 )}
 
+                {/* MIRURO native HLS player */}
+                {server === "MIRURO" && miruroHlsUrl && (
+                  <HlsPlayer
+                    key={`miruro-${animeId}-${currentEp}`}
+                    hlsUrl={miruroHlsUrl}
+                    subtitles={miruroSubtitles}
+                    title={getEpTitle(currentEp) !== `Episode ${currentEp}` ? `${title} — Ep ${currentEp}: ${getEpTitle(currentEp)}` : `${title} — Episode ${currentEp}`}
+                    progressKey={`al_${animeId}_${currentEp}`}
+                  />
+                )}
+
                 {/* KOTO native HLS player (bypasses mewcdn cross-origin player) */}
                 {server === "KOTO" && kotoHlsUrl && (
                   <HlsPlayer
@@ -1453,6 +1529,34 @@ export default function WatchAniList() {
                           </p>
                         </>
                       )}
+                    </div>
+                  </div>
+                )}
+
+                {/* MIRURO loading / error overlay */}
+                {server === "MIRURO" && !miruroHlsUrl && (
+                  <div className="absolute inset-0 z-10 flex flex-col items-center justify-center" style={{ background: "rgba(0,0,0,0.92)" }}>
+                    {banner && <img src={banner} alt="" className="absolute inset-0 w-full h-full object-cover opacity-10 scale-110 blur-sm" />}
+                    <div className="relative z-10 flex flex-col items-center gap-4">
+                      {miruroError ? (
+                        <div className="text-center space-y-2">
+                          <p className="text-white/70 text-sm font-semibold tracking-wide">Miruro unavailable</p>
+                          <p className="text-white/30 text-[11px] font-mono max-w-[260px] text-center">{miruroError}</p>
+                          <p className="text-white/20 text-[10px] font-mono max-w-[260px] text-center">Try switching to GogoAnimes or AniKoto.</p>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="relative w-14 h-14">
+                            <div className="absolute inset-0 rounded-full border-2 border-white/10" />
+                            <div className="absolute inset-0 rounded-full border-2 border-t-purple-400 border-r-transparent border-b-transparent border-l-transparent animate-spin" />
+                            <div className="absolute inset-2 rounded-full border border-white/20 border-t-purple-400/60 animate-spin" style={{ animationDuration: "0.6s", animationDirection: "reverse" }} />
+                          </div>
+                          <p className="text-white/70 text-sm font-semibold tracking-wide">Fetching Miruro stream…</p>
+                        </>
+                      )}
+                      <p className="text-white/20 text-[11px] font-mono uppercase tracking-widest">
+                        Episode {currentEp} · {lang}
+                      </p>
                     </div>
                   </div>
                 )}
@@ -1853,6 +1957,24 @@ export default function WatchAniList() {
                   }`} />
                 )}
               </button>
+              {/* Miruro server */}
+              <button
+                onClick={() => { userPickedRef.current = true; setServer("MIRURO"); setIframeLoaded(false); }}
+                className={`relative text-[10px] font-mono px-2.5 py-1 border transition-colors ${
+                  server === "MIRURO"
+                    ? "border-purple-400 bg-purple-400 text-black"
+                    : "border-purple-400/30 text-purple-400/60 hover:border-purple-400/70 hover:text-purple-400"
+                }`}
+              >
+                MIRURO
+                {serverHealth.MIRURO !== "unknown" && (
+                  <span className={`absolute -top-1 -right-1 w-2 h-2 rounded-full border border-black ${
+                    serverHealth.MIRURO === "ok" ? "bg-green-400" :
+                    serverHealth.MIRURO === "fail" ? "bg-red-500" :
+                    "bg-yellow-400 animate-pulse"
+                  }`} />
+                )}
+              </button>
             </div>
           </div>
 
@@ -1863,11 +1985,12 @@ export default function WatchAniList() {
                 <div className="w-1.5 h-1.5 rounded-full bg-orange-400/70 animate-bounce [animation-delay:0ms]" />
                 <div className="w-1.5 h-1.5 rounded-full bg-teal-400/70 animate-bounce [animation-delay:150ms]" />
                 <div className="w-1.5 h-1.5 rounded-full bg-blue-400/70 animate-bounce [animation-delay:300ms]" />
+                <div className="w-1.5 h-1.5 rounded-full bg-purple-400/70 animate-bounce [animation-delay:450ms]" />
               </div>
               <span className="text-[10px] font-mono text-white/40 uppercase tracking-widest">Auto-detecting best server…</span>
               {(() => {
-                const pref = localStorage.getItem(`na_preferred_${animeId}`) as "GOGO" | "KOTO" | "ANIZONE" | null;
-                const color = pref === "GOGO" ? "text-orange-400/50" : pref === "KOTO" ? "text-teal-400/50" : pref === "ANIZONE" ? "text-blue-400/50" : null;
+                const pref = localStorage.getItem(`na_preferred_${animeId}`) as "GOGO" | "KOTO" | "ANIZONE" | "MIRURO" | null;
+                const color = pref === "GOGO" ? "text-orange-400/50" : pref === "KOTO" ? "text-teal-400/50" : pref === "ANIZONE" ? "text-blue-400/50" : pref === "MIRURO" ? "text-purple-400/50" : null;
                 return pref && color ? (
                   <span className={`text-[9px] font-mono uppercase tracking-widest ml-auto ${color}`}>
                     trying {pref} first
@@ -1933,6 +2056,28 @@ export default function WatchAniList() {
                 <>
                   <div className="w-2 h-2 rounded-full bg-blue-400 shrink-0" />
                   <span className="text-[10px] font-mono text-blue-400/70 uppercase tracking-widest">Stream Connected</span>
+                </>
+              ) : (
+                <>
+                  <div className="w-2 h-2 rounded-full bg-white/20 shrink-0" />
+                  <span className="text-[10px] font-mono text-white/30 uppercase tracking-widest">Not Connected</span>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* MIRURO status panel */}
+          {!autoDetecting && server === "MIRURO" && (
+            <div className="border-b border-white/5 px-4 py-2.5 flex items-center gap-2.5">
+              {miruroLoading ? (
+                <>
+                  <div className="w-2 h-2 rounded-full bg-purple-400/40 animate-pulse shrink-0" />
+                  <span className="text-[10px] font-mono text-white/30 uppercase tracking-widest">Connecting…</span>
+                </>
+              ) : miruroHlsUrl ? (
+                <>
+                  <div className="w-2 h-2 rounded-full bg-purple-400 shrink-0" />
+                  <span className="text-[10px] font-mono text-purple-400/70 uppercase tracking-widest">Stream Connected</span>
                 </>
               ) : (
                 <>
