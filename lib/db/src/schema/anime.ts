@@ -68,10 +68,24 @@ export const communityPostTable = pgTable("community_post", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+export const reviewRatingEnum = pgEnum("review_rating", ["skip", "timepass", "go_for_it", "perfection"]);
+
+export const reviewTable = pgTable("review", {
+  id: serial("id").primaryKey(),
+  animeId: integer("anime_id").notNull(),
+  username: text("username").notNull(),
+  avatarUrl: text("avatar_url").notNull(),
+  rating: reviewRatingEnum("rating").notNull(),
+  content: text("content").notNull(),
+  likes: integer("likes").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 export const insertAnimeSchema = createInsertSchema(animeTable).omit({ id: true, createdAt: true });
 export const insertEpisodeSchema = createInsertSchema(episodeTable).omit({ id: true, createdAt: true });
 export const insertCommentSchema = createInsertSchema(commentTable).omit({ id: true, createdAt: true });
 export const insertCommunityPostSchema = createInsertSchema(communityPostTable).omit({ id: true, createdAt: true });
+export const insertReviewSchema = createInsertSchema(reviewTable).omit({ id: true, createdAt: true });
 
 export type InsertAnime = z.infer<typeof insertAnimeSchema>;
 export type Anime = typeof animeTable.$inferSelect;
@@ -81,3 +95,5 @@ export type InsertComment = z.infer<typeof insertCommentSchema>;
 export type Comment = typeof commentTable.$inferSelect;
 export type InsertCommunityPost = z.infer<typeof insertCommunityPostSchema>;
 export type CommunityPost = typeof communityPostTable.$inferSelect;
+export type InsertReview = z.infer<typeof insertReviewSchema>;
+export type Review = typeof reviewTable.$inferSelect;

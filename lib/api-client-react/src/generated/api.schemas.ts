@@ -130,6 +130,51 @@ export interface GenreStat {
   count: number;
 }
 
+export type ReviewRating = typeof ReviewRating[keyof typeof ReviewRating];
+
+
+export const ReviewRating = {
+  skip: 'skip',
+  timepass: 'timepass',
+  go_for_it: 'go_for_it',
+  perfection: 'perfection',
+} as const;
+
+export interface Review {
+  id: number;
+  animeId: number;
+  username: string;
+  avatarUrl: string;
+  rating: ReviewRating;
+  content: string;
+  likes: number;
+  createdAt: string;
+}
+
+export type ReviewInputRating = typeof ReviewInputRating[keyof typeof ReviewInputRating];
+
+
+export const ReviewInputRating = {
+  skip: 'skip',
+  timepass: 'timepass',
+  go_for_it: 'go_for_it',
+  perfection: 'perfection',
+} as const;
+
+export interface ReviewInput {
+  username: string;
+  rating: ReviewInputRating;
+  content: string;
+}
+
+export interface ReviewSummary {
+  skip: number;
+  timepass: number;
+  go_for_it: number;
+  perfection: number;
+  total: number;
+}
+
 export interface SiteStats {
   totalAnime: number;
   totalEpisodes: number;

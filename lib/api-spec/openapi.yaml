@@ -305,6 +305,88 @@ paths:
               schema:
                 $ref: "#/components/schemas/Comment"
 
+  /anime/{id}/reviews:
+    get:
+      operationId: listAnimeReviews
+      tags: [anime]
+      summary: List reviews for an anime
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of reviews
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Review"
+    post:
+      operationId: createAnimeReview
+      tags: [anime]
+      summary: Post a review for an anime
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReviewInput"
+      responses:
+        "201":
+          description: Review created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Review"
+
+  /anime/{id}/reviews/summary:
+    get:
+      operationId: getAnimeReviewSummary
+      tags: [anime]
+      summary: Get rating summary for an anime
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Rating summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewSummary"
+
+  /reviews/{id}/like:
+    post:
+      operationId: likeReview
+      tags: [anime]
+      summary: Like a review
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Review liked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Review"
+
   /discovery/trending:
     get:
       operationId: getTrending
@@ -553,6 +635,55 @@ components:
         genre:
           type: string
         count:
+          type: integer
+
+    Review:
+      type: object
+      required: [id, animeId, username, avatarUrl, rating, content, likes, createdAt]
+      properties:
+        id:
+          type: integer
+        animeId:
+          type: integer
+        username:
+          type: string
+        avatarUrl:
+          type: string
+        rating:
+          type: string
+          enum: [skip, timepass, go_for_it, perfection]
+        content:
+          type: string
+        likes:
+          type: integer
+        createdAt:
+          type: string
+
+    ReviewInput:
+      type: object
+      required: [username, rating, content]
+      properties:
+        username:
+          type: string
+        rating:
+          type: string
+          enum: [skip, timepass, go_for_it, perfection]
+        content:
+          type: string
+
+    ReviewSummary:
+      type: object
+      required: [skip, timepass, go_for_it, perfection, total]
+      properties:
+        skip:
+          type: integer
+        timepass:
+          type: integer
+        go_for_it:
+          type: integer
+        perfection:
+          type: integer
+        total:
           type: integer
 
     SiteStats:

@@ -1,17 +1,112 @@
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { Link, useParams } from "wouter";
-import { Play, Star, Calendar, Tv, ArrowLeft, Clock, Bookmark, BookmarkCheck, CheckCircle2 } from "lucide-react";
+import { useState, useRef } from "react";
+import { Play, Star, Calendar, Tv, ArrowLeft, Clock, Bookmark, BookmarkCheck, CheckCircle2, Heart, ThumbsUp } from "lucide-react";
 import {
   useGetAnime,
   getGetAnimeQueryKey,
   useListEpisodes,
   getListEpisodesQueryKey,
+  useListAnimeReviews,
+  getListAnimeReviewsQueryKey,
+  useCreateAnimeReview,
+  useGetAnimeReviewSummary,
+  getGetAnimeReviewSummaryQueryKey,
+  useLikeReview,
 } from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useWatchlist } from "@/hooks/useWatchlist";
 import { useWatchProgress } from "@/hooks/useWatchProgress";
 
 const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.05 } } };
 const fadeUp = { hidden: { opacity: 0, y: 12 }, show: { opacity: 1, y: 0, transition: { duration: 0.4 } } };
+
+type RatingOption = "skip" | "timepass" | "go_for_it" | "perfection";
+
+const RATING_OPTIONS: { value: RatingOption; label: string; color: string; dot: string; bg: string; border: string }[] = [
+  { value: "skip",       label: "Skip",       color: "text-red-400",    dot: "bg-red-400",    bg: "bg-red-400/10",    border: "border-red-400/40" },
+  { value: "timepass",   label: "Timepass",   color: "text-yellow-400", dot: "bg-yellow-400", bg: "bg-yellow-400/10", border: "border-yellow-400/40" },
+  { value: "go_for_it",  label: "Go for it",  color: "text-green-400",  dot: "bg-green-400",  bg: "bg-green-400/10",  border: "border-green-400/40" },
+  { value: "perfection", label: "Perfection", color: "text-purple-400", dot: "bg-purple-400", bg: "bg-purple-400/10", border: "border-purple-400/40" },
+];
+
+function getRatingConfig(rating: RatingOption) {
+  return RATING_OPTIONS.find((r) => r.value === rating)!;
+}
+
+function timeAgo(iso: string) {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 30) return `${days}d ago`;
+  return `${Math.floor(days / 30)}mo ago`;
+}
+
+function ReviewSummaryBar({ summary }: { summary: { skip: number; timepass: number; go_for_it: number; perfection: number; total: number } }) {
+  const total = summary.total;
+  if (total === 0) return null;
+  return (
+    <div className="flex flex-wrap gap-4 py-4 border-b border-white/5">
+      {RATING_OPTIONS.map((opt) => {
+        const count = summary[opt.value];
+        const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+        return (
+          <div key={opt.value} className="flex items-center gap-2">
+            <span className={`w-2.5 h-2.5 rounded-full ${opt.dot}`} />
+            <span className="text-xs font-mono text-white/50 uppercase tracking-widest">{opt.label}</span>
+            <span className={`text-sm font-bold ${opt.color}`}>{pct}%</span>
+          </div>
+        );
+      })}
+      <span className="text-xs font-mono text-white/20 ml-auto self-center">{total} {total === 1 ? "review" : "reviews"}</span>
+    </div>
+  );
+}
+
+function ReviewCard({ review, onLike, likedIds }: {
+  review: { id: number; username: string; avatarUrl: string; rating: RatingOption; content: string; likes: number; createdAt: string };
+  onLike: (id: number) => void;
+  likedIds: Set<number>;
+}) {
+  const cfg = getRatingConfig(review.rating);
+  const liked = likedIds.has(review.id);
+  return (
+    <motion.div variants={fadeUp} className="border border-white/5 p-4 sm:p-5 space-y-3 hover:border-white/10 transition-colors">
+      <div className="flex items-start gap-3">
+        <img src={review.avatarUrl} alt={review.username} className="w-9 h-9 rounded-full flex-shrink-0 bg-white/5" />
+        <div className="flex-1 min-w-0">
+          <div className="flex flex-wrap items-center gap-2 mb-1">
+            <span className="text-sm font-medium text-white">@{review.username}</span>
+            <span className={`text-[10px] font-mono uppercase tracking-widest px-2 py-0.5 rounded-full border ${cfg.color} ${cfg.bg} ${cfg.border} flex items-center gap-1`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
+              {cfg.label}
+            </span>
+            <span className="text-[10px] font-mono text-white/30 ml-auto">{timeAgo(review.createdAt)}</span>
+          </div>
+          <p className="text-white/70 text-sm leading-relaxed">{review.content}</p>
+        </div>
+      </div>
+      <div className="flex justify-end">
+        <button
+          onClick={() => onLike(review.id)}
+          disabled={liked}
+          className={`flex items-center gap-1.5 text-xs font-mono uppercase tracking-widest transition-colors px-3 py-1.5 border ${
+            liked
+              ? "border-white/20 text-white/40 cursor-default"
+              : "border-white/10 text-white/30 hover:border-white/30 hover:text-white/60"
+          }`}
+        >
+          <ThumbsUp className="w-3 h-3" />
+          {review.likes}
+        </button>
+      </div>
+    </motion.div>
+  );
+}
 
 export default function AnimeDetail() {
   const params = useParams();
@@ -19,6 +114,13 @@ export default function AnimeDetail() {
   const { toggle, isInList } = useWatchlist();
   const { isWatched, getLastWatched, countWatched } = useWatchProgress();
   const saved = isInList(id);
+  const queryClient = useQueryClient();
+
+  const [selectedRating, setSelectedRating] = useState<RatingOption | null>(null);
+  const [reviewText, setReviewText] = useState("");
+  const [username, setUsername] = useState("");
+  const [likedIds, setLikedIds] = useState<Set<number>>(new Set());
+  const textRef = useRef<HTMLTextAreaElement>(null);
 
   const { data: anime, isLoading } = useGetAnime(id, {
     query: { enabled: !!id, queryKey: getGetAnimeQueryKey(id) },
@@ -26,6 +128,46 @@ export default function AnimeDetail() {
   const { data: episodes, isLoading: epsLoading } = useListEpisodes(id, {
     query: { enabled: !!id, queryKey: getListEpisodesQueryKey(id) },
   });
+  const { data: reviews, isLoading: reviewsLoading } = useListAnimeReviews(id, {
+    query: { enabled: !!id, queryKey: getListAnimeReviewsQueryKey(id) },
+  });
+  const { data: reviewSummary } = useGetAnimeReviewSummary(id, {
+    query: { enabled: !!id, queryKey: getGetAnimeReviewSummaryQueryKey(id) },
+  });
+  const { mutate: createReview, isPending: submitting } = useCreateAnimeReview({
+    mutation: {
+      onSuccess: () => {
+        setReviewText("");
+        setSelectedRating(null);
+        queryClient.invalidateQueries({ queryKey: getListAnimeReviewsQueryKey(id) });
+        queryClient.invalidateQueries({ queryKey: getGetAnimeReviewSummaryQueryKey(id) });
+      },
+    },
+  });
+  const { mutate: likeReviewMutation } = useLikeReview({
+    mutation: {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListAnimeReviewsQueryKey(id) });
+      },
+    },
+  });
+
+  function handleRatingSelect(r: RatingOption) {
+    setSelectedRating(r);
+    setTimeout(() => textRef.current?.focus(), 50);
+  }
+
+  function handleSubmit() {
+    if (!selectedRating || reviewText.trim().length === 0) return;
+    const name = username.trim() || "Guest";
+    createReview({ id, data: { username: name, rating: selectedRating, content: reviewText.trim() } });
+  }
+
+  function handleLike(reviewId: number) {
+    if (likedIds.has(reviewId)) return;
+    setLikedIds((prev) => new Set(prev).add(reviewId));
+    likeReviewMutation({ id: reviewId });
+  }
 
   if (isLoading) {
     return (
@@ -53,6 +195,7 @@ export default function AnimeDetail() {
   const continueEp = episodes?.find((e) => e.id === lastEpisodeId);
   const firstEpisode = episodes?.[0];
   const resumeEp = continueEp ?? firstEpisode;
+  const canPost = selectedRating !== null && reviewText.trim().length > 0;
 
   return (
     <div className="bg-black text-white min-h-screen">
@@ -221,6 +364,122 @@ export default function AnimeDetail() {
             </motion.div>
           </div>
         )}
+
+        {/* Reviews Section */}
+        <div className="mt-12 sm:mt-20">
+          <div className="flex items-center gap-3 mb-6 sm:mb-8">
+            <h2 className="font-serif text-2xl sm:text-3xl text-white">Reviews</h2>
+            {reviewSummary && reviewSummary.total > 0 && (
+              <span className="text-white/30 font-mono text-sm">{reviewSummary.total}</span>
+            )}
+          </div>
+
+          {/* Rating summary bar */}
+          {reviewSummary && reviewSummary.total > 0 && (
+            <ReviewSummaryBar summary={reviewSummary} />
+          )}
+
+          {/* Review compose box */}
+          <div className="mt-6 border border-white/10 p-4 sm:p-6 space-y-4">
+            {/* Step 1: select a rating */}
+            <div>
+              <p className="text-xs font-mono uppercase tracking-widest text-white/30 mb-3">
+                {selectedRating ? "Your rating" : "Select a rating to continue"}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {RATING_OPTIONS.map((opt) => {
+                  const active = selectedRating === opt.value;
+                  return (
+                    <button
+                      key={opt.value}
+                      onClick={() => handleRatingSelect(opt.value)}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-full border text-sm font-medium transition-all ${
+                        active
+                          ? `${opt.bg} ${opt.border} ${opt.color}`
+                          : "border-white/10 text-white/40 hover:border-white/20 hover:text-white/60"
+                      }`}
+                    >
+                      <span className={`w-2 h-2 rounded-full ${opt.dot} ${active ? "opacity-100" : "opacity-40"}`} />
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Step 2: write review (only after rating is selected) */}
+            <AnimatePresence>
+              {selectedRating && (
+                <motion.div
+                  initial={{ opacity: 0, y: -8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  transition={{ duration: 0.2 }}
+                  className="space-y-3"
+                >
+                  <input
+                    type="text"
+                    placeholder="Your name (optional)"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    className="w-full bg-transparent border border-white/10 text-white text-sm px-4 py-2.5 placeholder:text-white/20 focus:outline-none focus:border-white/30 transition-colors"
+                  />
+                  <textarea
+                    ref={textRef}
+                    placeholder="Write your review here..."
+                    value={reviewText}
+                    onChange={(e) => setReviewText(e.target.value)}
+                    maxLength={1000}
+                    rows={4}
+                    className="w-full bg-transparent border border-white/10 text-white text-sm px-4 py-3 placeholder:text-white/20 focus:outline-none focus:border-white/30 transition-colors resize-none"
+                  />
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-mono text-white/20">{reviewText.length}/1000</span>
+                    <button
+                      onClick={handleSubmit}
+                      disabled={!canPost || submitting}
+                      className={`px-6 py-2.5 text-xs font-bold uppercase tracking-widest transition-all ${
+                        canPost && !submitting
+                          ? "bg-white text-black hover:bg-white/90"
+                          : "bg-white/10 text-white/30 cursor-not-allowed"
+                      }`}
+                    >
+                      {submitting ? "Posting..." : "Post"}
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          {/* Review list */}
+          {reviewsLoading ? (
+            <div className="mt-6 space-y-3">
+              {[...Array(3)].map((_, i) => (
+                <div key={i} className="border border-white/5 p-4 h-24 animate-pulse bg-white/[0.01]" />
+              ))}
+            </div>
+          ) : reviews && reviews.length > 0 ? (
+            <motion.div
+              variants={stagger}
+              initial="hidden"
+              whileInView="show"
+              viewport={{ once: true }}
+              className="mt-4 space-y-2"
+            >
+              {reviews.map((review) => (
+                <ReviewCard
+                  key={review.id}
+                  review={review as any}
+                  onLike={handleLike}
+                  likedIds={likedIds}
+                />
+              ))}
+            </motion.div>
+          ) : (
+            <p className="mt-6 text-white/20 text-sm font-mono text-center py-8">No reviews yet. Be the first!</p>
+          )}
+        </div>
       </div>
     </div>
   );

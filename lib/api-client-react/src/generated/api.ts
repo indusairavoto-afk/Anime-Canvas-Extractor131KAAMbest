@@ -31,6 +31,9 @@ import type {
   HealthStatus,
   ListAnimeParams,
   ListCommunityPostsParams,
+  Review,
+  ReviewInput,
+  ReviewSummary,
   SiteStats
 } from './api.schemas';
 
@@ -1036,6 +1039,302 @@ export const useCreatePostComment = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getCreatePostCommentMutationOptions(options));
+    }
+
+export const getListAnimeReviewsUrl = (id: number,) => {
+
+
+
+
+  return `/api/anime/${id}/reviews`
+}
+
+/**
+ * @summary List reviews for an anime
+ */
+export const listAnimeReviews = async (id: number, options?: RequestInit): Promise<Review[]> => {
+
+  return customFetch<Review[]>(getListAnimeReviewsUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListAnimeReviewsQueryKey = (id: number,) => {
+    return [
+    `/api/anime/${id}/reviews`
+    ] as const;
+    }
+
+
+export const getListAnimeReviewsQueryOptions = <TData = Awaited<ReturnType<typeof listAnimeReviews>>, TError = ErrorType<unknown>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAnimeReviews>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListAnimeReviewsQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listAnimeReviews>>> = ({ signal }) => listAnimeReviews(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAnimeReviews>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListAnimeReviewsQueryResult = NonNullable<Awaited<ReturnType<typeof listAnimeReviews>>>
+export type ListAnimeReviewsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List reviews for an anime
+ */
+
+export function useListAnimeReviews<TData = Awaited<ReturnType<typeof listAnimeReviews>>, TError = ErrorType<unknown>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAnimeReviews>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListAnimeReviewsQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateAnimeReviewUrl = (id: number,) => {
+
+
+
+
+  return `/api/anime/${id}/reviews`
+}
+
+/**
+ * @summary Post a review for an anime
+ */
+export const createAnimeReview = async (id: number,
+    reviewInput: ReviewInput, options?: RequestInit): Promise<Review> => {
+
+  return customFetch<Review>(getCreateAnimeReviewUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      reviewInput,)
+  }
+);}
+
+
+
+
+export const getCreateAnimeReviewMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAnimeReview>>, TError,{id: number;data: BodyType<ReviewInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createAnimeReview>>, TError,{id: number;data: BodyType<ReviewInput>}, TContext> => {
+
+const mutationKey = ['createAnimeReview'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createAnimeReview>>, {id: number;data: BodyType<ReviewInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  createAnimeReview(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateAnimeReviewMutationResult = NonNullable<Awaited<ReturnType<typeof createAnimeReview>>>
+    export type CreateAnimeReviewMutationBody = BodyType<ReviewInput>
+    export type CreateAnimeReviewMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Post a review for an anime
+ */
+export const useCreateAnimeReview = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAnimeReview>>, TError,{id: number;data: BodyType<ReviewInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createAnimeReview>>,
+        TError,
+        {id: number;data: BodyType<ReviewInput>},
+        TContext
+      > => {
+      return useMutation(getCreateAnimeReviewMutationOptions(options));
+    }
+
+export const getGetAnimeReviewSummaryUrl = (id: number,) => {
+
+
+
+
+  return `/api/anime/${id}/reviews/summary`
+}
+
+/**
+ * @summary Get rating summary for an anime
+ */
+export const getAnimeReviewSummary = async (id: number, options?: RequestInit): Promise<ReviewSummary> => {
+
+  return customFetch<ReviewSummary>(getGetAnimeReviewSummaryUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAnimeReviewSummaryQueryKey = (id: number,) => {
+    return [
+    `/api/anime/${id}/reviews/summary`
+    ] as const;
+    }
+
+
+export const getGetAnimeReviewSummaryQueryOptions = <TData = Awaited<ReturnType<typeof getAnimeReviewSummary>>, TError = ErrorType<unknown>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAnimeReviewSummary>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAnimeReviewSummaryQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAnimeReviewSummary>>> = ({ signal }) => getAnimeReviewSummary(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAnimeReviewSummary>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAnimeReviewSummaryQueryResult = NonNullable<Awaited<ReturnType<typeof getAnimeReviewSummary>>>
+export type GetAnimeReviewSummaryQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get rating summary for an anime
+ */
+
+export function useGetAnimeReviewSummary<TData = Awaited<ReturnType<typeof getAnimeReviewSummary>>, TError = ErrorType<unknown>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAnimeReviewSummary>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAnimeReviewSummaryQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getLikeReviewUrl = (id: number,) => {
+
+
+
+
+  return `/api/reviews/${id}/like`
+}
+
+/**
+ * @summary Like a review
+ */
+export const likeReview = async (id: number, options?: RequestInit): Promise<Review> => {
+
+  return customFetch<Review>(getLikeReviewUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getLikeReviewMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof likeReview>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof likeReview>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['likeReview'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof likeReview>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  likeReview(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type LikeReviewMutationResult = NonNullable<Awaited<ReturnType<typeof likeReview>>>
+
+    export type LikeReviewMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Like a review
+ */
+export const useLikeReview = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof likeReview>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof likeReview>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getLikeReviewMutationOptions(options));
     }
 
 export const getGetTrendingUrl = () => {

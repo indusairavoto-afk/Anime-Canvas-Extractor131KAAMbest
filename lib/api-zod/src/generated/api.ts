@@ -272,6 +272,75 @@ export const CreatePostCommentBody = zod.object({
 
 
 /**
+ * @summary List reviews for an anime
+ */
+export const ListAnimeReviewsParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ListAnimeReviewsResponseItem = zod.object({
+  "id": zod.number(),
+  "animeId": zod.number(),
+  "username": zod.string(),
+  "avatarUrl": zod.string(),
+  "rating": zod.enum(['skip', 'timepass', 'go_for_it', 'perfection']),
+  "content": zod.string(),
+  "likes": zod.number(),
+  "createdAt": zod.string()
+})
+export const ListAnimeReviewsResponse = zod.array(ListAnimeReviewsResponseItem)
+
+
+/**
+ * @summary Post a review for an anime
+ */
+export const CreateAnimeReviewParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const CreateAnimeReviewBody = zod.object({
+  "username": zod.string(),
+  "rating": zod.enum(['skip', 'timepass', 'go_for_it', 'perfection']),
+  "content": zod.string()
+})
+
+
+/**
+ * @summary Get rating summary for an anime
+ */
+export const GetAnimeReviewSummaryParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetAnimeReviewSummaryResponse = zod.object({
+  "skip": zod.number(),
+  "timepass": zod.number(),
+  "go_for_it": zod.number(),
+  "perfection": zod.number(),
+  "total": zod.number()
+})
+
+
+/**
+ * @summary Like a review
+ */
+export const LikeReviewParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const LikeReviewResponse = zod.object({
+  "id": zod.number(),
+  "animeId": zod.number(),
+  "username": zod.string(),
+  "avatarUrl": zod.string(),
+  "rating": zod.enum(['skip', 'timepass', 'go_for_it', 'perfection']),
+  "content": zod.string(),
+  "likes": zod.number(),
+  "createdAt": zod.string()
+})
+
+
+/**
  * @summary Get trending anime this week
  */
 export const GetTrendingResponseItem = zod.object({
