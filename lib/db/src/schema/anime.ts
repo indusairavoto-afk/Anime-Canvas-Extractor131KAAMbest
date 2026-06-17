@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, real, boolean, pgEnum, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, real, boolean, pgEnum, timestamp, unique } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -78,6 +78,27 @@ export const reviewTable = pgTable("review", {
   rating: reviewRatingEnum("rating").notNull(),
   content: text("content").notNull(),
   spoiler: boolean("spoiler").notNull().default(false),
+  likes: integer("likes").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const userTable = pgTable("user", {
+  id: serial("id").primaryKey(),
+  username: text("username").notNull().unique(),
+  displayName: text("display_name").notNull(),
+  email: text("email").notNull().unique(),
+  passwordHash: text("password_hash").notNull(),
+  bio: text("bio"),
+  avatarSeed: text("avatar_seed").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const reviewReplyTable = pgTable("review_reply", {
+  id: serial("id").primaryKey(),
+  reviewId: integer("review_id").notNull(),
+  username: text("username").notNull(),
+  avatarUrl: text("avatar_url").notNull(),
+  content: text("content").notNull(),
   likes: integer("likes").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });

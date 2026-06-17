@@ -5,6 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { Topbar } from "@/components/topbar";
 import { Sidebar } from "@/components/sidebar";
 import { SidebarProvider } from "@/contexts/sidebar-context";
+import { AuthProvider } from "@/contexts/auth-context";
 import { ScrollToTop } from "@/components/scroll-to-top";
 import NotFound from "@/pages/not-found";
 import Home from "@/pages/home";
@@ -19,6 +20,8 @@ import CommunityPostDetail from "@/pages/community-post-detail";
 import Schedule from "@/pages/schedule";
 import Watchlist from "@/pages/watchlist";
 import Ranking from "@/pages/ranking";
+import AuthPage from "@/pages/auth";
+import ProfilePage from "@/pages/profile";
 
 const queryClient = new QueryClient();
 
@@ -37,6 +40,9 @@ function Router() {
       <Route path="/community/:id" component={CommunityPostDetail} />
       <Route path="/schedule" component={Schedule} />
       <Route path="/watchlist" component={Watchlist} />
+      <Route path="/login" component={AuthPage} />
+      <Route path="/register" component={AuthPage} />
+      <Route path="/u/:username" component={ProfilePage} />
       <Route component={NotFound} />
     </Switch>
   );
@@ -46,16 +52,18 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-          <ScrollToTop />
-          <SidebarProvider>
-            <Topbar />
-            <Sidebar />
-            <div className="pt-14">
-              <Router />
-            </div>
-          </SidebarProvider>
-        </WouterRouter>
+        <AuthProvider>
+          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+            <ScrollToTop />
+            <SidebarProvider>
+              <Topbar />
+              <Sidebar />
+              <div className="pt-14">
+                <Router />
+              </div>
+            </SidebarProvider>
+          </WouterRouter>
+        </AuthProvider>
         <Toaster />
       </TooltipProvider>
     </QueryClientProvider>

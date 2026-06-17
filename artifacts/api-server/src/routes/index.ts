@@ -12,6 +12,9 @@ import anizoneRouter from "./anizone";
 import viewersRouter from "./viewers";
 import votesRouter from "./votes";
 import reviewsRouter from "./reviews";
+import authRouter from "./auth";
+import usersRouter from "./users";
+import repliesRouter from "./replies";
 
 const router: IRouter = Router();
 
@@ -28,5 +31,8 @@ router.use(anizoneRouter);
 router.use(viewersRouter);
 router.use(votesRouter);
 router.use(reviewsRouter);
+router.use(authRouter);
+router.use(usersRouter);
+router.use(repliesRouter);
 
 export default router;

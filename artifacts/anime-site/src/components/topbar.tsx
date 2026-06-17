@@ -1,7 +1,8 @@
 import { Link, useLocation } from "wouter";
-import { Search, Bell, X, ArrowRight } from "lucide-react";
+import { Search, Bell, X, ArrowRight, LogIn } from "lucide-react";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useAuth } from "@/contexts/auth-context";
 
 interface AniResult {
   id: number;
@@ -48,6 +49,7 @@ export function Topbar() {
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [, navigate] = useLocation();
+  const { user } = useAuth();
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 60);
@@ -73,7 +75,6 @@ export function Topbar() {
     setActiveIndex(-1);
   }, []);
 
-  // Search with debounce
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (query.length < 2) { setResults([]); setLoading(false); return; }
@@ -87,7 +88,6 @@ export function Topbar() {
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [query]);
 
-  // Global Ctrl+K / Ctrl+S shortcut
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "s")) {
@@ -123,6 +123,10 @@ export function Topbar() {
     }
   }, [results, activeIndex, closeModal, handleSelect, handleViewAll]);
 
+  const initials = user
+    ? user.displayName.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2)
+    : null;
+
   return (
     <>
       <header
@@ -135,7 +139,6 @@ export function Topbar() {
           </span>
         </Link>
 
-        {/* Desktop search trigger */}
         <button
           onClick={openModal}
           className="hidden sm:flex flex-1 max-w-lg items-center gap-3 bg-white/[0.04] border border-white/10 px-4 py-2 hover:border-white/25 transition-colors text-left"
@@ -149,7 +152,6 @@ export function Topbar() {
         </button>
 
         <div className="ml-auto flex items-center gap-2">
-          {/* Mobile search icon */}
           <button onClick={openModal} className="sm:hidden w-9 h-9 flex items-center justify-center text-white/50 hover:text-white transition-colors">
             <Search className="w-5 h-5" />
           </button>
@@ -157,9 +159,21 @@ export function Topbar() {
             <Bell className="w-4 h-4" />
             <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-white rounded-full" />
           </button>
-          <div className="w-8 h-8 rounded-full bg-white/10 border border-white/20 overflow-hidden">
-            <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=noir" alt="Profile" className="w-full h-full grayscale" />
-          </div>
+
+          {user ? (
+            <Link href={`/u/${user.username}`}>
+              <div className="w-8 h-8 rounded-full bg-zinc-700 border border-white/20 flex items-center justify-center text-xs font-bold text-white/80 cursor-pointer hover:bg-zinc-600 transition-colors select-none uppercase">
+                {initials}
+              </div>
+            </Link>
+          ) : (
+            <Link href="/login">
+              <button className="flex items-center gap-1.5 text-xs text-white/50 hover:text-white transition-colors border border-white/10 hover:border-white/30 px-3 py-1.5 rounded-full">
+                <LogIn className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Sign in</span>
+              </button>
+            </Link>
+          )}
         </div>
       </header>
 
@@ -167,7 +181,6 @@ export function Topbar() {
       <AnimatePresence>
         {modalOpen && (
           <>
-            {/* Backdrop */}
             <motion.div
               key="backdrop"
               initial={{ opacity: 0 }}
@@ -177,8 +190,6 @@ export function Topbar() {
               className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-sm"
               onClick={closeModal}
             />
-
-            {/* Dialog */}
             <motion.div
               key="dialog"
               initial={{ opacity: 0, scale: 0.96, y: -16 }}
@@ -188,7 +199,6 @@ export function Topbar() {
               className="fixed left-1/2 top-[18%] -translate-x-1/2 z-[61] w-full max-w-xl px-4"
             >
               <div className="bg-zinc-900 border border-white/[0.10] shadow-2xl overflow-hidden" style={{ borderRadius: 12 }}>
-                {/* Shortcut hint */}
                 <div className="flex items-center justify-between px-4 pt-3 pb-2">
                   <p className="text-[10px] font-mono text-white/25 uppercase tracking-widest">
                     For quick access:&nbsp;
@@ -200,16 +210,12 @@ export function Topbar() {
                     <X className="w-4 h-4" />
                   </button>
                 </div>
-
-                {/* Tabs */}
                 <div className="flex border-b border-white/[0.08] px-4">
                   <button className="relative py-2 px-3 text-sm font-mono uppercase tracking-widest text-white/80 text-[11px]">
                     Anime
                     <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-white/70" />
                   </button>
                 </div>
-
-                {/* Search input */}
                 <div className="flex items-center gap-3 px-4 py-3 border-b border-white/[0.06]">
                   <Search className="w-4 h-4 text-white/30 flex-shrink-0" />
                   <input
@@ -228,18 +234,12 @@ export function Topbar() {
                     </button>
                   )}
                 </div>
-
-                {/* Results */}
                 <div className="max-h-72 overflow-y-auto">
                   {loading && (
-                    <div className="px-4 py-6 text-center text-white/25 text-xs font-mono uppercase tracking-widest">
-                      Searching...
-                    </div>
+                    <div className="px-4 py-6 text-center text-white/25 text-xs font-mono uppercase tracking-widest">Searching...</div>
                   )}
                   {!loading && query.length >= 2 && results.length === 0 && (
-                    <div className="px-4 py-6 text-center text-white/25 text-xs font-mono uppercase tracking-widest">
-                      No results for "{query}"
-                    </div>
+                    <div className="px-4 py-6 text-center text-white/25 text-xs font-mono uppercase tracking-widest">No results for "{query}"</div>
                   )}
                   {!loading && results.map((anime, i) => {
                     const title = anime.title.english || anime.title.romaji;
@@ -266,8 +266,6 @@ export function Topbar() {
                     );
                   })}
                 </div>
-
-                {/* View all footer */}
                 {query.trim() && results.length > 0 && (
                   <button
                     onClick={handleViewAll}
@@ -277,8 +275,6 @@ export function Topbar() {
                     <ArrowRight className="w-3 h-3" />
                   </button>
                 )}
-
-                {/* Empty state hint */}
                 {!query && (
                   <div className="px-4 py-6 text-center text-white/20 text-[11px] font-mono uppercase tracking-widest">
                     Type to search anime...

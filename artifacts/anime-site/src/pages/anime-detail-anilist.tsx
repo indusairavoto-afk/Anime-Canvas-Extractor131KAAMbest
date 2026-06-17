@@ -2,7 +2,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Link, useParams } from "wouter";
 import {
   ArrowLeft, Star, Calendar, Tv, Bookmark, BookmarkCheck,
-  Play, Film, ThumbsUp,
+  Play, Film, ThumbsUp, MessageCircle, Send,
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { useWatchlist } from "@/hooks/useWatchlist";
@@ -15,6 +15,7 @@ import {
   useLikeReview,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "@/contexts/auth-context";
 
 type RatingOption = "skip" | "timepass" | "go_for_it" | "perfection";
 
@@ -152,6 +153,7 @@ export default function AnimeDetailAniList() {
   const { toggle, isInList } = useWatchlist();
   const saved = isInList(anilistId);
   const queryClient = useQueryClient();
+  const { user: authUser } = useAuth();
 
   const [anime, setAnime] = useState<AniMedia | null>(null);
   const [loading, setLoading] = useState(true);
@@ -166,6 +168,46 @@ export default function AnimeDetailAniList() {
   const [showSpoilers, setShowSpoilers] = useState(false);
   const [sortOrder, setSortOrder] = useState<"liked" | "newest" | "oldest">("liked");
   const textRef = useRef<HTMLTextAreaElement>(null);
+
+  type ReplyItem = { id: number; reviewId: number; username: string; avatarUrl: string; content: string; likes: number; createdAt: string };
+  const [expandedReplies, setExpandedReplies] = useState<Set<number>>(new Set());
+  const [repliesData, setRepliesData] = useState<Record<number, ReplyItem[]>>({});
+  const [replyText, setReplyText] = useState<Record<number, string>>({});
+  const [replySubmitting, setReplySubmitting] = useState<Set<number>>(new Set());
+
+  async function loadReplies(reviewId: number) {
+    const res = await fetch(`/api/reviews/${reviewId}/replies`);
+    if (res.ok) {
+      const data = await res.json();
+      setRepliesData(prev => ({ ...prev, [reviewId]: data }));
+    }
+  }
+
+  function toggleReplies(reviewId: number) {
+    setExpandedReplies(prev => {
+      const next = new Set(prev);
+      if (next.has(reviewId)) { next.delete(reviewId); }
+      else { next.add(reviewId); loadReplies(reviewId); }
+      return next;
+    });
+  }
+
+  async function submitReply(reviewId: number) {
+    const content = (replyText[reviewId] || "").trim();
+    if (!content) return;
+    setReplySubmitting(prev => new Set(prev).add(reviewId));
+    const name = authUser?.username || username.trim() || "Guest";
+    const res = await fetch(`/api/reviews/${reviewId}/replies`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: name, content }),
+    });
+    if (res.ok) {
+      setReplyText(prev => ({ ...prev, [reviewId]: "" }));
+      await loadReplies(reviewId);
+    }
+    setReplySubmitting(prev => { const next = new Set(prev); next.delete(reviewId); return next; });
+  }
 
   const { data: reviews, isLoading: reviewsLoading } = useListAnimeReviews(anilistId, {
     query: { enabled: !!anilistId, queryKey: getListAnimeReviewsQueryKey(anilistId) },
@@ -199,7 +241,7 @@ export default function AnimeDetailAniList() {
 
   function handleSubmit() {
     if (!selectedRating || reviewText.trim().length === 0) return;
-    const name = username.trim() || "Guest";
+    const name = authUser?.username || username.trim() || "Guest";
     createReview({ id: anilistId, data: { username: name, rating: selectedRating, content: reviewText.trim(), spoiler: isSpoiler } });
   }
 
@@ -601,15 +643,21 @@ export default function AnimeDetailAniList() {
             {/* Row: avatar + username + rating pills */}
             <div className="flex items-center gap-3 mb-3">
               <div className="w-9 h-9 rounded-full bg-zinc-700 flex items-center justify-center text-sm font-bold text-white/80 flex-shrink-0 uppercase select-none">
-                {(username.trim() || "G").slice(0, 2)}
+                {authUser
+                  ? authUser.displayName.split(" ").map(w => w[0]).join("").slice(0, 2)
+                  : (username.trim() || "G").slice(0, 2)}
               </div>
-              <input
-                type="text"
-                placeholder="@username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                className="bg-transparent text-sm text-white placeholder:text-white/30 focus:outline-none w-28 min-w-0"
-              />
+              {authUser ? (
+                <span className="text-sm text-white/60">@{authUser.username}</span>
+              ) : (
+                <input
+                  type="text"
+                  placeholder="@username"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  className="bg-transparent text-sm text-white placeholder:text-white/30 focus:outline-none w-28 min-w-0"
+                />
+              )}
               <div className="flex items-center gap-1 ml-auto flex-wrap justify-end">
                 {RATING_OPTIONS.map((opt) => {
                   const active = selectedRating === opt.value;
@@ -753,7 +801,8 @@ export default function AnimeDetailAniList() {
                         </div>
                       </div>
 
-                      <div className="flex justify-end mt-3">
+                      {/* Like + Reply buttons */}
+                      <div className="flex items-center gap-2 mt-3">
                         <button
                           onClick={() => handleLike(review.id)}
                           disabled={liked}
@@ -766,7 +815,58 @@ export default function AnimeDetailAniList() {
                           <ThumbsUp className="w-3 h-3" />
                           {review.likes}
                         </button>
+                        <button
+                          onClick={() => toggleReplies(review.id)}
+                          className="flex items-center gap-1.5 text-xs rounded-full px-3 py-1 border border-white/10 text-white/40 hover:border-white/25 hover:text-white/60 transition-colors"
+                        >
+                          <MessageCircle className="w-3 h-3" />
+                          {expandedReplies.has(review.id) ? "Hide" : "Reply"}
+                        </button>
                       </div>
+
+                      {/* Reply section */}
+                      <AnimatePresence>
+                        {expandedReplies.has(review.id) && (
+                          <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: "auto" }}
+                            exit={{ opacity: 0, height: 0 }}
+                            transition={{ duration: 0.18 }}
+                            className="mt-3 pl-3 border-l border-white/8 space-y-3 overflow-hidden"
+                          >
+                            {(repliesData[review.id] || []).map(reply => (
+                              <div key={reply.id} className="flex items-start gap-2">
+                                <img src={reply.avatarUrl} alt={reply.username} className="w-6 h-6 rounded-full flex-shrink-0 bg-zinc-800" />
+                                <div>
+                                  <span className="text-xs font-semibold text-white/70">{reply.username}</span>
+                                  <span className="text-[10px] text-white/30 ml-2">{timeAgo(reply.createdAt)}</span>
+                                  <p className="text-xs text-white/55 leading-relaxed mt-0.5">{reply.content}</p>
+                                </div>
+                              </div>
+                            ))}
+                            <div className="flex items-center gap-2 pt-1">
+                              <div className="w-6 h-6 rounded-full bg-zinc-700 flex items-center justify-center text-[10px] font-bold text-white/60 uppercase flex-shrink-0 select-none">
+                                {authUser ? authUser.displayName[0].toUpperCase() : "G"}
+                              </div>
+                              <input
+                                type="text"
+                                placeholder="Write a reply..."
+                                value={replyText[review.id] || ""}
+                                onChange={e => setReplyText(prev => ({ ...prev, [review.id]: e.target.value }))}
+                                onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submitReply(review.id); } }}
+                                className="flex-1 bg-zinc-800 rounded-full px-3 py-1.5 text-xs text-white placeholder:text-white/25 focus:outline-none focus:ring-1 focus:ring-white/20"
+                              />
+                              <button
+                                onClick={() => submitReply(review.id)}
+                                disabled={replySubmitting.has(review.id) || !(replyText[review.id] || "").trim()}
+                                className="text-white/40 hover:text-white/70 transition-colors disabled:opacity-30"
+                              >
+                                <Send className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     </motion.div>
                   );
                 })}
