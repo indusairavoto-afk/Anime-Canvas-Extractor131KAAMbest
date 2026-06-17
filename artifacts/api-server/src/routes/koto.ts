@@ -6,18 +6,10 @@ function encodeProxyUrl(url: string): string {
   return Buffer.from(url).toString("base64url");
 }
 
-/**
- * Proxy a KOTO HLS URL through the shared anizone HLS proxy endpoint.
- * This avoids CORS issues since the browser fetches from our own origin.
- */
 function proxyHlsUrl(hlsUrl: string): string {
   return `/api/anizone/hls?u=${encodeProxyUrl(hlsUrl)}`;
 }
 
-/**
- * Extract the raw HLS URL embedded in a mewcdn.online player URL.
- * Format: https://mewcdn.online/player/plyr.php#BASE64[#]
- */
 function extractHlsFromPlayerUrl(playerUrl: string): string | null {
   const hashIdx = playerUrl.indexOf("#");
   if (hashIdx === -1) return null;
@@ -55,11 +47,9 @@ interface StreamResult {
   url: string;
   skipData: unknown;
   isDub?: boolean;
+  sourceTitle?: string | null;
 }
 
-/**
- * Calls anikoto.cz/ajax/server?get={token} to decrypt a link ID into a CDN URL.
- */
 async function decryptLinkId(token: string): Promise<StreamResult | null> {
   const resp = await fetch(
     `https://anikoto.cz/ajax/server?get=${encodeURIComponent(token)}`,
@@ -79,9 +69,6 @@ async function decryptLinkId(token: string): Promise<StreamResult | null> {
   return { url: data.result.url, skipData: data.result.skip_data ?? null };
 }
 
-/**
- * Given ordered link IDs, decrypt each until one returns a valid URL.
- */
 async function tryLinkIds(linkIds: string[]): Promise<StreamResult | null> {
   for (const id of linkIds) {
     try {
@@ -94,9 +81,6 @@ async function tryLinkIds(linkIds: string[]): Promise<StreamResult | null> {
   return null;
 }
 
-/**
- * Parses data-link-id values out of server list HTML, ordered sub → hsub → dub.
- */
 function extractLinkIds(html: string): string[] {
   const ids: string[] = [];
   const seenIds = new Set<string>();
@@ -118,7 +102,6 @@ function extractLinkIds(html: string): string[] {
     }
   }
 
-  // Fallback: catch any not already found
   const allRe = /data-link-id="([^"]+)"/g;
   let m2: RegExpExecArray | null;
   while ((m2 = allRe.exec(html)) !== null) {
@@ -132,15 +115,7 @@ function extractLinkIds(html: string): string[] {
   return ids;
 }
 
-/**
- * Primary extraction path:
- *  1. Fetch anikoto.cz/watch/{slug}/ep-{ep} → extract data-id (anime ID)
- *  2. GET /ajax/episode/list/{animeId} → find episode row for ep → get data-ids token
- *  3. GET /ajax/server/list?servers={data-ids} → get server list with data-link-id tokens
- *  4. Decrypt each link ID until one returns a CDN URL
- */
 async function fetchViaAnikotoNative(slug: string, ep: number): Promise<StreamResult | null> {
-  // Step 1: Watch page → anime ID
   const pageResp = await fetch(
     `https://anikoto.cz/watch/${encodeURIComponent(slug)}/ep-${ep}`,
     {
@@ -154,11 +129,14 @@ async function fetchViaAnikotoNative(slug: string, ep: number): Promise<StreamRe
   if (!pageResp.ok) return null;
   const pageHtml = await pageResp.text();
 
+  // Extract page title for episode verification
+  const pageTitleMatch = pageHtml.match(/<title[^>]*>([^<]+)<\/title>/i);
+  const sourceTitle = pageTitleMatch?.[1]?.trim().replace(/\s+/g, " ") ?? null;
+
   const animeIdMatch = pageHtml.match(/data-id="(\d+)"/);
   if (!animeIdMatch) return null;
   const animeId = animeIdMatch[1];
 
-  // Step 2: Episode list → data-ids for the requested episode
   const epListResp = await fetch(
     `https://anikoto.cz/ajax/episode/list/${animeId}`,
     {
@@ -175,7 +153,6 @@ async function fetchViaAnikotoNative(slug: string, ep: number): Promise<StreamRe
   };
   const epHtml = epListJson.result ?? "";
 
-  // Find <a ... data-num="{ep}" ... > and pull its data-ids
   const tagRe = new RegExp(`<a[^>]+data-num="${ep}"[^>]*>`, "i");
   const tagMatch = epHtml.match(tagRe);
   if (!tagMatch) return null;
@@ -184,7 +161,6 @@ async function fetchViaAnikotoNative(slug: string, ep: number): Promise<StreamRe
   if (!dataIdsMatch) return null;
   const dataIds = dataIdsMatch[1];
 
-  // Step 3: Server list from data-ids
   const serverListResp = await fetch(
     `https://anikoto.cz/ajax/server/list?servers=${encodeURIComponent(dataIds)}`,
     {
@@ -202,16 +178,14 @@ async function fetchViaAnikotoNative(slug: string, ep: number): Promise<StreamRe
   if (serverListJson.status !== 200) return null;
   const serverHtml = serverListJson.result ?? "";
 
-  // Step 4: Extract and decrypt link IDs
   const linkIds = extractLinkIds(serverHtml);
   if (linkIds.length === 0) return null;
 
-  return await tryLinkIds(linkIds);
+  const streamResult = await tryLinkIds(linkIds);
+  if (!streamResult) return null;
+  return { ...streamResult, sourceTitle };
 }
 
-/**
- * Fallback extraction path using mapper.nekostream.site
- */
 async function fetchViaMapper(malId: string, ep: string): Promise<StreamResult | null> {
   const timestamp = Math.floor(Date.now() / 1000);
   const mapperUrl = `https://mapper.nekostream.site/api/mal/${malId}/${ep}/${timestamp}`;
@@ -245,9 +219,6 @@ async function fetchViaMapper(malId: string, ep: string): Promise<StreamResult |
 
 /**
  * GET /api/koto/stream?slug={kotoSlug}&malId={malId}&ep={episodeNumber}
- *
- * Primary:  native anikoto.cz API pipeline (requires slug)
- * Fallback: mapper.nekostream.site (requires malId)
  */
 router.get("/koto/stream", async (req, res) => {
   const slug = (req.query.slug as string | undefined)?.trim();
@@ -263,20 +234,17 @@ router.get("/koto/stream", async (req, res) => {
     return res.status(400).json({ error: "slug or malId query param required" });
   }
 
-  function buildResponse(result: { url: string; skipData: unknown; isDub?: boolean }) {
+  function buildResponse(result: StreamResult) {
     const rawHls = extractHlsFromPlayerUrl(result.url);
     return {
       url: result.url,
       hlsUrl: rawHls ? proxyHlsUrl(rawHls) : null,
       skipData: result.skipData,
       isDub: result.isDub ?? false,
+      sourceTitle: result.sourceTitle ?? null,
     };
   }
 
-  // ── Primary: native anikoto.cz API (slug-based, no mapper dependency) ─────
-  // If the native path finds a URL but can't extract HLS from it (e.g. vidtube.site
-  // player URLs), save it as a last-resort fallback and continue to the mapper so we
-  // can try to get a proper HLS stream instead of falling back to a proxied iframe.
   let nativeFallbackResult: StreamResult | null = null;
 
   if (slug) {
@@ -285,10 +253,8 @@ router.get("/koto/stream", async (req, res) => {
       if (result?.url) {
         const rawHls = extractHlsFromPlayerUrl(result.url);
         if (rawHls) {
-          // HLS extractable → return immediately, no need for mapper
           return res.json(buildResponse(result));
         }
-        // URL found but no extractable HLS (e.g. vidtube.site) → try mapper first
         nativeFallbackResult = result;
         req.log.info({ url: result.url }, "native anikoto returned non-HLS URL, trying mapper for HLS");
       }
@@ -297,7 +263,6 @@ router.get("/koto/stream", async (req, res) => {
     }
   }
 
-  // ── Fallback: mapper.nekostream.site (malId-based) ─────────────────────────
   if (malId) {
     try {
       const result = await fetchViaMapper(malId, ep);
@@ -309,7 +274,6 @@ router.get("/koto/stream", async (req, res) => {
     }
   }
 
-  // ── Last resort: return the native non-HLS URL (proxied iframe will handle it) ─
   if (nativeFallbackResult) {
     req.log.info("mapper yielded no stream, using native non-HLS URL as last resort");
     return res.json(buildResponse(nativeFallbackResult));
@@ -318,6 +282,11 @@ router.get("/koto/stream", async (req, res) => {
   return res.status(404).json({ error: "No stream URL found for this episode" });
 });
 
+/**
+ * GET /api/koto/search?q=...&limit=10
+ * Searches anikoto.cz for anime matching the query.
+ * Uses multiple regex fallback patterns for robustness.
+ */
 router.get("/koto/search", async (req, res) => {
   const q = (req.query.q as string | undefined)?.trim();
   const limit = Math.min(parseInt((req.query.limit as string) || "10"), 20);
@@ -357,6 +326,7 @@ router.get("/koto/search", async (req, res) => {
     const results: { slug: string; title: string; thumbnail: string }[] = [];
     const seen = new Set<string>();
 
+    // Pattern 1: full block with slug + image + title class
     const blockRe = /href="https?:\/\/anikoto\.cz\/watch\/([^"\/\s]+)"[\s\S]*?<img[^>]+src="([^"]*)"[\s\S]*?class="[^"]*d-title[^"]*"[^>]*>([^<]+)</g;
     let m: RegExpExecArray | null;
     while ((m = blockRe.exec(html)) !== null && results.length < limit) {
@@ -368,17 +338,40 @@ router.get("/koto/search", async (req, res) => {
       results.push({ slug, title, thumbnail });
     }
 
+    // Pattern 2: slug + title inside same anchor (no image required)
+    if (results.length === 0) {
+      const anchorRe = /<a[^>]+href="https?:\/\/anikoto\.cz\/watch\/([^"\/\s]+)"[^>]*>\s*(?:<[^>]+>\s*)*([^<]{2,80})/gi;
+      while ((m = anchorRe.exec(html)) !== null && results.length < limit) {
+        const slug = m[1].trim();
+        const rawText = m[2].trim();
+        if (!slug || seen.has(slug) || !rawText) continue;
+        const title = rawText.replace(/&amp;/g, "&").replace(/&[a-z]+;/gi, "").trim();
+        if (!title || title.length < 2) continue;
+        seen.add(slug);
+        results.push({ slug, title, thumbnail: "" });
+      }
+    }
+
+    // Pattern 3: just extract slugs as last resort
     if (results.length === 0) {
       const slugRe = /href="https?:\/\/anikoto\.cz\/watch\/([^"\/\s]+)"/g;
       while ((m = slugRe.exec(html)) !== null && results.length < limit) {
         const slug = m[1].trim();
         if (!slug || seen.has(slug)) continue;
         seen.add(slug);
-        results.push({ slug, title: slug, thumbnail: "" });
+        results.push({ slug, title: slug.replace(/-/g, " "), thumbnail: "" });
       }
     }
 
-    return res.json({ results, query: q, total: results.length });
+    // For any result missing a title, try to extract it from a nearby title attribute
+    const enriched = results.map((r) => {
+      if (r.title && r.title !== r.slug.replace(/-/g, " ")) return r;
+      const titleAttrRe = new RegExp(`href="https?://anikoto\\.cz/watch/${r.slug}"[^>]*title="([^"]+)"`, "i");
+      const tm = html.match(titleAttrRe);
+      return { ...r, title: tm?.[1]?.trim() ?? r.title };
+    });
+
+    return res.json({ results: enriched, query: q, total: enriched.length });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Unknown error";
     return res.status(502).json({ error: msg, results: [] });

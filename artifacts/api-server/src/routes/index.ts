@@ -15,6 +15,7 @@ import reviewsRouter from "./reviews";
 import authRouter from "./auth";
 import usersRouter from "./users";
 import repliesRouter from "./replies";
+import verifyRouter from "./verify";
 
 const router: IRouter = Router();
 
@@ -34,5 +35,6 @@ router.use(reviewsRouter);
 router.use(authRouter);
 router.use(usersRouter);
 router.use(repliesRouter);
+router.use(verifyRouter);
 
 export default router;

@@ -215,6 +215,8 @@ export default function WatchAniList() {
   }>({});
   const [autoDetecting, setAutoDetecting] = useState(false);
   const [serverHealth, setServerHealth] = useState<{ GOGO: "unknown" | "checking" | "ok" | "fail"; KOTO: "unknown" | "checking" | "ok" | "fail"; ANIZONE: "unknown" | "checking" | "ok" | "fail" }>({ GOGO: "unknown", KOTO: "unknown", ANIZONE: "unknown" });
+  const [sourcePageTitle, setSourcePageTitle] = useState<string | null>(null);
+  const [verifyResult, setVerifyResult] = useState<{ correct: boolean; confidence: "high" | "medium" | "low"; reason: string; extractedEpisode: number | null } | null>(null);
   const [newEpNotice, setNewEpNotice] = useState<number | null>(null);
   const prevNextAiringEpRef = useRef<number | null>(null);
   const [countdownSecs, setCountdownSecs] = useState<number | null>(null);
@@ -357,6 +359,8 @@ export default function WatchAniList() {
     raceCache.current = {};
     setAutoDetecting(false);
     setServerHealth({ GOGO: "unknown", KOTO: "unknown", ANIZONE: "unknown" });
+    setSourcePageTitle(null);
+    setVerifyResult(null);
   }, [animeId, currentEp]);
 
   // Load saved GogoAnimes slug from localStorage; derive suggestion from title if none saved
@@ -629,10 +633,11 @@ export default function WatchAniList() {
     let cancelled = false;
     fetch(apiUrl(`/api/gogo/cdn-url?slug=${encodeURIComponent(gogoSlug)}&ep=${currentEp}`))
       .then((r) => r.json())
-      .then((data: { cdnUrl?: string; resolvedSlug?: string }) => {
+      .then((data: { cdnUrl?: string; resolvedSlug?: string; pageTitle?: string | null }) => {
         if (cancelled) return;
         if (data.cdnUrl) {
           setCdnUrl(data.cdnUrl);
+          if (data.pageTitle) setSourcePageTitle(data.pageTitle);
         } else {
           // All slug variants exhausted — mark not-found and auto-search GoGoAnimes by title
           setCdnNotFound(true);
@@ -840,11 +845,12 @@ export default function WatchAniList() {
     let cancelled = false;
     fetch(apiUrl(`/api/koto/stream?${params}`))
       .then((r) => r.json())
-      .then((data: { url?: string; hlsUrl?: string | null; error?: string }) => {
+      .then((data: { url?: string; hlsUrl?: string | null; error?: string; sourceTitle?: string | null }) => {
         if (cancelled) return;
         if (data.url) {
           setKotoPlayerUrl(data.url);
           setKotoHlsUrl(data.hlsUrl ?? null);
+          if (data.sourceTitle) setSourcePageTitle(data.sourceTitle);
         } else {
           setKotoPlayerError(data.error ?? "No player URL found");
         }
@@ -895,6 +901,26 @@ export default function WatchAniList() {
       .finally(() => { if (!cancelled) setAnizoneStreamLoading(false); });
     return () => { cancelled = true; };
   }, [server, anizoneSlug, currentEp]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // AI episode verification: when a source page title arrives, verify the episode matches
+  useEffect(() => {
+    if (!sourcePageTitle || !title || !currentEp) return;
+    const jikanEp = jikanEps?.find((e) => e.mal_id === currentEp);
+    const body = {
+      animeTitle: title,
+      episodeNumber: currentEp,
+      sourceTitle: sourcePageTitle,
+      jikanEpTitle: jikanEp?.title ?? jikanEp?.title_romanji ?? null,
+    };
+    fetch(apiUrl("/api/verify-episode"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+      .then((r) => r.json())
+      .then((data) => setVerifyResult(data))
+      .catch(() => {});
+  }, [sourcePageTitle, title, currentEp]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Listen for video state updates from the proxied CDN player via postMessage bridge
   useEffect(() => {
@@ -1629,10 +1655,36 @@ export default function WatchAniList() {
             </div>
           </div>
 
-          {/* Warning banner — desktop only */}
-          <div className="hidden md:flex items-center gap-2 px-4 py-2 bg-white/[0.03] border-b border-white/5 text-[10px] text-white/30">
+          {/* Warning banner + AI verification badge — desktop only */}
+          <div className="hidden md:flex items-center gap-3 px-4 py-2 bg-white/[0.03] border-b border-white/5 text-[10px] text-white/30">
             <MessageSquare className="w-3 h-3 shrink-0" />
-            If the episode is not working, please try a different server below.
+            <span>If the episode is not working, please try a different server below.</span>
+            <div className="ml-auto shrink-0">
+              {verifyResult === null && sourcePageTitle && (
+                <span className="text-white/20 font-mono flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-white/20 animate-pulse inline-block" />
+                  Verifying…
+                </span>
+              )}
+              {verifyResult !== null && verifyResult.correct && (
+                <span
+                  className={`font-mono flex items-center gap-1 ${
+                    verifyResult.confidence === "high" ? "text-green-400/70" : "text-white/35"
+                  }`}
+                  title={verifyResult.reason}
+                >
+                  ✓ {verifyResult.confidence === "high" ? "AI verified correct episode" : "Episode looks correct"}
+                </span>
+              )}
+              {verifyResult !== null && !verifyResult.correct && (
+                <span
+                  className="font-mono flex items-center gap-1 text-yellow-400/80 cursor-help"
+                  title={verifyResult.reason}
+                >
+                  ⚠ Wrong episode? — {verifyResult.reason.slice(0, 60)}{verifyResult.reason.length > 60 ? "…" : ""}
+                </span>
+              )}
+            </div>
           </div>
 
           {/* Player control bar — desktop only */}
