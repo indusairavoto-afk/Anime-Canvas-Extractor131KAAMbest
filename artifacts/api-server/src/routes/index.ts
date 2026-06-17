@@ -17,6 +17,7 @@ import authRouter from "./auth";
 import usersRouter from "./users";
 import repliesRouter from "./replies";
 import verifyRouter from "./verify";
+import translateRouter from "./translate";
 
 const router: IRouter = Router();
 
@@ -38,5 +39,6 @@ router.use(authRouter);
 router.use(usersRouter);
 router.use(repliesRouter);
 router.use(verifyRouter);
+router.use(translateRouter);
 
 export default router;

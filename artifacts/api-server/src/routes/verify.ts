@@ -2,26 +2,17 @@ import { Router } from "express";
 
 const router = Router();
 
-/**
- * Extract an episode number from a source page title string.
- * Handles formats like:
- *   "Watch Attack on Titan Episode 5 HD Online"
- *   "Naruto - Episode 047"
- *   "shingeki-no-kyojin-episode-5"
- *   "One Piece Ep. 1050"
- *   "Demon Slayer EP3"
- */
+const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+const VERIFY_MODEL = "openai/gpt-4o-mini";
+
 function extractEpisodeNumber(sourceTitle: string): number | null {
   if (!sourceTitle) return null;
-
-  // "Episode 5", "Episode 047", "Ep 5", "Ep. 5", "EP3"
   const patterns = [
     /\bepisode[.\s-]*(\d+)/i,
     /\bep[.\s-]*(\d+)/i,
     /-episode-(\d+)/i,
     /\s(\d+)\s*(?:hd|online|sub|dub|$)/i,
   ];
-
   for (const re of patterns) {
     const m = sourceTitle.match(re);
     if (m?.[1]) {
@@ -32,21 +23,10 @@ function extractEpisodeNumber(sourceTitle: string): number | null {
   return null;
 }
 
-/**
- * Normalise a title for fuzzy comparison.
- * Strips punctuation, extra spaces, common suffixes.
- */
 function normaliseTitle(t: string): string {
-  return t
-    .toLowerCase()
-    .replace(/[^\w\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  return t.toLowerCase().replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim();
 }
 
-/**
- * Compute word-overlap ratio between two normalised title strings.
- */
 function titleOverlap(a: string, b: string): number {
   const aw = new Set(a.split(" ").filter((w) => w.length > 1));
   const bw = b.split(" ").filter((w) => w.length > 1);
@@ -62,128 +42,105 @@ interface VerifyResult {
   confidence: Confidence;
   reason: string;
   extractedEpisode: number | null;
+  aiPowered?: boolean;
 }
 
-function verifyEpisode(
+function verifyHeuristic(
   animeTitle: string,
   episodeNumber: number,
   sourceTitle: string,
   jikanEpTitle?: string | null,
 ): VerifyResult {
   const extractedEp = extractEpisodeNumber(sourceTitle);
-
   const normAnime = normaliseTitle(animeTitle);
   const normSource = normaliseTitle(sourceTitle);
   const overlap = titleOverlap(normAnime, normSource);
 
-  // ── Check 1: episode number mismatch ───────────────────────────────────────
   if (extractedEp !== null) {
     const diff = Math.abs(extractedEp - episodeNumber);
     if (diff === 0) {
-      // Episode number confirmed correct — combine with title check for confidence
-      if (overlap >= 0.4) {
-        return {
-          correct: true,
-          confidence: "high",
-          reason: `Episode ${extractedEp} confirmed — title matches (${Math.round(overlap * 100)}% overlap)`,
-          extractedEpisode: extractedEp,
-        };
-      }
-      // Episode number matches but titles differ — could be Japanese vs English title (common on GoGo)
-      const isKnownSource = /gogoanimes|anikoto|anizone/i.test(sourceTitle);
-      return {
-        correct: true,
-        confidence: isKnownSource ? "medium" : "low",
-        reason: `Episode ${extractedEp} confirmed — title may differ (${animeTitle} vs source title)`,
-        extractedEpisode: extractedEp,
-      };
+      if (overlap >= 0.4) return { correct: true, confidence: "high", reason: `Episode ${extractedEp} confirmed — title matches (${Math.round(overlap * 100)}% overlap)`, extractedEpisode: extractedEp };
+      const isKnownSource = /gogoanimes|anikoto|anizone|miruro/i.test(sourceTitle);
+      return { correct: true, confidence: isKnownSource ? "medium" : "low", reason: `Episode ${extractedEp} confirmed — title may differ`, extractedEpisode: extractedEp };
     } else if (diff <= 1) {
-      // Off-by-one: could be numbering offset (e.g. recap counted differently)
-      return {
-        correct: true,
-        confidence: "medium",
-        reason: `Episode number close (source shows ep ${extractedEp}, expected ${episodeNumber}) — may be a numbering offset`,
-        extractedEpisode: extractedEp,
-      };
+      return { correct: true, confidence: "medium", reason: `Episode close (source ep ${extractedEp}, expected ${episodeNumber}) — numbering offset?`, extractedEpisode: extractedEp };
     } else {
-      return {
-        correct: false,
-        confidence: "high",
-        reason: `Wrong episode: source shows episode ${extractedEp} but you requested episode ${episodeNumber}`,
-        extractedEpisode: extractedEp,
-      };
+      return { correct: false, confidence: "high", reason: `Wrong episode: source ep ${extractedEp} ≠ expected ep ${episodeNumber}`, extractedEpisode: extractedEp };
     }
   }
 
-  // ── Check 2: no episode number found — rely on title match ─────────────────
+  if (overlap >= 0.5) return { correct: true, confidence: "medium", reason: `Title match (${Math.round(overlap * 100)}% overlap)`, extractedEpisode: null };
 
-  // If source title contains the anime title words at decent overlap → good
-  if (overlap >= 0.5) {
-    return {
-      correct: true,
-      confidence: "medium",
-      reason: `Title match (${Math.round(overlap * 100)}% word overlap) — episode looks correct`,
-      extractedEpisode: extractedEp,
-    };
-  }
-
-  // ── Check 3: Jikan episode title in source ──────────────────────────────────
   if (jikanEpTitle) {
     const normJikan = normaliseTitle(jikanEpTitle);
     if (normSource.includes(normJikan.slice(0, 20)) && normJikan.length > 5) {
-      return {
-        correct: true,
-        confidence: "high",
-        reason: `Jikan episode title found in source: "${jikanEpTitle}"`,
-        extractedEpisode: extractedEp,
-      };
+      return { correct: true, confidence: "high", reason: `Jikan episode title found in source: "${jikanEpTitle}"`, extractedEpisode: null };
     }
   }
 
-  // ── Check 4: "gogoanimes" / "anikoto" / "anizone" in source — trusted streams
-  const isKnownSource =
-    /gogoanimes|anikoto|anizone|anikoto\.cz|gogoanimes\.cv/i.test(sourceTitle);
+  const isKnownSource = /gogoanimes|anikoto|anizone|miruro/i.test(sourceTitle);
+  if (isKnownSource && overlap >= 0.2) return { correct: true, confidence: "low", reason: `Known source — title may differ (${Math.round(overlap * 100)}% overlap)`, extractedEpisode: null };
+  if (overlap < 0.15 && normSource.length > 10) return { correct: false, confidence: "medium", reason: `Title mismatch: "${sourceTitle.slice(0, 60)}" vs "${animeTitle}"`, extractedEpisode: null };
+  return { correct: true, confidence: "low", reason: "Could not conclusively verify — assuming correct", extractedEpisode: null };
+}
 
-  if (isKnownSource && overlap >= 0.2) {
-    return {
-      correct: true,
-      confidence: "low",
-      reason: `Known source — title may differ from AniList (${Math.round(overlap * 100)}% overlap)`,
-      extractedEpisode: extractedEp,
-    };
+async function verifyWithAI(
+  animeTitle: string,
+  episodeNumber: number,
+  sourceTitle: string,
+  jikanEpTitle: string | null | undefined,
+): Promise<VerifyResult | null> {
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) return null;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 6000);
+
+  try {
+    const resp = await fetch(OPENROUTER_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://anime.replit.app",
+        "X-Title": "NA Anime Episode Verifier",
+      },
+      body: JSON.stringify({
+        model: VERIFY_MODEL,
+        messages: [
+          {
+            role: "system",
+            content: `You verify if an anime streaming source is showing the correct episode. Consider: Japanese vs English titles, different season numbering systems, sequel series IDs, and common streaming site title formats. Respond ONLY with valid JSON matching: {"correct":bool,"confidence":"high"|"medium"|"low","reason":"short explanation","extractedEpisode":number|null}`,
+          },
+          {
+            role: "user",
+            content: `Anime: "${animeTitle}"\nExpected episode: ${episodeNumber}\nSource page title: "${sourceTitle}"${jikanEpTitle ? `\nMAL episode title: "${jikanEpTitle}"` : ""}`,
+          },
+        ],
+        temperature: 0,
+        max_tokens: 150,
+        response_format: { type: "json_object" },
+      }),
+      signal: controller.signal,
+    });
+
+    if (!resp.ok) return null;
+    const data = (await resp.json()) as { choices?: { message?: { content?: string } }[] };
+    const content = data.choices?.[0]?.message?.content ?? "";
+    const parsed = JSON.parse(content) as VerifyResult;
+    return { ...parsed, aiPowered: true };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
   }
-
-  // ── Titles clearly don't match ─────────────────────────────────────────────
-  if (overlap < 0.15 && normSource.length > 10) {
-    return {
-      correct: false,
-      confidence: "medium",
-      reason: `Title mismatch: source "${sourceTitle.slice(0, 60)}" doesn't match "${animeTitle}"`,
-      extractedEpisode: extractedEp,
-    };
-  }
-
-  return {
-    correct: true,
-    confidence: "low",
-    reason: "Could not conclusively verify — assuming correct",
-    extractedEpisode: extractedEp,
-  };
 }
 
 /**
  * POST /api/verify-episode
  * Body: { animeTitle, episodeNumber, sourceTitle, jikanEpTitle? }
- * Returns: { correct, confidence, reason, extractedEpisode }
- *
- * Intelligently checks whether the source stream title matches the expected
- * anime episode. Uses multi-pass heuristics:
- *   1. Extract episode number from the source page title
- *   2. Compare to expected episode number
- *   3. Fuzzy-match the anime title against the source title
- *   4. Cross-check with Jikan episode title if provided
  */
-router.post("/verify-episode", (req, res) => {
+router.post("/verify-episode", async (req, res) => {
   const { animeTitle, episodeNumber, sourceTitle, jikanEpTitle } = req.body as {
     animeTitle?: string;
     episodeNumber?: number;
@@ -195,15 +152,19 @@ router.post("/verify-episode", (req, res) => {
     return res.status(400).json({ error: "animeTitle, episodeNumber, and sourceTitle are required" });
   }
 
-  const result = verifyEpisode(animeTitle, episodeNumber, sourceTitle, jikanEpTitle);
-  return res.json(result);
+  const heuristic = verifyHeuristic(animeTitle, episodeNumber, sourceTitle, jikanEpTitle);
+
+  // High-confidence heuristic result → skip AI call (faster response)
+  if (heuristic.confidence === "high") {
+    return res.json(heuristic);
+  }
+
+  // Low/medium confidence → ask AI for a better answer
+  const aiResult = await verifyWithAI(animeTitle, episodeNumber, sourceTitle, jikanEpTitle);
+  return res.json(aiResult ?? heuristic);
 });
 
-/**
- * GET /api/verify-episode?animeTitle=...&episodeNumber=...&sourceTitle=...&jikanEpTitle=...
- * Convenience GET version for easy browser testing.
- */
-router.get("/verify-episode", (req, res) => {
+router.get("/verify-episode", async (req, res) => {
   const animeTitle = (req.query.animeTitle as string | undefined)?.trim();
   const episodeNumber = parseInt((req.query.episodeNumber as string) || "0");
   const sourceTitle = (req.query.sourceTitle as string | undefined)?.trim();
@@ -213,8 +174,10 @@ router.get("/verify-episode", (req, res) => {
     return res.status(400).json({ error: "animeTitle, episodeNumber, and sourceTitle are required" });
   }
 
-  const result = verifyEpisode(animeTitle, episodeNumber, sourceTitle, jikanEpTitle);
-  return res.json(result);
+  const heuristic = verifyHeuristic(animeTitle, episodeNumber, sourceTitle, jikanEpTitle);
+  if (heuristic.confidence === "high") return res.json(heuristic);
+  const aiResult = await verifyWithAI(animeTitle, episodeNumber, sourceTitle, jikanEpTitle);
+  return res.json(aiResult ?? heuristic);
 });
 
 export default router;

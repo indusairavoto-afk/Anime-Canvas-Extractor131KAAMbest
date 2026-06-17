@@ -58,3 +58,8 @@ externalPort = 3000
 
 [nix]
 channel = "stable-25_05"
+
+[userenv]
+
+[userenv.shared]
+OPENROUTER_API_KEY = "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"

@@ -72,7 +72,11 @@ interface AniMedia {
   };
 }
 
-async function fetchAllJikanEpisodes(malId: number, totalEps: number): Promise<JikanEpisode[]> {
+async function fetchJikanEpisodesProgressive(
+  malId: number,
+  totalEps: number,
+  onPage: (all: JikanEpisode[]) => void,
+): Promise<void> {
   const all: JikanEpisode[] = [];
   const maxPages = Math.ceil(Math.max(totalEps, 1) / 25) || 4;
   for (let page = 1; page <= Math.min(maxPages, 8); page++) {
@@ -81,11 +85,11 @@ async function fetchAllJikanEpisodes(malId: number, totalEps: number): Promise<J
       const json = await r.json();
       const batch: JikanEpisode[] = json?.data ?? [];
       all.push(...batch);
+      onPage([...all]);
       if (!json?.pagination?.has_next_page) break;
       await new Promise((res) => setTimeout(res, 350));
     } catch { break; }
   }
-  return all;
 }
 
 const STATUS_MAP: Record<string, string> = {
@@ -256,8 +260,7 @@ export default function WatchAniList() {
           prevNextAiringEpRef.current = media.nextAiringEpisode?.episode ?? null;
           if (media.idMal) {
             setJikanLoading(true);
-            fetchAllJikanEpisodes(media.idMal, media.episodes ?? 0)
-              .then(setJikanEps)
+            fetchJikanEpisodesProgressive(media.idMal, media.episodes ?? 0, setJikanEps)
               .finally(() => setJikanLoading(false));
           }
         }
@@ -294,8 +297,7 @@ export default function WatchAniList() {
           // Refresh Jikan episode metadata for the new episode
           if (media.idMal) {
             setJikanLoading(true);
-            fetchAllJikanEpisodes(media.idMal, media.episodes ?? 0)
-              .then(setJikanEps)
+            fetchJikanEpisodesProgressive(media.idMal, media.episodes ?? 0, setJikanEps)
               .finally(() => setJikanLoading(false));
           }
         } else {

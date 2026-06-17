@@ -3,8 +3,31 @@ import Hls, { type Level } from "hls.js";
 import {
   Play, Pause, Volume2, VolumeX, Maximize, Minimize,
   SkipForward, SkipBack, Settings, Subtitles, Loader2,
-  AlertTriangle, RotateCcw,
+  AlertTriangle, RotateCcw, Languages,
 } from "lucide-react";
+
+const TRANSLATE_LANGS = [
+  { code: "es", name: "Spanish" },
+  { code: "fr", name: "French" },
+  { code: "de", name: "German" },
+  { code: "pt", name: "Portuguese" },
+  { code: "it", name: "Italian" },
+  { code: "ru", name: "Russian" },
+  { code: "ar", name: "Arabic" },
+  { code: "hi", name: "Hindi" },
+  { code: "id", name: "Indonesian" },
+  { code: "tr", name: "Turkish" },
+  { code: "ko", name: "Korean" },
+  { code: "zh-TW", name: "Chinese (Traditional)" },
+  { code: "zh-CN", name: "Chinese (Simplified)" },
+  { code: "ja", name: "Japanese" },
+  { code: "th", name: "Thai" },
+  { code: "vi", name: "Vietnamese" },
+  { code: "pl", name: "Polish" },
+  { code: "nl", name: "Dutch" },
+  { code: "sv", name: "Swedish" },
+  { code: "uk", name: "Ukrainian" },
+];
 
 interface SubTrack {
   src: string;
@@ -87,6 +110,49 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
     subtitles.find((s) => s.isDefault)?.src ?? (subtitles.length === 1 ? subtitles[0].src : null)
   );
   const [resumeToast, setResumeToast] = useState<string | null>(null);
+  const [translateLang, setTranslateLang] = useState("es");
+  const [translating, setTranslating] = useState(false);
+  const [translateError, setTranslateError] = useState<string | null>(null);
+  const translatedCacheRef = useRef<Map<string, string>>(new Map());
+  const blobUrlsRef = useRef<string[]>([]);
+
+  useEffect(() => {
+    return () => {
+      blobUrlsRef.current.forEach((u) => URL.revokeObjectURL(u));
+    };
+  }, []);
+
+  const translateSubtitles = useCallback(async (lang: string, langName: string) => {
+    const sourceSrc = activeSub ?? subtitles[0]?.src;
+    if (!sourceSrc) return;
+    const cacheKey = `${sourceSrc}::${lang}`;
+    const cached = translatedCacheRef.current.get(cacheKey);
+    if (cached) { setActiveSub(cached); return; }
+    setTranslating(true);
+    setTranslateError(null);
+    try {
+      const resp = await fetch("/api/translate-subtitle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ vttUrl: sourceSrc, targetLang: lang, targetLangName: langName }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` })) as { error?: string };
+        throw new Error(err.error ?? `HTTP ${resp.status}`);
+      }
+      const { vtt } = await resp.json() as { vtt: string };
+      const blob = new Blob([vtt], { type: "text/vtt" });
+      const blobUrl = URL.createObjectURL(blob);
+      blobUrlsRef.current.push(blobUrl);
+      translatedCacheRef.current.set(cacheKey, blobUrl);
+      setActiveSub(blobUrl);
+    } catch (e) {
+      setTranslateError(e instanceof Error ? e.message : "Translation failed");
+      setTimeout(() => setTranslateError(null), 5000);
+    } finally {
+      setTranslating(false);
+    }
+  }, [activeSub, subtitles]);
 
   const resetHideTimer = useCallback(() => {
     setShowControls(true);
@@ -500,12 +566,15 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
                 <button
                   onClick={() => { setShowSubs((v) => !v); setShowSettings(false); }}
                   className={`p-1.5 transition-colors ${activeSub ? "text-blue-400" : "text-white/50 hover:text-white"}`}
-                  title="Subtitles"
+                  title="Subtitles / AI Translate"
                 >
-                  <Subtitles className="w-4 h-4" />
+                  {translating
+                    ? <Loader2 className="w-4 h-4 animate-spin text-purple-400" />
+                    : <Subtitles className="w-4 h-4" />}
                 </button>
                 {showSubs && (
-                  <div className="absolute bottom-full right-0 mb-2 min-w-[140px] max-h-52 overflow-y-auto bg-zinc-900 border border-white/10 rounded overflow-hidden shadow-xl z-50">
+                  <div className="absolute bottom-full right-0 mb-2 min-w-[170px] max-h-80 overflow-y-auto bg-zinc-900 border border-white/10 rounded shadow-xl z-50">
+                    <p className="px-3 py-1.5 text-[9px] font-mono text-white/30 uppercase tracking-widest border-b border-white/5">Subtitles</p>
                     <button
                       onClick={() => { setActiveSub(null); setShowSubs(false); }}
                       className={`w-full text-left px-3 py-2 text-[11px] font-mono transition-colors hover:bg-white/10 ${!activeSub ? "text-blue-400" : "text-white/60"}`}
@@ -521,6 +590,37 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
                         {s.label}
                       </button>
                     ))}
+                    <div className="border-t border-white/5 mt-1">
+                      <p className="px-3 py-1.5 text-[9px] font-mono text-purple-400/70 uppercase tracking-widest flex items-center gap-1">
+                        <Languages className="w-3 h-3" /> AI Translate
+                      </p>
+                      <div className="px-2 pb-2.5 flex gap-1.5">
+                        <select
+                          value={translateLang}
+                          onChange={(e) => setTranslateLang(e.target.value)}
+                          className="flex-1 bg-zinc-800 border border-white/10 text-[11px] text-white/70 px-1.5 py-1 rounded-sm outline-none cursor-pointer"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {TRANSLATE_LANGS.map((l) => (
+                            <option key={l.code} value={l.code}>{l.name}</option>
+                          ))}
+                        </select>
+                        <button
+                          onClick={() => {
+                            const lang = TRANSLATE_LANGS.find((l) => l.code === translateLang);
+                            if (lang) { translateSubtitles(lang.code, lang.name); }
+                            setShowSubs(false);
+                          }}
+                          disabled={translating}
+                          className="px-2 py-1 text-[10px] font-mono bg-purple-500/20 text-purple-300 border border-purple-400/30 hover:bg-purple-500/30 transition-colors rounded-sm disabled:opacity-40 whitespace-nowrap"
+                        >
+                          {translating ? "…" : "Go"}
+                        </button>
+                      </div>
+                      {translateError && (
+                        <p className="px-2 pb-2 text-[9px] text-red-400 font-mono leading-tight">{translateError}</p>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
