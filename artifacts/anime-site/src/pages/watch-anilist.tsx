@@ -219,6 +219,9 @@ export default function WatchAniList() {
   const prevNextAiringEpRef = useRef<number | null>(null);
   const [countdownSecs, setCountdownSecs] = useState<number | null>(null);
   const [liveViewers, setLiveViewers] = useState<number>(0);
+  const [voteCounts, setVoteCounts] = useState({ skip: 0, okay: 0, watch: 0, masterpiece: 0 });
+  const [myVote, setMyVote] = useState<string | null>(null);
+  const [voteSubmitting, setVoteSubmitting] = useState(false);
 
   const { toggle, isInList } = useWatchlist();
   const { markWatched, isWatched } = useWatchProgress();
@@ -1053,6 +1056,18 @@ export default function WatchAniList() {
     };
   }, [animeId, currentEp]);
 
+  // Fetch episode vote counts + restore my saved vote
+  useEffect(() => {
+    if (!animeId || !currentEp) return;
+    setVoteCounts({ skip: 0, okay: 0, watch: 0, masterpiece: 0 });
+    const stored = localStorage.getItem(`na_vote_${animeId}_${currentEp}`);
+    setMyVote(stored);
+    fetch(`/api/votes/${animeId}/${currentEp}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data) setVoteCounts(data as typeof voteCounts); })
+      .catch(() => {});
+  }, [animeId, currentEp]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const native = anime?.title.native ?? "";
   const cover = anime?.coverImage.extraLarge || anime?.coverImage.large || "";
   const banner = anime?.bannerImage || cover;
@@ -1138,6 +1153,26 @@ export default function WatchAniList() {
 
   const likeComment = (id: string) => {
     saveComments(comments.map((c) => c.id === id ? { ...c, likes: c.likes + 1 } : c));
+  };
+
+  const castVote = async (cat: string) => {
+    if (voteSubmitting) return;
+    setVoteSubmitting(true);
+    try {
+      const res = await fetch(`/api/votes/${animeId}/${currentEp}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ category: cat, previousVote: myVote }),
+      });
+      if (res.ok) {
+        const data = await res.json() as typeof voteCounts;
+        setVoteCounts(data);
+        setMyVote(cat);
+        localStorage.setItem(`na_vote_${animeId}_${currentEp}`, cat);
+      }
+    } finally {
+      setVoteSubmitting(false);
+    }
   };
 
   if (loading) {
@@ -2019,6 +2054,157 @@ export default function WatchAniList() {
                   </div>
                 ))}
               </div>
+
+              {/* ── EPISODE METER ── */}
+              {(() => {
+                const CATS = [
+                  { key: "skip",        label: "Skip it",     color: "#ef4444", glow: "rgba(239,68,68,0.35)" },
+                  { key: "okay",        label: "It's okay",   color: "#f59e0b", glow: "rgba(245,158,11,0.35)" },
+                  { key: "watch",       label: "Watch it",    color: "#14b8a6", glow: "rgba(20,184,166,0.35)" },
+                  { key: "masterpiece", label: "Masterpiece", color: "#a855f7", glow: "rgba(168,85,247,0.35)" },
+                ] as const;
+
+                const total = voteCounts.skip + voteCounts.okay + voteCounts.watch + voteCounts.masterpiece;
+                const shares = CATS.map(c => total > 0 ? voteCounts[c.key] / total : 0);
+                const positiveScore = total > 0
+                  ? Math.round(((voteCounts.watch + voteCounts.masterpiece) / total) * 100)
+                  : 0;
+
+                // SVG arc: half-circle, pathLength=100 so shares map directly
+                // path M 15 105 A 90 90 0 0 1 205 105  (cx=110 cy=105 r=90)
+                const arcPath = "M 15 105 A 90 90 0 0 1 205 105";
+
+                let cumOffset = 0;
+                const STROKE = 15;
+
+                return (
+                  <div className="mt-8 pt-8 border-t border-white/[0.06]">
+                    <div className="flex items-center justify-between mb-6">
+                      <div>
+                        <p className="text-[10px] font-mono uppercase tracking-widest text-white/30 mb-0.5">Episode Meter</p>
+                        <h4 className="text-sm font-semibold text-white">
+                          Episode {currentEp}
+                          {getEpTitle(currentEp) !== `Episode ${currentEp}` && (
+                            <span className="text-white/35 font-normal"> — {getEpTitle(currentEp)}</span>
+                          )}
+                        </h4>
+                      </div>
+                      {total > 0 && (
+                        <span className="text-[10px] font-mono text-white/25 tabular-nums">{total} vote{total !== 1 ? "s" : ""}</span>
+                      )}
+                    </div>
+
+                    {/* Arc gauge */}
+                    <div className="flex flex-col items-center">
+                      <div className="relative w-full max-w-[260px]">
+                        <svg viewBox="0 0 220 115" className="w-full overflow-visible">
+                          <defs>
+                            {CATS.map(c => (
+                              <filter key={c.key} id={`glow-${c.key}`} x="-20%" y="-20%" width="140%" height="140%">
+                                <feGaussianBlur stdDeviation="3" result="blur" />
+                                <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+                              </filter>
+                            ))}
+                          </defs>
+
+                          {/* Track */}
+                          <path
+                            d={arcPath}
+                            fill="none"
+                            stroke="rgba(255,255,255,0.06)"
+                            strokeWidth={STROKE}
+                            strokeLinecap="butt"
+                            pathLength="100"
+                          />
+
+                          {/* Colored segments */}
+                          {CATS.map((cat, i) => {
+                            const share = shares[i] * 100;
+                            const offset = cumOffset;
+                            cumOffset += share;
+                            if (share < 0.5) return null;
+                            return (
+                              <path
+                                key={cat.key}
+                                d={arcPath}
+                                fill="none"
+                                stroke={cat.color}
+                                strokeWidth={STROKE}
+                                strokeLinecap="butt"
+                                pathLength="100"
+                                strokeDasharray={`${share - 0.4} ${100 - share + 0.4}`}
+                                strokeDashoffset={-offset}
+                                filter={myVote === cat.key ? `url(#glow-${cat.key})` : undefined}
+                                style={{ transition: "stroke-dasharray 0.6s ease" }}
+                              />
+                            );
+                          })}
+
+                          {/* Center score */}
+                          <text x="110" y="74" textAnchor="middle" fill="white" fontSize="26" fontWeight="700" fontFamily="monospace">
+                            {total > 0 ? `${positiveScore}%` : "—"}
+                          </text>
+                          <text x="110" y="90" textAnchor="middle" fill="rgba(255,255,255,0.3)" fontSize="9" fontFamily="monospace" letterSpacing="1">
+                            {total > 0 ? `${total} VOTE${total !== 1 ? "S" : ""}` : "NO VOTES YET"}
+                          </text>
+                        </svg>
+                      </div>
+
+                      {/* Legend */}
+                      <div className="flex flex-wrap justify-center gap-x-5 gap-y-1.5 mt-1 mb-5">
+                        {CATS.map((cat, i) => (
+                          <div key={cat.key} className="flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full shrink-0" style={{ background: cat.color }} />
+                            <span className="text-[10px] font-mono text-white/45">{cat.label}</span>
+                            {total > 0 && (
+                              <span className="text-[10px] font-mono tabular-nums" style={{ color: cat.color }}>
+                                {Math.round(shares[i] * 100)}%
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Vote buttons */}
+                      <div className="grid grid-cols-4 gap-2 w-full max-w-sm">
+                        {CATS.map(cat => {
+                          const isMe = myVote === cat.key;
+                          return (
+                            <button
+                              key={cat.key}
+                              onClick={() => castVote(cat.key)}
+                              disabled={voteSubmitting}
+                              className={`relative flex flex-col items-center gap-1 py-2.5 px-1 border transition-all duration-200 text-center ${
+                                isMe
+                                  ? "border-opacity-100 bg-white/5"
+                                  : "border-white/10 hover:border-white/25 hover:bg-white/[0.03]"
+                              }`}
+                              style={isMe ? { borderColor: cat.color, boxShadow: `0 0 12px ${cat.glow}` } : {}}
+                            >
+                              <span
+                                className="w-2.5 h-2.5 rounded-full"
+                                style={{ background: isMe ? cat.color : "rgba(255,255,255,0.15)" }}
+                              />
+                              <span
+                                className="text-[9px] font-mono uppercase tracking-wider leading-tight"
+                                style={{ color: isMe ? cat.color : "rgba(255,255,255,0.4)" }}
+                              >
+                                {cat.label}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {myVote && (
+                        <p className="text-[9px] font-mono text-white/20 mt-3 uppercase tracking-widest">
+                          Your vote · tap to change
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Related anime */}

@@ -10,6 +10,7 @@ import kotoRouter from "./koto";
 import mkissaRouter from "./mkissa";
 import anizoneRouter from "./anizone";
 import viewersRouter from "./viewers";
+import votesRouter from "./votes";
 
 const router: IRouter = Router();
 
@@ -24,5 +25,6 @@ router.use(kotoRouter);
 router.use(mkissaRouter);
 router.use(anizoneRouter);
 router.use(viewersRouter);
+router.use(votesRouter);
 
 export default router;
