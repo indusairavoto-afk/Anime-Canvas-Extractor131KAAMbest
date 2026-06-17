@@ -1821,17 +1821,30 @@ export default function WatchAniList() {
             <div className="flex items-center gap-2 px-4 py-2.5 border-b border-white/[0.06] overflow-x-auto no-scrollbar">
               <span className="text-[9px] font-mono text-white/25 uppercase tracking-widest shrink-0">Server</span>
               {([
-                { key: "GOGO", label: "GogoAnime", color: "orange" },
-                { key: "KOTO", label: "AniKoto", color: "teal" },
-                { key: "ANIZONE", label: "AniZone", color: "blue" },
+                { key: "GOGO",   label: "GogoAnime", color: "orange" },
+                { key: "KOTO",   label: "AniKoto",   color: "teal"   },
+                { key: "ANIZONE",label: "AniZone",   color: "blue"   },
+                { key: "MIRURO", label: "Miruro",    color: "purple" },
               ] as const).map(({ key, label, color }) => {
                 const active = server === key;
                 const health = serverHealth[key];
+                const isFailed = health === "fail" && !active;
                 const colorMap = {
-                  orange: { active: "bg-orange-500/90 text-white", idle: "bg-white/6 text-white/50", dot: { ok: "bg-green-400", fail: "bg-red-500", checking: "bg-yellow-400 animate-pulse" } },
-                  teal:   { active: "bg-teal-500/90 text-white",   idle: "bg-white/6 text-white/50", dot: { ok: "bg-green-400", fail: "bg-red-500", checking: "bg-yellow-400 animate-pulse" } },
-                  blue:   { active: "bg-blue-500/90 text-white",   idle: "bg-white/6 text-white/50", dot: { ok: "bg-green-400", fail: "bg-red-500", checking: "bg-yellow-400 animate-pulse" } },
+                  orange: { active: "bg-orange-500/90 text-white", idle: "bg-white/6 text-white/50" },
+                  teal:   { active: "bg-teal-500/90 text-white",   idle: "bg-white/6 text-white/50" },
+                  blue:   { active: "bg-blue-500/90 text-white",   idle: "bg-white/6 text-white/50" },
+                  purple: { active: "bg-purple-500/90 text-white", idle: "bg-white/6 text-white/50" },
                 };
+                const dotClass =
+                  health === "ok"       ? "bg-green-400" :
+                  health === "fail"     ? "bg-red-500" :
+                  health === "checking" ? "bg-yellow-400 animate-pulse" :
+                  "bg-white/20";
+                const dotTitle =
+                  health === "ok"       ? "Available" :
+                  health === "fail"     ? "Unavailable for this episode" :
+                  health === "checking" ? "Checking…" :
+                  "Not checked yet";
                 const c = colorMap[color];
                 return (
                   <button
@@ -1841,13 +1854,9 @@ export default function WatchAniList() {
                       setServer(key);
                       if (key !== "ANIZONE") setIframeLoaded(false);
                     }}
-                    className={`relative flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-[11px] font-mono shrink-0 transition-colors ${active ? c.active : c.idle}`}
+                    className={`relative flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-[11px] font-mono shrink-0 transition-all ${active ? c.active : c.idle} ${isFailed ? "opacity-40" : ""}`}
                   >
-                    {health !== "unknown" && (
-                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                        health === "ok" ? c.dot.ok : health === "fail" ? c.dot.fail : c.dot.checking
-                      }`} />
-                    )}
+                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotClass}`} title={dotTitle} />
                     {label}
                   </button>
                 );
@@ -1967,78 +1976,46 @@ export default function WatchAniList() {
                   </button>
                 ))}
               </div>
-              {/* GOGO server */}
-              <button
-                onClick={() => { userPickedRef.current = true; setServer("GOGO"); setCdnNotFound(false); setIframeLoaded(false); }}
-                className={`relative text-[10px] font-mono px-2.5 py-1 border transition-colors ${
-                  server === "GOGO"
-                    ? "border-orange-400 bg-orange-400 text-black"
-                    : "border-orange-400/30 text-orange-400/60 hover:border-orange-400/70 hover:text-orange-400"
-                }`}
-              >
-                GOGO
-                {serverHealth.GOGO !== "unknown" && (
-                  <span className={`absolute -top-1 -right-1 w-2 h-2 rounded-full border border-black ${
-                    serverHealth.GOGO === "ok" ? "bg-green-400" :
-                    serverHealth.GOGO === "fail" ? "bg-red-500" :
-                    "bg-yellow-400 animate-pulse"
-                  }`} />
-                )}
-              </button>
-              {/* KOTO server */}
-              <button
-                onClick={() => { userPickedRef.current = true; setServer("KOTO"); setIframeLoaded(false); }}
-                className={`relative text-[10px] font-mono px-2.5 py-1 border transition-colors ${
-                  server === "KOTO"
-                    ? "border-teal-400 bg-teal-400 text-black"
-                    : "border-teal-400/30 text-teal-400/60 hover:border-teal-400/70 hover:text-teal-400"
-                }`}
-              >
-                KOTO
-                {serverHealth.KOTO !== "unknown" && (
-                  <span className={`absolute -top-1 -right-1 w-2 h-2 rounded-full border border-black ${
-                    serverHealth.KOTO === "ok" ? "bg-green-400" :
-                    serverHealth.KOTO === "fail" ? "bg-red-500" :
-                    "bg-yellow-400 animate-pulse"
-                  }`} />
-                )}
-              </button>
-              {/* AniZone server */}
-              <button
-                onClick={() => { userPickedRef.current = true; setServer("ANIZONE"); setIframeLoaded(false); }}
-                className={`relative text-[10px] font-mono px-2.5 py-1 border transition-colors ${
-                  server === "ANIZONE"
-                    ? "border-blue-400 bg-blue-400 text-black"
-                    : "border-blue-400/30 text-blue-400/60 hover:border-blue-400/70 hover:text-blue-400"
-                }`}
-              >
-                ANIZONE
-                {serverHealth.ANIZONE !== "unknown" && (
-                  <span className={`absolute -top-1 -right-1 w-2 h-2 rounded-full border border-black ${
-                    serverHealth.ANIZONE === "ok" ? "bg-green-400" :
-                    serverHealth.ANIZONE === "fail" ? "bg-red-500" :
-                    "bg-yellow-400 animate-pulse"
-                  }`} />
-                )}
-              </button>
-              {/* Miruro server */}
-              <button
-                onClick={() => { userPickedRef.current = true; setServer("MIRURO"); setIframeLoaded(false); }}
-                className={`relative text-[10px] font-mono px-2.5 py-1 border transition-colors ${
-                  server === "MIRURO"
-                    ? "border-purple-400 bg-purple-400 text-black"
-                    : "border-purple-400/30 text-purple-400/60 hover:border-purple-400/70 hover:text-purple-400"
-                }`}
-              >
-                MIRURO
-                {serverHealth.MIRURO !== "unknown" && (
-                  <span className={`absolute -top-1 -right-1 w-2 h-2 rounded-full border border-black ${
-                    serverHealth.MIRURO === "ok" ? "bg-green-400" :
-                    serverHealth.MIRURO === "fail" ? "bg-red-500" :
-                    "bg-yellow-400 animate-pulse"
-                  }`} />
-                )}
-              </button>
+              {([
+                { key: "GOGO",    label: "GOGO",    color: "orange", onClick: () => { userPickedRef.current = true; setServer("GOGO"); setCdnNotFound(false); setIframeLoaded(false); } },
+                { key: "KOTO",    label: "KOTO",    color: "teal",   onClick: () => { userPickedRef.current = true; setServer("KOTO"); setIframeLoaded(false); } },
+                { key: "ANIZONE", label: "ANIZONE", color: "blue",   onClick: () => { userPickedRef.current = true; setServer("ANIZONE"); setIframeLoaded(false); } },
+                { key: "MIRURO",  label: "MIRURO",  color: "purple", onClick: () => { userPickedRef.current = true; setServer("MIRURO"); setIframeLoaded(false); } },
+              ] as const).map(({ key, label, color, onClick }) => {
+                const active = server === key;
+                const health = serverHealth[key];
+                const isFailed = health === "fail" && !active;
+                const borderColorMap = {
+                  orange: { active: "border-orange-400 bg-orange-400 text-black", idle: "border-orange-400/30 text-orange-400/60 hover:border-orange-400/70 hover:text-orange-400" },
+                  teal:   { active: "border-teal-400 bg-teal-400 text-black",     idle: "border-teal-400/30 text-teal-400/60 hover:border-teal-400/70 hover:text-teal-400" },
+                  blue:   { active: "border-blue-400 bg-blue-400 text-black",     idle: "border-blue-400/30 text-blue-400/60 hover:border-blue-400/70 hover:text-blue-400" },
+                  purple: { active: "border-purple-400 bg-purple-400 text-black", idle: "border-purple-400/30 text-purple-400/60 hover:border-purple-400/70 hover:text-purple-400" },
+                };
+                const dotClass =
+                  health === "ok"       ? "bg-green-400" :
+                  health === "fail"     ? "bg-red-500" :
+                  health === "checking" ? "bg-yellow-400 animate-pulse" :
+                  "bg-white/25";
+                const dotTitle =
+                  health === "ok"       ? "Available" :
+                  health === "fail"     ? "Unavailable for this episode" :
+                  health === "checking" ? "Checking…" :
+                  "Not checked yet";
+                const c = borderColorMap[color];
+                return (
+                  <button
+                    key={key}
+                    onClick={onClick}
+                    className={`relative text-[10px] font-mono px-2.5 py-1 border transition-all ${active ? c.active : c.idle} ${isFailed ? "opacity-40" : ""}`}
+                  >
+                    {label}
+                    <span
+                      title={dotTitle}
+                      className={`absolute -top-1 -right-1 w-2 h-2 rounded-full border border-black ${dotClass}`}
+                    />
+                  </button>
+                );
+              })}
             </div>
           </div>
 
