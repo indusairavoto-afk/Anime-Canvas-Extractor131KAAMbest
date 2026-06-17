@@ -163,6 +163,8 @@ export default function AnimeDetailAniList() {
   const [isSpoiler, setIsSpoiler] = useState(false);
   const [revealedIds, setRevealedIds] = useState<Set<number>>(new Set());
   const [likedIds, setLikedIds] = useState<Set<number>>(new Set());
+  const [showSpoilers, setShowSpoilers] = useState(false);
+  const [sortOrder, setSortOrder] = useState<"liked" | "newest" | "oldest">("liked");
   const textRef = useRef<HTMLTextAreaElement>(null);
 
   const { data: reviews, isLoading: reviewsLoading } = useListAnimeReviews(anilistId, {
@@ -540,54 +542,87 @@ export default function AnimeDetailAniList() {
 
         {/* Reviews Section */}
         <div className="mt-12 sm:mt-20">
-          <div className="flex items-center gap-3 mb-6 sm:mb-8">
-            <h2 className="font-serif text-2xl sm:text-3xl text-white">Reviews</h2>
-            {reviewSummary && reviewSummary.total > 0 && (
-              <span className="text-white/30 font-mono text-sm">{reviewSummary.total}</span>
-            )}
-          </div>
 
-          {/* Rating summary bar */}
+          {/* Rating summary */}
           {reviewSummary && reviewSummary.total > 0 && (
-            <div className="flex flex-wrap gap-4 py-4 border-b border-white/5 mb-6">
+            <div className="flex flex-wrap gap-x-6 gap-y-2 pb-5 border-b border-white/5 mb-6">
               {RATING_OPTIONS.map((opt) => {
                 const count = reviewSummary[opt.value];
                 const pct = reviewSummary.total > 0 ? Math.round((count / reviewSummary.total) * 100) : 0;
                 return (
                   <div key={opt.value} className="flex items-center gap-2">
-                    <span className={`w-2.5 h-2.5 rounded-full ${opt.dot}`} />
-                    <span className="text-xs font-mono text-white/50 uppercase tracking-widest">{opt.label}</span>
-                    <span className={`text-sm font-bold ${opt.color}`}>{pct}%</span>
+                    <span className={`w-2 h-2 rounded-full ${opt.dot}`} />
+                    <span className="text-sm text-white/50">{opt.label}</span>
+                    <span className={`text-sm font-semibold ${opt.color}`}>{pct}%</span>
                   </div>
                 );
               })}
-              <span className="text-xs font-mono text-white/20 ml-auto self-center">
-                {reviewSummary.total} {reviewSummary.total === 1 ? "review" : "reviews"}
-              </span>
             </div>
           )}
 
-          {/* Review compose box */}
-          <div className="border border-white/10 p-4 sm:p-6 space-y-4">
-            {/* Step 1: select a rating */}
-            <div>
-              <p className="text-xs font-mono uppercase tracking-widest text-white/30 mb-3">
-                {selectedRating ? "Your rating" : "Select a rating to continue"}
-              </p>
-              <div className="flex flex-wrap gap-2">
+          {/* Section header + sort controls */}
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+            <h2 className="text-xl font-bold text-white">
+              Reviews
+              {reviewSummary && reviewSummary.total > 0 && (
+                <span className="text-white/30 font-normal text-base ml-2">{reviewSummary.total}</span>
+              )}
+            </h2>
+            <div className="flex items-center gap-3 flex-wrap">
+              <select
+                value={sortOrder}
+                onChange={(e) => setSortOrder(e.target.value as typeof sortOrder)}
+                className="bg-zinc-900 border border-white/10 text-white/70 text-xs rounded-lg px-3 py-1.5 focus:outline-none focus:border-white/30 cursor-pointer"
+              >
+                <option value="liked">Most Liked</option>
+                <option value="newest">Newest</option>
+                <option value="oldest">Oldest</option>
+              </select>
+              <label className="flex items-center gap-2 cursor-pointer select-none group">
+                <div
+                  onClick={() => setShowSpoilers((v) => !v)}
+                  className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${
+                    showSpoilers ? "bg-amber-500/80 border-amber-400" : "border-white/20 bg-transparent group-hover:border-white/40"
+                  }`}
+                >
+                  {showSpoilers && (
+                    <svg className="w-2.5 h-2.5 text-black" viewBox="0 0 10 10" fill="none">
+                      <path d="M1.5 5L4 7.5L8.5 2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  )}
+                </div>
+                <span className="text-xs text-white/50 group-hover:text-white/70 transition-colors">Show Spoilers</span>
+              </label>
+            </div>
+          </div>
+
+          {/* Compose box — Moctale style */}
+          <div className="bg-zinc-900 rounded-xl p-4 mb-4">
+            {/* Row: avatar + username + rating pills */}
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-9 h-9 rounded-full bg-zinc-700 flex items-center justify-center text-sm font-bold text-white/80 flex-shrink-0 uppercase select-none">
+                {(username.trim() || "G").slice(0, 2)}
+              </div>
+              <input
+                type="text"
+                placeholder="@username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                className="bg-transparent text-sm text-white placeholder:text-white/30 focus:outline-none w-28 min-w-0"
+              />
+              <div className="flex items-center gap-1 ml-auto flex-wrap justify-end">
                 {RATING_OPTIONS.map((opt) => {
                   const active = selectedRating === opt.value;
                   return (
                     <button
                       key={opt.value}
                       onClick={() => handleRatingSelect(opt.value)}
-                      className={`flex items-center gap-2 px-4 py-2 rounded-full border text-sm font-medium transition-all ${
+                      className={`px-3 py-1 rounded-full text-sm font-medium transition-all ${
                         active
-                          ? `${opt.bg} ${opt.border} ${opt.color}`
-                          : "border-white/10 text-white/40 hover:border-white/20 hover:text-white/60"
+                          ? "bg-zinc-600 text-white"
+                          : "text-white/40 hover:text-white/70"
                       }`}
                     >
-                      <span className={`w-2 h-2 rounded-full ${opt.dot} ${active ? "opacity-100" : "opacity-40"}`} />
                       {opt.label}
                     </button>
                   );
@@ -595,139 +630,149 @@ export default function AnimeDetailAniList() {
               </div>
             </div>
 
-            {/* Step 2: write review — appears only after rating is selected */}
-            <AnimatePresence>
-              {selectedRating && (
-                <motion.div
-                  initial={{ opacity: 0, y: -8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -8 }}
-                  transition={{ duration: 0.2 }}
-                  className="space-y-3"
+            {/* Textarea */}
+            <textarea
+              ref={textRef}
+              placeholder="Write your review here..."
+              value={reviewText}
+              onChange={(e) => setReviewText(e.target.value)}
+              maxLength={1000}
+              rows={3}
+              className="w-full bg-transparent text-white/80 text-sm placeholder:text-white/25 focus:outline-none resize-none pb-2"
+            />
+
+            {/* Divider + footer */}
+            <div className="border-t border-white/8 pt-3 flex items-center justify-between">
+              <label className="flex items-center gap-2 cursor-pointer select-none group">
+                <div
+                  onClick={() => setIsSpoiler((v) => !v)}
+                  className={`w-3.5 h-3.5 rounded border flex items-center justify-center transition-colors ${
+                    isSpoiler ? "bg-amber-500/80 border-amber-400" : "border-white/20 group-hover:border-white/40"
+                  }`}
                 >
-                  <input
-                    type="text"
-                    placeholder="Your name (optional)"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    className="w-full bg-transparent border border-white/10 text-white text-sm px-4 py-2.5 placeholder:text-white/20 focus:outline-none focus:border-white/30 transition-colors"
-                  />
-                  <textarea
-                    ref={textRef}
-                    placeholder="Write your review here..."
-                    value={reviewText}
-                    onChange={(e) => setReviewText(e.target.value)}
-                    maxLength={1000}
-                    rows={4}
-                    className="w-full bg-transparent border border-white/10 text-white text-sm px-4 py-3 placeholder:text-white/20 focus:outline-none focus:border-white/30 transition-colors resize-none"
-                  />
-                  <div className="flex items-center justify-between">
-                    <label className="flex items-center gap-2 cursor-pointer select-none group">
-                      <div
-                        onClick={() => setIsSpoiler((v) => !v)}
-                        className={`w-4 h-4 rounded-sm border flex items-center justify-center transition-colors ${
-                          isSpoiler ? "bg-amber-500/80 border-amber-400" : "border-white/20 bg-transparent group-hover:border-white/40"
-                        }`}
-                      >
-                        {isSpoiler && (
-                          <svg className="w-2.5 h-2.5 text-black" viewBox="0 0 10 10" fill="none">
-                            <path d="M1.5 5L4 7.5L8.5 2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                          </svg>
-                        )}
-                      </div>
-                      <span className="text-[11px] font-mono text-white/40 group-hover:text-white/60 transition-colors">Contains spoilers</span>
-                    </label>
-                    <div className="flex items-center gap-3">
-                      <span className="text-[10px] font-mono text-white/20">{reviewText.length}/1000</span>
-                      <button
-                        onClick={handleSubmit}
-                        disabled={reviewText.trim().length === 0 || submitting}
-                        className={`px-6 py-2.5 text-xs font-bold uppercase tracking-widest transition-all ${
-                          reviewText.trim().length > 0 && !submitting
-                            ? "bg-white text-black hover:bg-white/90"
-                            : "bg-white/10 text-white/30 cursor-not-allowed"
-                        }`}
-                      >
-                        {submitting ? "Posting..." : "Post"}
-                      </button>
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
+                  {isSpoiler && (
+                    <svg className="w-2 h-2 text-black" viewBox="0 0 10 10" fill="none">
+                      <path d="M1.5 5L4 7.5L8.5 2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  )}
+                </div>
+                <span className="text-[11px] text-white/35 group-hover:text-white/55 transition-colors">Contains spoilers</span>
+              </label>
+              <div className="flex items-center gap-3">
+                <span className="text-[11px] text-white/25">{reviewText.length}/1000</span>
+                <button
+                  onClick={handleSubmit}
+                  disabled={!selectedRating || reviewText.trim().length === 0 || submitting}
+                  className={`px-5 py-1.5 rounded-full text-sm font-medium transition-all ${
+                    selectedRating && reviewText.trim().length > 0 && !submitting
+                      ? "bg-zinc-600 text-white hover:bg-zinc-500"
+                      : "bg-zinc-700/50 text-white/25 cursor-not-allowed"
+                  }`}
+                >
+                  {submitting ? "Posting..." : "Post"}
+                </button>
+              </div>
+            </div>
           </div>
 
           {/* Review list */}
-          {reviewsLoading ? (
-            <div className="mt-6 space-y-3">
-              {[...Array(2)].map((_, i) => (
-                <div key={i} className="border border-white/5 p-4 h-24 animate-pulse bg-white/[0.01]" />
-              ))}
-            </div>
-          ) : reviews && reviews.length > 0 ? (
-            <div className="mt-4 space-y-2">
-              {reviews.map((review) => {
-                const cfg = getRatingConfig(review.rating as RatingOption);
-                const liked = likedIds.has(review.id);
-                return (
-                  <motion.div
-                    key={review.id}
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="border border-white/5 p-4 sm:p-5 space-y-3 hover:border-white/10 transition-colors"
-                  >
-                    <div className="flex items-start gap-3">
-                      <img src={review.avatarUrl} alt={review.username} className="w-9 h-9 rounded-full flex-shrink-0 bg-white/5" />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex flex-wrap items-center gap-2 mb-1">
-                          <span className="text-sm font-medium text-white">@{review.username}</span>
-                          <span className={`text-[10px] font-mono uppercase tracking-widest px-2 py-0.5 rounded-full border ${cfg.color} ${cfg.bg} ${cfg.border} flex items-center gap-1`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
-                            {cfg.label}
-                          </span>
-                          {review.spoiler && (
-                            <span className="text-[10px] font-mono uppercase tracking-widest px-2 py-0.5 rounded-full border border-amber-400/30 text-amber-400/70 bg-amber-400/10 flex items-center gap-1">
-                              ⚠ spoiler
-                            </span>
-                          )}
-                          <span className="text-[10px] font-mono text-white/30 ml-auto">{timeAgo(review.createdAt)}</span>
-                        </div>
-                        {review.spoiler && !revealedIds.has(review.id) ? (
-                          <div className="relative">
-                            <p className="text-white/70 text-sm leading-relaxed blur-sm select-none pointer-events-none">{review.content}</p>
-                            <button
-                              onClick={() => setRevealedIds((prev) => new Set(prev).add(review.id))}
-                              className="absolute inset-0 flex items-center justify-center text-[11px] font-mono uppercase tracking-widest text-amber-400/80 hover:text-amber-400 transition-colors"
-                            >
-                              Click to reveal spoiler
-                            </button>
+          {(() => {
+            const sorted = reviews
+              ? [...reviews].sort((a, b) => {
+                  if (sortOrder === "liked") return b.likes - a.likes;
+                  if (sortOrder === "newest") return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+                  return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+                })
+              : [];
+
+            if (reviewsLoading) {
+              return (
+                <div className="space-y-3">
+                  {[...Array(2)].map((_, i) => (
+                    <div key={i} className="bg-zinc-900 rounded-xl p-4 h-24 animate-pulse" />
+                  ))}
+                </div>
+              );
+            }
+
+            if (!sorted.length) {
+              return <p className="text-white/20 text-sm text-center py-10">No reviews yet. Be the first!</p>;
+            }
+
+            return (
+              <div className="space-y-3">
+                {sorted.map((review) => {
+                  const cfg = getRatingConfig(review.rating as RatingOption);
+                  const liked = likedIds.has(review.id);
+                  const isSpoilerReview = review.spoiler;
+                  const revealed = showSpoilers || revealedIds.has(review.id);
+                  return (
+                    <motion.div
+                      key={review.id}
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="bg-zinc-900 rounded-xl p-4"
+                    >
+                      <div className="flex items-start gap-3">
+                        <img
+                          src={review.avatarUrl}
+                          alt={review.username}
+                          className="w-10 h-10 rounded-full flex-shrink-0 bg-zinc-800"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between gap-2 mb-1">
+                            <div>
+                              <span className="text-sm font-semibold text-white">{review.username}</span>
+                              <span className="block text-[11px] text-white/35 mt-0.5">{timeAgo(review.createdAt)}</span>
+                            </div>
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                              {isSpoilerReview && (
+                                <span className="text-[10px] px-2 py-0.5 rounded-full border border-amber-400/30 text-amber-400/70 bg-amber-400/10">
+                                  spoiler
+                                </span>
+                              )}
+                              <span className={`text-xs font-medium px-3 py-1 rounded-full ${cfg.bg} ${cfg.border} ${cfg.color} border`}>
+                                {cfg.label}
+                              </span>
+                            </div>
                           </div>
-                        ) : (
-                          <p className="text-white/70 text-sm leading-relaxed">{review.content}</p>
-                        )}
+
+                          {isSpoilerReview && !revealed ? (
+                            <div className="relative mt-1">
+                              <p className="text-white/60 text-sm leading-relaxed blur-sm select-none pointer-events-none">{review.content}</p>
+                              <button
+                                onClick={() => setRevealedIds((prev) => new Set(prev).add(review.id))}
+                                className="absolute inset-0 flex items-center justify-center text-[11px] text-amber-400/80 hover:text-amber-400 transition-colors"
+                              >
+                                Click to reveal spoiler
+                              </button>
+                            </div>
+                          ) : (
+                            <p className="text-white/60 text-sm leading-relaxed mt-1">{review.content}</p>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                    <div className="flex justify-end">
-                      <button
-                        onClick={() => handleLike(review.id)}
-                        disabled={liked}
-                        className={`flex items-center gap-1.5 text-xs font-mono uppercase tracking-widest transition-colors px-3 py-1.5 border ${
-                          liked
-                            ? "border-white/20 text-white/40 cursor-default"
-                            : "border-white/10 text-white/30 hover:border-white/30 hover:text-white/60"
-                        }`}
-                      >
-                        <ThumbsUp className="w-3 h-3" />
-                        {review.likes}
-                      </button>
-                    </div>
-                  </motion.div>
-                );
-              })}
-            </div>
-          ) : (
-            <p className="mt-6 text-white/20 text-sm font-mono text-center py-8">No reviews yet. Be the first!</p>
-          )}
+
+                      <div className="flex justify-end mt-3">
+                        <button
+                          onClick={() => handleLike(review.id)}
+                          disabled={liked}
+                          className={`flex items-center gap-1.5 text-xs rounded-full px-3 py-1 border transition-colors ${
+                            liked
+                              ? "border-white/15 text-white/35 cursor-default"
+                              : "border-white/10 text-white/40 hover:border-white/25 hover:text-white/60"
+                          }`}
+                        >
+                          <ThumbsUp className="w-3 h-3" />
+                          {review.likes}
+                        </button>
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </div>
+            );
+          })()}
         </div>
       </div>
     </div>
