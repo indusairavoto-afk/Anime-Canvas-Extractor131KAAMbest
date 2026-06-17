@@ -198,8 +198,7 @@ export default function WatchAniList() {
   const [kotoHlsUrl, setKotoHlsUrl] = useState<string | null>(null);
   const [kotoPlayerLoading, setKotoPlayerLoading] = useState(false);
   const [kotoPlayerError, setKotoPlayerError] = useState<string | null>(null);
-  const [miruroHlsUrl, setMiruroHlsUrl] = useState<string | null>(null);
-  const [miruroSubtitles, setMiruroSubtitles] = useState<{ src: string; label: string; srclang: string; isDefault: boolean }[]>([]);
+  const [miruroIframeUrl, setMiruroIframeUrl] = useState<string | null>(null);
   const [miruroLoading, setMiruroLoading] = useState(false);
   const [miruroError, setMiruroError] = useState<string | null>(null);
   const [anizoneHlsUrl, setAnizoneHlsUrl] = useState<string | null>(null);
@@ -220,7 +219,7 @@ export default function WatchAniList() {
     gogo?: { cdnUrl: string; resolvedSlug?: string; pageTitle?: string | null } | null;
     koto?: { url?: string; hlsUrl?: string | null } | null;
     anizone?: { hlsUrl?: string; subtitles?: { src: string; label: string; srclang: string; isDefault: boolean }[] } | null;
-    miruro?: { hlsUrl?: string; subtitles?: { src: string; label: string; srclang: string; isDefault: boolean }[] } | null;
+    miruro?: { iframeUrl?: string } | null;
   }>({});
   const [autoDetecting, setAutoDetecting] = useState(false);
   const [serverHealth, setServerHealth] = useState<{ GOGO: "unknown" | "checking" | "ok" | "fail"; KOTO: "unknown" | "checking" | "ok" | "fail"; ANIZONE: "unknown" | "checking" | "ok" | "fail"; MIRURO: "unknown" | "checking" | "ok" | "fail" }>({ GOGO: "unknown", KOTO: "unknown", ANIZONE: "unknown", MIRURO: "unknown" });
@@ -478,6 +477,7 @@ export default function WatchAniList() {
 
   const totalEps = anime?.episodes ?? 0;
   const title = anime?.title.english || anime?.title.romaji || "";
+  const romajiTitle = anime?.title.romaji || "";
 
   // Once title is known, auto-activate GOGO with derived slug (or user-saved slug)
   useEffect(() => {
@@ -610,15 +610,15 @@ export default function WatchAniList() {
       setServerHealth(h => ({ ...h, ANIZONE: "fail" }));
     }
 
-    // MIRURO — uses AniList ID directly, no slug needed
+    // MIRURO — constructs an iframe URL via miruro.to using the AniList ID + romaji slug
     setServerHealth(h => ({ ...h, MIRURO: "checking" }));
     schedule(preferred === "MIRURO" ? 0 : HEAD_START, () => {
-      fetch(apiUrl(`/api/miruro/stream?anilistId=${animeId}&ep=${currentEp}`))
+      fetch(apiUrl(`/api/miruro/stream?anilistId=${animeId}&ep=${currentEp}&romajiTitle=${encodeURIComponent(romajiTitle)}`))
         .then(r => r.json())
-        .then((data: { hlsUrl?: string; subtitles?: { src: string; label: string; srclang: string; isDefault: boolean }[]; error?: string }) => {
+        .then((data: { iframeUrl?: string; error?: string }) => {
           if (cancelled) return;
-          if (data.hlsUrl) {
-            raceCache.current.miruro = data;
+          if (data.iframeUrl) {
+            raceCache.current.miruro = { iframeUrl: data.iframeUrl };
             setServerHealth(h => ({ ...h, MIRURO: "ok" }));
             tryWin("MIRURO");
           } else {
@@ -1022,19 +1022,17 @@ export default function WatchAniList() {
     return () => { cancelled = true; };
   }, [server, anizoneSlug, currentEp]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Fetch Miruro HLS stream when server is MIRURO
+  // Fetch Miruro iframe URL when server is MIRURO
   useEffect(() => {
     if (server !== "MIRURO") {
-      setMiruroHlsUrl(null);
-      setMiruroSubtitles([]);
+      setMiruroIframeUrl(null);
       setMiruroError(null);
       return;
     }
     const cached = raceCache.current.miruro;
     if (cached !== undefined) {
-      if (cached?.hlsUrl) {
-        setMiruroHlsUrl(cached.hlsUrl);
-        setMiruroSubtitles(cached.subtitles ?? []);
+      if (cached?.iframeUrl) {
+        setMiruroIframeUrl(cached.iframeUrl);
         setMiruroLoading(false);
         setMiruroError(null);
         raceCache.current.miruro = undefined;
@@ -1043,17 +1041,15 @@ export default function WatchAniList() {
       raceCache.current.miruro = undefined;
     }
     let cancelled = false;
-    setMiruroHlsUrl(null);
-    setMiruroSubtitles([]);
+    setMiruroIframeUrl(null);
     setMiruroLoading(true);
     setMiruroError(null);
-    fetch(apiUrl(`/api/miruro/stream?anilistId=${animeId}&ep=${currentEp}`))
+    fetch(apiUrl(`/api/miruro/stream?anilistId=${animeId}&ep=${currentEp}&romajiTitle=${encodeURIComponent(romajiTitle)}`))
       .then((r) => r.json())
-      .then((data: { hlsUrl?: string; subtitles?: { src: string; label: string; srclang: string; isDefault: boolean }[]; error?: string }) => {
+      .then((data: { iframeUrl?: string; error?: string }) => {
         if (cancelled) return;
-        if (data.hlsUrl) {
-          setMiruroHlsUrl(data.hlsUrl);
-          setMiruroSubtitles(data.subtitles ?? []);
+        if (data.iframeUrl) {
+          setMiruroIframeUrl(data.iframeUrl);
         } else {
           setMiruroError(data.error ?? "No stream found for this episode");
         }
@@ -1496,14 +1492,17 @@ export default function WatchAniList() {
                   />
                 )}
 
-                {/* MIRURO native HLS player */}
-                {server === "MIRURO" && miruroHlsUrl && (
-                  <HlsPlayer
+                {/* MIRURO iframe embed — loads miruro.to watch page directly */}
+                {server === "MIRURO" && miruroIframeUrl && (
+                  <iframe
+                    ref={iframeRef}
                     key={`miruro-${animeId}-${currentEp}`}
-                    hlsUrl={miruroHlsUrl}
-                    subtitles={miruroSubtitles}
-                    title={getEpTitle(currentEp) !== `Episode ${currentEp}` ? `${title} — Ep ${currentEp}: ${getEpTitle(currentEp)}` : `${title} — Episode ${currentEp}`}
-                    progressKey={`al_${animeId}_${currentEp}`}
+                    src={miruroIframeUrl}
+                    className="w-full h-full"
+                    allowFullScreen
+                    allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
+                    title={`${title} Episode ${currentEp}`}
+                    onLoad={() => setTimeout(() => setIframeLoaded(true), 200)}
                   />
                 )}
 
@@ -1598,7 +1597,7 @@ export default function WatchAniList() {
                 )}
 
                 {/* MIRURO loading / error overlay */}
-                {server === "MIRURO" && !miruroHlsUrl && (
+                {server === "MIRURO" && !miruroIframeUrl && (
                   <div className="absolute inset-0 z-10 flex flex-col items-center justify-center" style={{ background: "rgba(0,0,0,0.92)" }}>
                     {banner && <img src={banner} alt="" className="absolute inset-0 w-full h-full object-cover opacity-10 scale-110 blur-sm" />}
                     <div className="relative z-10 flex flex-col items-center gap-4">
@@ -2115,10 +2114,10 @@ export default function WatchAniList() {
                   <div className="w-2 h-2 rounded-full bg-purple-400/40 animate-pulse shrink-0" />
                   <span className="text-[10px] font-mono text-white/30 uppercase tracking-widest">Connecting…</span>
                 </>
-              ) : miruroHlsUrl ? (
+              ) : miruroIframeUrl ? (
                 <>
                   <div className="w-2 h-2 rounded-full bg-purple-400 shrink-0" />
-                  <span className="text-[10px] font-mono text-purple-400/70 uppercase tracking-widest">Stream Connected</span>
+                  <span className="text-[10px] font-mono text-purple-400/70 uppercase tracking-widest">miruro.to</span>
                 </>
               ) : (
                 <>
