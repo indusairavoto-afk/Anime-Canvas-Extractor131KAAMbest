@@ -364,7 +364,7 @@ export default function WatchAniList() {
   // Load saved AniZone slug from localStorage; if none saved, try to derive from externalLinks
   useEffect(() => {
     if (!animeId) return;
-    const saved = localStorage.getItem(`na_anizone_${animeId}`);
+    const saved = localStorage.getItem(`na_anizone2_${animeId}`);
     if (saved) {
       setAnizoneSlug(saved);
       setAnizoneSlugInput(saved);
@@ -380,7 +380,7 @@ export default function WatchAniList() {
         if (slug) {
           setAnizoneSlug(slug);
           setAnizoneSlugInput(slug);
-          localStorage.setItem(`na_anizone_${animeId}`, slug);
+          localStorage.setItem(`na_anizone2_${animeId}`, slug);
           return;
         }
       }
@@ -500,7 +500,7 @@ export default function WatchAniList() {
     };
 
     const gSlug = localStorage.getItem(`na_gogo_${animeId}`) || deriveGogoSlug(title);
-    const aSlug = localStorage.getItem(`na_anizone_${animeId}`) || "";
+    const aSlug = localStorage.getItem(`na_anizone2_${animeId}`) || "";
     const malId = anime?.idMal ?? null;
 
     const timers: ReturnType<typeof setTimeout>[] = [];
@@ -666,6 +666,58 @@ export default function WatchAniList() {
       .finally(() => { setGogoSearching(false); setGogoSearchDone(true); });
   }
 
+  /**
+   * Score-based auto-slug selection.
+   * Prefers results whose title closely matches the query.
+   * Penalises spin-offs ("rewrite", "movie", "film", "special", etc.) that
+   * appear in the result title but NOT in the original query.
+   * Returns null if no result is a confident enough match.
+   */
+  function bestAutoSlug(
+    results: { slug: string; title: string }[],
+    query: string
+  ): string | null {
+    if (results.length === 0) return null;
+    const norm = (s: string) =>
+      s.toLowerCase().replace(/[^\w\s]/g, "").replace(/\s+/g, " ").trim();
+    const SPINOFF_WORDS = ["rewrite", "movie", "film", "special", "ova", "recap", "compilation", "live action", "live-action"];
+    const qNorm = norm(query);
+
+    const scored = results.map((r) => {
+      const tNorm = norm(r.title);
+      let score = 0;
+
+      if (tNorm === qNorm) {
+        score = 1000;
+      } else if (tNorm.startsWith(qNorm)) {
+        // Extra words after the query (e.g. "Death Note Rewrite") — penalise by length diff
+        score = 500 - (tNorm.length - qNorm.length) * 3;
+      } else if (tNorm.includes(qNorm)) {
+        score = 200 - (tNorm.length - qNorm.length) * 2;
+      } else {
+        // Partial word overlap
+        const qWords = qNorm.split(" ");
+        const tWords = new Set(tNorm.split(" "));
+        const overlap = qWords.filter((w) => tWords.has(w)).length;
+        score = overlap > 0 ? (overlap / qWords.length) * 80 - 50 : -999;
+      }
+
+      // Heavily penalise spin-off keywords that aren't in the original query
+      for (const word of SPINOFF_WORDS) {
+        if (tNorm.includes(word) && !qNorm.includes(word)) {
+          score -= 400;
+        }
+      }
+
+      return { ...r, score };
+    });
+
+    scored.sort((a, b) => b.score - a.score);
+    const best = scored[0];
+    // Only auto-pick if confident (score above threshold)
+    return best.score >= 100 ? best.slug : null;
+  }
+
   function triggerKotoSearch(query: string) {
     if (!query) return;
     setKotoSearching(true);
@@ -676,11 +728,14 @@ export default function WatchAniList() {
       .then((data: { results?: { slug: string; title: string; thumbnail: string }[] }) => {
         const results = data.results ?? [];
         setKotoSearchResults(results);
-        // Auto-select first result if slug not yet set
         if (results.length > 0 && !kotoSlug) {
-          setKotoSlug(results[0].slug);
-          setKotoSlugInput(results[0].slug);
-          localStorage.setItem(`na_koto_${animeId}`, results[0].slug);
+          const slug = bestAutoSlug(results, q);
+          if (slug) {
+            setKotoSlug(slug);
+            setKotoSlugInput(slug);
+            localStorage.setItem(`na_koto2_${animeId}`, slug);
+          }
+          // If no confident match, leave slug empty — backend falls back to malId mapper
         }
       })
       .catch(() => { setKotoSearchResults([]); })
@@ -697,11 +752,13 @@ export default function WatchAniList() {
       .then((data: { results?: { slug: string; title: string; thumbnail: string }[] }) => {
         const results = data.results ?? [];
         setAnizoneSearchResults(results);
-        // Auto-select first result if no slug is saved yet
         if (results.length > 0 && !currentSlug) {
-          setAnizoneSlug(results[0].slug);
-          setAnizoneSlugInput(results[0].slug);
-          localStorage.setItem(`na_anizone_${animeId}`, results[0].slug);
+          const slug = bestAutoSlug(results, q);
+          if (slug) {
+            setAnizoneSlug(slug);
+            setAnizoneSlugInput(slug);
+            localStorage.setItem(`na_anizone2_${animeId}`, slug);
+          }
         }
       })
       .catch(() => { setAnizoneSearchResults([]); })
@@ -712,7 +769,7 @@ export default function WatchAniList() {
   // so the slug is ready instantly when KOTO is selected or is the default.
   useEffect(() => {
     if (!title || !animeId) return;
-    const saved = localStorage.getItem(`na_koto_${animeId}`) ?? "";
+    const saved = localStorage.getItem(`na_koto2_${animeId}`) ?? "";
     if (saved) { setKotoSlug(saved); setKotoSlugInput(saved); return; }
     triggerKotoSearch(title);
   }, [title, animeId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -721,7 +778,7 @@ export default function WatchAniList() {
   // instantly when AniZone is selected, without requiring user interaction.
   useEffect(() => {
     if (!title || !animeId) return;
-    const saved = localStorage.getItem(`na_anizone_${animeId}`) ?? "";
+    const saved = localStorage.getItem(`na_anizone2_${animeId}`) ?? "";
     if (saved) { setAnizoneSlug(saved); setAnizoneSlugInput(saved); return; }
     // Also skip if slug already set from externalLinks
     if (anizoneSlug) return;
@@ -731,7 +788,7 @@ export default function WatchAniList() {
   // When KOTO server is selected, ensure slug is loaded (handles server switch)
   useEffect(() => {
     if (server !== "KOTO" || !title) return;
-    const saved = localStorage.getItem(`na_koto_${animeId}`) ?? "";
+    const saved = localStorage.getItem(`na_koto2_${animeId}`) ?? "";
     if (saved && !kotoSlug) { setKotoSlug(saved); setKotoSlugInput(saved); return; }
     if (!kotoSlug && !kotoSearching) triggerKotoSearch(title);
   }, [server, title, animeId]); // eslint-disable-line react-hooks/exhaustive-deps
