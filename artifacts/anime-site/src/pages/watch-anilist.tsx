@@ -209,7 +209,7 @@ export default function WatchAniList() {
   const bridgeLiveRef = useRef(false);
   const userPickedRef = useRef(false);
   const raceCache = useRef<{
-    gogo?: { cdnUrl: string; resolvedSlug?: string } | null;
+    gogo?: { cdnUrl: string; resolvedSlug?: string; pageTitle?: string | null } | null;
     koto?: { url?: string; hlsUrl?: string | null } | null;
     anizone?: { hlsUrl?: string; subtitles?: { src: string; label: string; srclang: string; isDefault: boolean }[] } | null;
   }>({});
@@ -520,29 +520,39 @@ export default function WatchAniList() {
       timers.push(setTimeout(() => { if (!cancelled && !won) fn(); }, delay));
     };
 
-    // GOGO
-    if (gSlug) {
-      setServerHealth(h => ({ ...h, GOGO: "checking" }));
-      schedule(preferred === "GOGO" ? 0 : HEAD_START, () => {
-        fetch(apiUrl(`/api/gogo/cdn-url?slug=${encodeURIComponent(gSlug)}&ep=${currentEp}`))
-          .then(r => r.json())
-          .then((data: { cdnUrl?: string; resolvedSlug?: string }) => {
-            if (cancelled) return;
-            if (data.cdnUrl) {
-              raceCache.current.gogo = data;
-              setServerHealth(h => ({ ...h, GOGO: "ok" }));
-              tryWin("GOGO");
-            } else {
-              raceCache.current.gogo = null;
-              setServerHealth(h => ({ ...h, GOGO: "fail" }));
-            }
-          })
-          .catch(() => { if (!cancelled) { raceCache.current.gogo = null; setServerHealth(h => ({ ...h, GOGO: "fail" })); } });
-      });
-    } else {
-      raceCache.current.gogo = null;
-      setServerHealth(h => ({ ...h, GOGO: "fail" }));
-    }
+    // GOGO — try cdn-url (slug variants) first; if all fail, auto-resolve via resolve-slug (no user action)
+    setServerHealth(h => ({ ...h, GOGO: "checking" }));
+    schedule(preferred === "GOGO" ? 0 : HEAD_START, () => {
+      const gogoTitle = title;
+      const firstFetch = gSlug
+        ? fetch(apiUrl(`/api/gogo/cdn-url?slug=${encodeURIComponent(gSlug)}&ep=${currentEp}`)).then(r => r.json())
+        : Promise.resolve({});
+      firstFetch
+        .then((data: { cdnUrl?: string; resolvedSlug?: string; pageTitle?: string | null }) => {
+          if (cancelled) return;
+          if (data.cdnUrl) {
+            raceCache.current.gogo = { cdnUrl: data.cdnUrl, resolvedSlug: data.resolvedSlug, pageTitle: data.pageTitle };
+            setServerHealth(h => ({ ...h, GOGO: "ok" }));
+            tryWin("GOGO");
+            return;
+          }
+          // Slug variants all failed — silently try resolve-slug (server searches GoGo by title)
+          return fetch(apiUrl(`/api/gogo/resolve-slug?title=${encodeURIComponent(gogoTitle)}&ep=${currentEp}`))
+            .then(r => r.json())
+            .then((resolveData: { cdnUrl?: string; resolvedSlug?: string; pageTitle?: string | null }) => {
+              if (cancelled) return;
+              if (resolveData.cdnUrl) {
+                raceCache.current.gogo = { cdnUrl: resolveData.cdnUrl, resolvedSlug: resolveData.resolvedSlug, pageTitle: resolveData.pageTitle };
+                setServerHealth(h => ({ ...h, GOGO: "ok" }));
+                tryWin("GOGO");
+              } else {
+                raceCache.current.gogo = null;
+                setServerHealth(h => ({ ...h, GOGO: "fail" }));
+              }
+            });
+        })
+        .catch(() => { if (!cancelled) { raceCache.current.gogo = null; setServerHealth(h => ({ ...h, GOGO: "fail" })); } });
+    });
 
     // KOTO
     if (malId) {
@@ -615,6 +625,9 @@ export default function WatchAniList() {
         setCdnUrl(cached.cdnUrl);
         setCdnLoading(false);
         setCdnNotFound(false);
+        if ((cached as { pageTitle?: string | null }).pageTitle) {
+          setSourcePageTitle((cached as { pageTitle?: string | null }).pageTitle!);
+        }
         if (cached.resolvedSlug && cached.resolvedSlug !== gogoSlug) {
           setGogoSlug(cached.resolvedSlug);
           setGogoSlugInput(cached.resolvedSlug);
@@ -635,23 +648,42 @@ export default function WatchAniList() {
       .then((r) => r.json())
       .then((data: { cdnUrl?: string; resolvedSlug?: string; pageTitle?: string | null }) => {
         if (cancelled) return;
-        if (data.cdnUrl) {
-          setCdnUrl(data.cdnUrl);
-          if (data.pageTitle) setSourcePageTitle(data.pageTitle);
-        } else {
-          // All slug variants exhausted — mark not-found and auto-search GoGoAnimes by title
-          setCdnNotFound(true);
-          triggerGogoSearch(title);
-        }
-        // If the server auto-resolved a different (working) slug, save it so
-        // subsequent episodes skip the retry loop entirely.
+
+        // Save auto-resolved slug from variant probe
         if (data.resolvedSlug && data.resolvedSlug !== gogoSlug) {
           setGogoSlug(data.resolvedSlug);
           setGogoSlugInput(data.resolvedSlug);
           localStorage.setItem(`na_gogo_${animeId}`, data.resolvedSlug);
         }
+
+        if (data.cdnUrl) {
+          setCdnUrl(data.cdnUrl);
+          if (data.pageTitle) setSourcePageTitle(data.pageTitle);
+          return;
+        }
+
+        // All slug variants exhausted — automatically resolve server-side via title search+scoring.
+        // No user interaction needed: the backend searches GoGo, scores results, and probes the best slug.
+        return fetch(apiUrl(`/api/gogo/resolve-slug?title=${encodeURIComponent(title)}&ep=${currentEp}`))
+          .then((r) => r.json())
+          .then((resolveData: { cdnUrl?: string; resolvedSlug?: string; pageTitle?: string | null }) => {
+            if (cancelled) return;
+            if (resolveData.cdnUrl) {
+              setCdnUrl(resolveData.cdnUrl);
+              setCdnNotFound(false);
+              if (resolveData.pageTitle) setSourcePageTitle(resolveData.pageTitle);
+              if (resolveData.resolvedSlug) {
+                setGogoSlug(resolveData.resolvedSlug);
+                setGogoSlugInput(resolveData.resolvedSlug);
+                localStorage.setItem(`na_gogo_${animeId}`, resolveData.resolvedSlug);
+              }
+            } else {
+              setCdnNotFound(true);
+            }
+          })
+          .catch(() => { if (!cancelled) setCdnNotFound(true); });
       })
-      .catch(() => { if (!cancelled) triggerGogoSearch(title); })
+      .catch(() => { if (!cancelled) setCdnNotFound(true); })
       .finally(() => { if (!cancelled) setCdnLoading(false); });
     return () => { cancelled = true; };
   }, [server, gogoSlug, currentEp, animeId]); // eslint-disable-line react-hooks/exhaustive-deps
