@@ -21,9 +21,9 @@ function toMiruroSlug(title: string): string {
 /**
  * GET /api/miruro/stream?anilistId=...&ep=...&romajiTitle=...
  *
- * Returns an iframe URL for miruro.to.
- * romajiTitle is used to construct the slug portion of the URL.
- * If omitted, the URL is constructed without a slug (miruro.to handles it).
+ * Returns an iframe URL for miruro.to only if the URL is actually embeddable.
+ * Performs a HEAD check to verify no X-Frame-Options block is in place.
+ * Returns 503 if the source cannot be iframed (sitewide SAMEORIGIN policy).
  */
 router.get("/miruro/stream", async (req, res) => {
   const anilistId = (req.query.anilistId as string | undefined)?.trim();
@@ -43,6 +43,29 @@ router.get("/miruro/stream", async (req, res) => {
   const iframeUrl = slug
     ? `${MIRURO_SITE}/watch/${anilistId}/${slug}?ep=${epNum}`
     : `${MIRURO_SITE}/watch/${anilistId}?ep=${epNum}`;
+
+  // Verify the URL is actually embeddable before advertising it to the frontend.
+  // miruro.to uses X-Frame-Options: SAMEORIGIN sitewide, which prevents iframe
+  // embedding. If that changes in the future, this check will automatically allow it.
+  try {
+    const check = await fetch(iframeUrl, {
+      method: "HEAD",
+      redirect: "follow",
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+      },
+    });
+    const xfo = check.headers.get("x-frame-options");
+    if (xfo) {
+      const xfoLower = xfo.toLowerCase().trim();
+      // SAMEORIGIN and DENY both block cross-origin embedding
+      if (xfoLower === "sameorigin" || xfoLower === "deny") {
+        return res.status(503).json({ error: "Stream source not embeddable (X-Frame-Options: " + xfo + ")" });
+      }
+    }
+  } catch {
+    return res.status(503).json({ error: "Stream source unavailable" });
+  }
 
   return res.json({ iframeUrl });
 });

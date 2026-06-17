@@ -42,6 +42,7 @@ interface Props {
   title?: string;
   progressKey?: string;
   onEnded?: () => void;
+  onFatalError?: () => void;
 }
 
 interface SavedProgress {
@@ -85,7 +86,7 @@ export function getEpisodeProgressPct(progressKey: string): number | null {
   return pct;
 }
 
-export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, onEnded }: Props) {
+export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, onEnded, onFatalError }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -228,6 +229,7 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
         if (data.fatal) {
           setError(data.details ?? "Stream error");
           setLoading(false);
+          onFatalError?.();
         }
       });
     } else if (video.canPlayType("application/vnd.apple.mpegurl")) {

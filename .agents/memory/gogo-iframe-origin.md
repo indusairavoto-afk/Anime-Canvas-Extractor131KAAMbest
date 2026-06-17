@@ -1,14 +1,16 @@
 ---
 name: GoGo iframe origin rule
-description: Why megaplay.buzz must be loaded directly in the iframe, not via our proxy
+description: Why megaplay.buzz must be loaded directly in the iframe, and the streaming.php double-nest failure
 ---
 
-megaplay.buzz has no X-Frame-Options and uses `access-control-allow-origin: *`, so it can be embedded directly.
+**Pipeline:** `gogoanimes.cv/{slug}-episode-{ep}/` → extract `data-video` attr → get `gogoanime.com.by/streaming.php?ep=...&type=sub` → `extractInnerPlayerUrl` fetches streaming.php → extracts `megaplay.buzz/stream/s-2/{id}/sub` → return as cdnUrl → frontend loads megaplay.buzz directly in iframe.
 
-**Rule:** Always load the GoGo CDN URL (megaplay.buzz) directly as the iframe src — never proxy it.
+**Rule:** Always load the megaplay.buzz CDN URL directly as the iframe src — never streaming.php, and never via our proxy.
 
-**Why:** When proxied, the iframe origin becomes our Replit domain. The megaplay.buzz player JS (`e1-player.min.js`) makes API calls to megaplay.buzz to fetch the video source. These calls require session cookies (`GL_UI4`, `GL_GI10`) set by megaplay.buzz. Cross-origin requests don't send cookies unless the server uses `credentials: include` + a non-wildcard CORS policy — megaplay uses `*`, so cookies are never sent. The API calls fail silently and the player never loads (blank white screen).
+**Why not streaming.php directly:** Attempting to load `gogoanime.com.by/streaming.php` directly as the iframe URL creates a double-nested iframe (our iframe → streaming.php → megaplay.buzz iframe). In this context, megaplay.buzz's JW Player fires error 102630 silently and shows a black screen — no player, no error message. Users have no idea what's wrong. Loading megaplay.buzz directly at least shows "We're Sorry!" when content is DMCA'd.
 
-**How to apply:** In `watch-anilist.tsx`, the GOGO iframe src should be `cdnUrl` directly, not `/api/proxy?url=...`.
+**Why no proxy:** The embedded player JS makes API calls using session cookies. Cross-origin proxy requests don't forward cookies (megaplay.buzz uses `access-control-allow-origin: *` which disqualifies credentialed requests), so the video source calls fail silently → blank player.
 
-**Note:** A 410 error from the player means that specific video was DMCA'd — not a code issue.
+**DMCA 410 note:** When megaplay.buzz 410s an episode, the error is JS-rendered ("We're Sorry!" appears inside the iframe). It cannot be detected server-side — the static HTML is a valid player page (HTTP 200). There is no API on megaplay.buzz that confirms file availability without browser cookies/session. The user should switch to KOTO, ANIZONE, or MIRURO for that episode. This is a content-availability limitation, not a code bug.
+
+**How to apply:** In `watch-anilist.tsx`, the GOGO iframe src must be `cdnUrl` (megaplay.buzz URL) directly. In `probeCdnUrl`, call `extractInnerPlayerUrl(streamingUrl)` to get the inner megaplay.buzz URL, then return that as cdnUrl.

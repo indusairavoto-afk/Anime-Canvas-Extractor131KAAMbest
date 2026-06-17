@@ -218,6 +218,11 @@ async function probeCdnUrl(slug: string, ep: string): Promise<ProbedResult | nul
     const streamingUrl = extractCdnUrl(html);
     if (!streamingUrl) return null;
 
+    // Extract the actual CDN player URL from inside streaming.php.
+    // Loading streaming.php directly embeds it in a double-nested iframe which prevents
+    // megaplay.buzz from rendering correctly (JW Player 102630 silent error → black screen).
+    // Loading megaplay.buzz directly shows either the working player OR the "We're Sorry"
+    // error page, giving users clear feedback to switch servers.
     const innerUrl = await extractInnerPlayerUrl(streamingUrl);
     return { cdnUrl: innerUrl ?? decodeHtmlEntities(streamingUrl), slug, pageTitle };
   } catch {

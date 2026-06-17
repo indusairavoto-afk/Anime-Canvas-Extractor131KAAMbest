@@ -1,2 +1,3 @@
-- [GoGo iframe origin rule](gogo-iframe-origin.md) — megaplay.buzz must load directly in iframe (no proxy); proxying breaks cookie-gated player API calls.
+- [GoGo iframe origin rule](gogo-iframe-origin.md) — megaplay.buzz must load directly in iframe (no proxy); streaming.php double-nest causes silent JW Player error.
 - [Koto player fallback](koto-player-fallback.md) — kotoPlayerUrl (iframe fallback) vs kotoHlsUrl (HLS); overlay only when both are null.
+- [Miruro X-Frame-Options block](miruro-xframe.md) — miruro.to has X-Frame-Options: SAMEORIGIN sitewide; must HEAD-check before advertising iframeUrl to prevent racing with a broken URL.

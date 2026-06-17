@@ -1514,6 +1514,7 @@ export default function WatchAniList() {
                     subtitles={[]}
                     title={getEpTitle(currentEp) !== `Episode ${currentEp}` ? `${title} — Ep ${currentEp}: ${getEpTitle(currentEp)}` : `${title} — Episode ${currentEp}`}
                     progressKey={`al_${animeId}_${currentEp}`}
+                    onFatalError={() => setKotoHlsUrl(null)}
                   />
                 )}
 
