@@ -14,6 +14,7 @@ export interface Review {
   avatarUrl: string;
   rating: ReviewRating;
   content: string;
+  spoiler: boolean;
   likes: number;
   createdAt: string;
 }

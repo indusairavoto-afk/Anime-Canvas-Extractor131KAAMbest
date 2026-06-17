@@ -11,4 +11,5 @@ export interface ReviewInput {
   username: string;
   rating: ReviewInputRating;
   content: string;
+  spoiler?: boolean;
 }

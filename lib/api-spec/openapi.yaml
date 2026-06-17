@@ -639,7 +639,7 @@ components:
 
     Review:
       type: object
-      required: [id, animeId, username, avatarUrl, rating, content, likes, createdAt]
+      required: [id, animeId, username, avatarUrl, rating, content, spoiler, likes, createdAt]
       properties:
         id:
           type: integer
@@ -654,6 +654,8 @@ components:
           enum: [skip, timepass, go_for_it, perfection]
         content:
           type: string
+        spoiler:
+          type: boolean
         likes:
           type: integer
         createdAt:
@@ -670,6 +672,8 @@ components:
           enum: [skip, timepass, go_for_it, perfection]
         content:
           type: string
+        spoiler:
+          type: boolean
 
     ReviewSummary:
       type: object

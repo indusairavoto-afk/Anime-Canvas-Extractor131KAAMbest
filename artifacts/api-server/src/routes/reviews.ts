@@ -19,6 +19,7 @@ function toReviewResponse(row: typeof reviewTable.$inferSelect) {
     avatarUrl: row.avatarUrl,
     rating: row.rating,
     content: row.content,
+    spoiler: row.spoiler,
     likes: row.likes,
     createdAt: row.createdAt.toISOString(),
   };
@@ -42,7 +43,7 @@ router.get("/anime/:id/reviews", async (req, res) => {
 router.post("/anime/:id/reviews", async (req, res) => {
   try {
     const animeId = parseInt(req.params.id);
-    const { username, rating, content } = req.body;
+    const { username, rating, content, spoiler } = req.body;
 
     if (!username || typeof username !== "string") {
       res.status(400).json({ error: "username is required" });
@@ -65,6 +66,7 @@ router.post("/anime/:id/reviews", async (req, res) => {
         avatarUrl: randomAvatar(username),
         rating,
         content: content.trim(),
+        spoiler: spoiler === true,
         likes: 0,
       })
       .returning();

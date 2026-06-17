@@ -77,6 +77,7 @@ export const reviewTable = pgTable("review", {
   avatarUrl: text("avatar_url").notNull(),
   rating: reviewRatingEnum("rating").notNull(),
   content: text("content").notNull(),
+  spoiler: boolean("spoiler").notNull().default(false),
   likes: integer("likes").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });

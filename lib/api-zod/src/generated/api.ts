@@ -285,6 +285,7 @@ export const ListAnimeReviewsResponseItem = zod.object({
   "avatarUrl": zod.string(),
   "rating": zod.enum(['skip', 'timepass', 'go_for_it', 'perfection']),
   "content": zod.string(),
+  "spoiler": zod.boolean(),
   "likes": zod.number(),
   "createdAt": zod.string()
 })
@@ -301,7 +302,8 @@ export const CreateAnimeReviewParams = zod.object({
 export const CreateAnimeReviewBody = zod.object({
   "username": zod.string(),
   "rating": zod.enum(['skip', 'timepass', 'go_for_it', 'perfection']),
-  "content": zod.string()
+  "content": zod.string(),
+  "spoiler": zod.boolean().optional()
 })
 
 
@@ -335,6 +337,7 @@ export const LikeReviewResponse = zod.object({
   "avatarUrl": zod.string(),
   "rating": zod.enum(['skip', 'timepass', 'go_for_it', 'perfection']),
   "content": zod.string(),
+  "spoiler": zod.boolean(),
   "likes": zod.number(),
   "createdAt": zod.string()
 })

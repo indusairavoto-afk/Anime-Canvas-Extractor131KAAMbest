@@ -160,6 +160,8 @@ export default function AnimeDetailAniList() {
   const [selectedRating, setSelectedRating] = useState<RatingOption | null>(null);
   const [reviewText, setReviewText] = useState("");
   const [username, setUsername] = useState("");
+  const [isSpoiler, setIsSpoiler] = useState(false);
+  const [revealedIds, setRevealedIds] = useState<Set<number>>(new Set());
   const [likedIds, setLikedIds] = useState<Set<number>>(new Set());
   const textRef = useRef<HTMLTextAreaElement>(null);
 
@@ -174,6 +176,7 @@ export default function AnimeDetailAniList() {
       onSuccess: () => {
         setReviewText("");
         setSelectedRating(null);
+        setIsSpoiler(false);
         queryClient.invalidateQueries({ queryKey: getListAnimeReviewsQueryKey(anilistId) });
         queryClient.invalidateQueries({ queryKey: getGetAnimeReviewSummaryQueryKey(anilistId) });
       },
@@ -195,7 +198,7 @@ export default function AnimeDetailAniList() {
   function handleSubmit() {
     if (!selectedRating || reviewText.trim().length === 0) return;
     const name = username.trim() || "Guest";
-    createReview({ id: anilistId, data: { username: name, rating: selectedRating, content: reviewText.trim() } });
+    createReview({ id: anilistId, data: { username: name, rating: selectedRating, content: reviewText.trim(), spoiler: isSpoiler } });
   }
 
   function handleLike(reviewId: number) {
@@ -619,18 +622,35 @@ export default function AnimeDetailAniList() {
                     className="w-full bg-transparent border border-white/10 text-white text-sm px-4 py-3 placeholder:text-white/20 focus:outline-none focus:border-white/30 transition-colors resize-none"
                   />
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-mono text-white/20">{reviewText.length}/1000</span>
-                    <button
-                      onClick={handleSubmit}
-                      disabled={reviewText.trim().length === 0 || submitting}
-                      className={`px-6 py-2.5 text-xs font-bold uppercase tracking-widest transition-all ${
-                        reviewText.trim().length > 0 && !submitting
-                          ? "bg-white text-black hover:bg-white/90"
-                          : "bg-white/10 text-white/30 cursor-not-allowed"
-                      }`}
-                    >
-                      {submitting ? "Posting..." : "Post"}
-                    </button>
+                    <label className="flex items-center gap-2 cursor-pointer select-none group">
+                      <div
+                        onClick={() => setIsSpoiler((v) => !v)}
+                        className={`w-4 h-4 rounded-sm border flex items-center justify-center transition-colors ${
+                          isSpoiler ? "bg-amber-500/80 border-amber-400" : "border-white/20 bg-transparent group-hover:border-white/40"
+                        }`}
+                      >
+                        {isSpoiler && (
+                          <svg className="w-2.5 h-2.5 text-black" viewBox="0 0 10 10" fill="none">
+                            <path d="M1.5 5L4 7.5L8.5 2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                        )}
+                      </div>
+                      <span className="text-[11px] font-mono text-white/40 group-hover:text-white/60 transition-colors">Contains spoilers</span>
+                    </label>
+                    <div className="flex items-center gap-3">
+                      <span className="text-[10px] font-mono text-white/20">{reviewText.length}/1000</span>
+                      <button
+                        onClick={handleSubmit}
+                        disabled={reviewText.trim().length === 0 || submitting}
+                        className={`px-6 py-2.5 text-xs font-bold uppercase tracking-widest transition-all ${
+                          reviewText.trim().length > 0 && !submitting
+                            ? "bg-white text-black hover:bg-white/90"
+                            : "bg-white/10 text-white/30 cursor-not-allowed"
+                        }`}
+                      >
+                        {submitting ? "Posting..." : "Post"}
+                      </button>
+                    </div>
                   </div>
                 </motion.div>
               )}
@@ -665,9 +685,26 @@ export default function AnimeDetailAniList() {
                             <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
                             {cfg.label}
                           </span>
+                          {review.spoiler && (
+                            <span className="text-[10px] font-mono uppercase tracking-widest px-2 py-0.5 rounded-full border border-amber-400/30 text-amber-400/70 bg-amber-400/10 flex items-center gap-1">
+                              ⚠ spoiler
+                            </span>
+                          )}
                           <span className="text-[10px] font-mono text-white/30 ml-auto">{timeAgo(review.createdAt)}</span>
                         </div>
-                        <p className="text-white/70 text-sm leading-relaxed">{review.content}</p>
+                        {review.spoiler && !revealedIds.has(review.id) ? (
+                          <div className="relative">
+                            <p className="text-white/70 text-sm leading-relaxed blur-sm select-none pointer-events-none">{review.content}</p>
+                            <button
+                              onClick={() => setRevealedIds((prev) => new Set(prev).add(review.id))}
+                              className="absolute inset-0 flex items-center justify-center text-[11px] font-mono uppercase tracking-widest text-amber-400/80 hover:text-amber-400 transition-colors"
+                            >
+                              Click to reveal spoiler
+                            </button>
+                          </div>
+                        ) : (
+                          <p className="text-white/70 text-sm leading-relaxed">{review.content}</p>
+                        )}
                       </div>
                     </div>
                     <div className="flex justify-end">

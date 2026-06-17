@@ -147,6 +147,7 @@ export interface Review {
   avatarUrl: string;
   rating: ReviewRating;
   content: string;
+  spoiler: boolean;
   likes: number;
   createdAt: string;
 }
@@ -165,6 +166,7 @@ export interface ReviewInput {
   username: string;
   rating: ReviewInputRating;
   content: string;
+  spoiler?: boolean;
 }
 
 export interface ReviewSummary {
