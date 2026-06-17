@@ -381,7 +381,7 @@ export default function WatchAniList() {
   // Load saved AniZone slug from localStorage; if none saved, try to derive from externalLinks
   useEffect(() => {
     if (!animeId) return;
-    const saved = localStorage.getItem(`na_anizone2_${animeId}`);
+    const saved = localStorage.getItem(`na_anizone3_${animeId}`);
     if (saved) {
       setAnizoneSlug(saved);
       setAnizoneSlugInput(saved);
@@ -397,7 +397,7 @@ export default function WatchAniList() {
         if (slug) {
           setAnizoneSlug(slug);
           setAnizoneSlugInput(slug);
-          localStorage.setItem(`na_anizone2_${animeId}`, slug);
+          localStorage.setItem(`na_anizone3_${animeId}`, slug);
           return;
         }
       }
@@ -517,7 +517,7 @@ export default function WatchAniList() {
     };
 
     const gSlug = localStorage.getItem(`na_gogo_${animeId}`) || deriveGogoSlug(title);
-    const aSlug = localStorage.getItem(`na_anizone2_${animeId}`) || "";
+    const aSlug = localStorage.getItem(`na_anizone3_${animeId}`) || "";
     const malId = anime?.idMal ?? null;
 
     const timers: ReturnType<typeof setTimeout>[] = [];
@@ -736,15 +736,54 @@ export default function WatchAniList() {
   }
 
   /**
+   * Extract season number from a title string. Returns null if no season found.
+   * Handles: "Season 4", "4th Season", "2nd Season", "3rd Season", etc.
+   */
+  function extractSeasonNumber(title: string): number | null {
+    const m =
+      title.match(/\bseason\s+(\d+)\b/i) ??
+      title.match(/\b(\d+)(st|nd|rd|th)\s+season\b/i);
+    if (m) return parseInt(m[1]);
+    return null;
+  }
+
+  /**
+   * Given a season number, return an array of text patterns that indicate
+   * that season in a slug or title (e.g. season 2 → ["2nd", "second", "ii"]).
+   */
+  function seasonIndicators(n: number): string[] {
+    const ordinals: Record<number, string> = {
+      1: "1st", 2: "2nd", 3: "3rd", 4: "4th", 5: "5th",
+      6: "6th", 7: "7th", 8: "8th", 9: "9th", 10: "10th",
+    };
+    const words: Record<number, string> = {
+      1: "first", 2: "second", 3: "third", 4: "fourth", 5: "fifth",
+      6: "sixth", 7: "seventh", 8: "eighth", 9: "ninth", 10: "tenth",
+    };
+    const roman: Record<number, string> = {
+      1: "i", 2: "ii", 3: "iii", 4: "iv", 5: "v",
+      6: "vi", 7: "vii", 8: "viii", 9: "ix", 10: "x",
+    };
+    const indicators: string[] = [`season ${n}`, `season${n}`];
+    if (ordinals[n]) indicators.push(ordinals[n]);
+    if (words[n]) indicators.push(words[n]);
+    if (roman[n]) indicators.push(roman[n]);
+    return indicators;
+  }
+
+  /**
    * Score-based auto-slug selection.
    * Prefers results whose title closely matches the query.
    * Penalises spin-offs ("rewrite", "movie", "film", "special", etc.) that
    * appear in the result title but NOT in the original query.
+   * When a season number is provided, strongly boosts matching season results
+   * and penalises results that contain a different season number.
    * Returns null if no result is a confident enough match.
    */
   function bestAutoSlug(
     results: { slug: string; title: string }[],
-    query: string
+    query: string,
+    seasonNumber: number | null = null
   ): string | null {
     if (results.length === 0) return null;
     const norm = (s: string) =>
@@ -754,6 +793,7 @@ export default function WatchAniList() {
 
     const scored = results.map((r) => {
       const tNorm = norm(r.title);
+      const slugNorm = r.slug.toLowerCase();
       let score = 0;
 
       if (tNorm === qNorm) {
@@ -778,6 +818,26 @@ export default function WatchAniList() {
         }
       }
 
+      // Season-aware scoring: boost correct season, penalise wrong ones
+      if (seasonNumber !== null) {
+        const correctIndicators = seasonIndicators(seasonNumber);
+        const combined = `${tNorm} ${slugNorm}`;
+        const hasCorrectSeason = correctIndicators.some((ind) => combined.includes(ind));
+
+        if (hasCorrectSeason) {
+          score += 400;
+        } else {
+          // Check if it mentions any other season number — penalise those
+          const otherSeasonMatch = combined.match(/\b(\d+)(st|nd|rd|th)\s*season\b|\bseason\s*(\d+)\b|\b(second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)\b/i);
+          if (otherSeasonMatch) {
+            score -= 350;
+          } else if (seasonNumber > 1) {
+            // Season >1 was requested but result has no season indicator at all — likely S1
+            score -= 200;
+          }
+        }
+      }
+
       return { ...r, score };
     });
 
@@ -791,6 +851,7 @@ export default function WatchAniList() {
     if (!query) return;
     setKotoSearching(true);
     setKotoSearchDone(false);
+    const seasonNum = extractSeasonNumber(query);
     const q = query.replace(/\s*season\s*\d+/i, "").replace(/\s*\d+(st|nd|rd|th)\s*season/i, "").trim();
     fetch(apiUrl(`/api/koto/search?q=${encodeURIComponent(q)}&limit=8`))
       .then((r) => r.json())
@@ -798,11 +859,11 @@ export default function WatchAniList() {
         const results = data.results ?? [];
         setKotoSearchResults(results);
         if (results.length > 0 && !kotoSlug) {
-          const slug = bestAutoSlug(results, q);
+          const slug = bestAutoSlug(results, q, seasonNum);
           if (slug) {
             setKotoSlug(slug);
             setKotoSlugInput(slug);
-            localStorage.setItem(`na_koto2_${animeId}`, slug);
+            localStorage.setItem(`na_koto3_${animeId}`, slug);
           }
           // If no confident match, leave slug empty — backend falls back to malId mapper
         }
@@ -815,6 +876,7 @@ export default function WatchAniList() {
     if (!query) return;
     setAnizoneSearching(true);
     setAnizoneSearchDone(false);
+    const seasonNum = extractSeasonNumber(query);
     const q = query.replace(/\s*season\s*\d+/i, "").replace(/\s*\d+(st|nd|rd|th)\s*season/i, "").trim();
     fetch(apiUrl(`/api/anizone/search?q=${encodeURIComponent(q)}&limit=8`))
       .then((r) => r.json())
@@ -822,11 +884,11 @@ export default function WatchAniList() {
         const results = data.results ?? [];
         setAnizoneSearchResults(results);
         if (results.length > 0 && !currentSlug) {
-          const slug = bestAutoSlug(results, q);
+          const slug = bestAutoSlug(results, q, seasonNum);
           if (slug) {
             setAnizoneSlug(slug);
             setAnizoneSlugInput(slug);
-            localStorage.setItem(`na_anizone2_${animeId}`, slug);
+            localStorage.setItem(`na_anizone3_${animeId}`, slug);
           }
         }
       })
@@ -838,7 +900,7 @@ export default function WatchAniList() {
   // so the slug is ready instantly when KOTO is selected or is the default.
   useEffect(() => {
     if (!title || !animeId) return;
-    const saved = localStorage.getItem(`na_koto2_${animeId}`) ?? "";
+    const saved = localStorage.getItem(`na_koto3_${animeId}`) ?? "";
     if (saved) { setKotoSlug(saved); setKotoSlugInput(saved); return; }
     triggerKotoSearch(title);
   }, [title, animeId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -847,7 +909,7 @@ export default function WatchAniList() {
   // instantly when AniZone is selected, without requiring user interaction.
   useEffect(() => {
     if (!title || !animeId) return;
-    const saved = localStorage.getItem(`na_anizone2_${animeId}`) ?? "";
+    const saved = localStorage.getItem(`na_anizone3_${animeId}`) ?? "";
     if (saved) { setAnizoneSlug(saved); setAnizoneSlugInput(saved); return; }
     // Also skip if slug already set from externalLinks
     if (anizoneSlug) return;
@@ -857,7 +919,7 @@ export default function WatchAniList() {
   // When KOTO server is selected, ensure slug is loaded (handles server switch)
   useEffect(() => {
     if (server !== "KOTO" || !title) return;
-    const saved = localStorage.getItem(`na_koto2_${animeId}`) ?? "";
+    const saved = localStorage.getItem(`na_koto3_${animeId}`) ?? "";
     if (saved && !kotoSlug) { setKotoSlug(saved); setKotoSlugInput(saved); return; }
     if (!kotoSlug && !kotoSearching) triggerKotoSearch(title);
   }, [server, title, animeId]); // eslint-disable-line react-hooks/exhaustive-deps
