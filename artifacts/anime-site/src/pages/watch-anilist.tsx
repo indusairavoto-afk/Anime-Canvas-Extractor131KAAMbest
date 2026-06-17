@@ -1157,6 +1157,17 @@ export default function WatchAniList() {
         >
           {saved ? <BookmarkCheck className="w-5 h-5 text-white" /> : <Bookmark className="w-5 h-5" />}
         </button>
+        {liveViewers > 0 && (
+          <div className="flex items-center gap-1.5 pr-1">
+            <span className="relative flex h-1.5 w-1.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-500" />
+            </span>
+            <span className="text-[10px] font-mono text-white/45 tabular-nums whitespace-nowrap">
+              {liveViewers.toLocaleString()} watching
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Desktop: breadcrumb */}
@@ -1496,22 +1507,9 @@ export default function WatchAniList() {
               ) : (
                 <p className="text-[13px] font-semibold text-white/70">Episode {currentEp}</p>
               )}
-              <div className="flex items-center gap-3 mt-1">
-                {getEpAired(currentEp) && (
-                  <p className="text-[10px] text-white/30 font-mono">{getEpAired(currentEp)}</p>
-                )}
-                {liveViewers > 0 && (
-                  <div className="flex items-center gap-1.5">
-                    <span className="relative flex h-1.5 w-1.5">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
-                      <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-500" />
-                    </span>
-                    <span className="text-[10px] font-mono text-white/50">
-                      {liveViewers.toLocaleString()} watching
-                    </span>
-                  </div>
-                )}
-              </div>
+              {getEpAired(currentEp) && (
+                <p className="text-[10px] text-white/30 font-mono mt-1">{getEpAired(currentEp)}</p>
+              )}
             </div>
             {/* Prev / Next + sub/dub */}
             <div className="flex items-center gap-2 px-4 pb-3 border-b border-white/[0.06]">
@@ -1627,6 +1625,17 @@ export default function WatchAniList() {
                 ? <BookmarkCheck className="w-4 h-4 text-white" />
                 : <Bookmark className="w-4 h-4 text-white/40 hover:text-white" />}
             </button>
+            {liveViewers > 0 && (
+              <div className="flex items-center gap-1.5 px-2">
+                <span className="relative flex h-1.5 w-1.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-500" />
+                </span>
+                <span className="text-[10px] font-mono text-white/40 tabular-nums whitespace-nowrap">
+                  {liveViewers.toLocaleString()} watching
+                </span>
+              </div>
+            )}
           </div>
 
           {/* "You are watching" + SUB/DUB + Quality — desktop only */}
@@ -1640,22 +1649,9 @@ export default function WatchAniList() {
               {getEpTitle(currentEp) !== `Episode ${currentEp}` && (
                 <p className="text-[11px] text-white/50 mt-0.5 line-clamp-1">{getEpTitle(currentEp)}</p>
               )}
-              <div className="flex items-center gap-3 mt-0.5">
-                <p className="text-[10px] text-white/25">
-                  If the current server doesn't work, try another server below.
-                </p>
-                {liveViewers > 0 && (
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <span className="relative flex h-1.5 w-1.5">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
-                      <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-500" />
-                    </span>
-                    <span className="text-[10px] font-mono text-white/40 tabular-nums">
-                      {liveViewers.toLocaleString()} watching
-                    </span>
-                  </div>
-                )}
-              </div>
+              <p className="text-[10px] text-white/25 mt-0.5">
+                If the current server doesn't work, try another server below.
+              </p>
             </div>
             <div className="flex flex-wrap items-center gap-2 ml-auto">
               {/* SUB/DUB toggle */}
