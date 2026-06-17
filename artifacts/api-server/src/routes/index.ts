@@ -9,6 +9,7 @@ import gogoRouter from "./gogo";
 import kotoRouter from "./koto";
 import mkissaRouter from "./mkissa";
 import anizoneRouter from "./anizone";
+import viewersRouter from "./viewers";
 
 const router: IRouter = Router();
 
@@ -22,5 +23,6 @@ router.use(gogoRouter);
 router.use(kotoRouter);
 router.use(mkissaRouter);
 router.use(anizoneRouter);
+router.use(viewersRouter);
 
 export default router;

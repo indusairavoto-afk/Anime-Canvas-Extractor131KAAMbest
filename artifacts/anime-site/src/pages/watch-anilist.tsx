@@ -1011,37 +1011,47 @@ export default function WatchAniList() {
     return () => clearInterval(id);
   }, [anime?.nextAiringEpisode?.airingAt]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Live viewer counter — seeded from AniList popularity, fluctuates realistically
+  // Real live viewer counter — heartbeat to backend every 25 s
+  const viewerSessionId = useRef<string>(
+    typeof crypto !== "undefined" && crypto.randomUUID
+      ? crypto.randomUUID()
+      : Math.random().toString(36).slice(2)
+  );
   useEffect(() => {
-    if (!anime) return;
-    // Derive a base count from popularity. popularity is # of users who have it listed.
-    // Scale: 1 in ~400 currently watching. Min 8, max 40,000.
-    const pop = anime.popularity ?? 5000;
-    const score = anime.averageScore ?? 70;
-    // Airing shows get a bump; older/lower-rated shows get fewer live viewers
-    const airingBump = anime.status === "RELEASING" ? 1.6 : 1.0;
-    const scoreMult = 0.4 + (score / 100) * 0.9;
-    const base = Math.min(40000, Math.max(8, Math.round((pop / 400) * airingBump * scoreMult)));
-    // Add per-episode jitter so every episode feels distinct (seeded, deterministic)
-    const epSeed = ((animeId * 31 + currentEp * 17) % 100) / 100;
-    const seed = Math.round(base * (0.85 + epSeed * 0.3));
-    setLiveViewers(seed);
+    if (!animeId || !currentEp) return;
+    const sid = viewerSessionId.current;
 
-    // Slowly drift the counter up/down every 4-9 seconds
-    let current = seed;
-    const drift = () => {
-      const maxSwing = Math.max(1, Math.round(current * 0.012));
-      const delta = Math.floor(Math.random() * (maxSwing * 2 + 1)) - maxSwing;
-      current = Math.max(1, current + delta);
-      setLiveViewers(current);
+    const beat = async () => {
+      try {
+        const res = await fetch("/api/viewers/heartbeat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ animeId, episode: currentEp, sessionId: sid }),
+        });
+        if (res.ok) {
+          const { count } = await res.json() as { count: number };
+          setLiveViewers(count);
+        }
+      } catch {
+        // network error — keep showing last known count
+      }
     };
-    const scheduleNext = () => {
-      const delay = 4000 + Math.random() * 5000;
-      return setTimeout(() => { drift(); timer = scheduleNext(); }, delay);
+
+    beat();
+    const interval = setInterval(beat, 25_000);
+
+    return () => {
+      clearInterval(interval);
+      // Fire-and-forget leave
+      navigator.sendBeacon?.(
+        "/api/viewers/leave",
+        new Blob(
+          [JSON.stringify({ animeId, episode: currentEp, sessionId: sid })],
+          { type: "application/json" }
+        )
+      );
     };
-    let timer = scheduleNext();
-    return () => clearTimeout(timer);
-  }, [anime?.id, animeId, currentEp]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [animeId, currentEp]);
 
   const native = anime?.title.native ?? "";
   const cover = anime?.coverImage.extraLarge || anime?.coverImage.large || "";
@@ -1151,14 +1161,8 @@ export default function WatchAniList() {
           <p className="text-[13px] font-semibold text-white truncate leading-tight">{title}</p>
           <p className="text-[10px] text-white/35 font-mono">Episode {currentEp}{epCount > 0 ? ` / ${epCount}` : ""}</p>
         </div>
-        <button
-          onClick={() => toggle(animeId)}
-          className="p-2 text-white/40 active:text-white transition-colors"
-        >
-          {saved ? <BookmarkCheck className="w-5 h-5 text-white" /> : <Bookmark className="w-5 h-5" />}
-        </button>
         {liveViewers > 0 && (
-          <div className="flex items-center gap-1.5 pr-1">
+          <div className="flex items-center gap-1.5 px-1">
             <span className="relative flex h-1.5 w-1.5">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
               <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-500" />
@@ -1168,6 +1172,12 @@ export default function WatchAniList() {
             </span>
           </div>
         )}
+        <button
+          onClick={() => toggle(animeId)}
+          className="p-2 text-white/40 active:text-white transition-colors"
+        >
+          {saved ? <BookmarkCheck className="w-5 h-5 text-white" /> : <Bookmark className="w-5 h-5" />}
+        </button>
       </div>
 
       {/* Desktop: breadcrumb */}
@@ -1616,15 +1626,6 @@ export default function WatchAniList() {
                 <Scissors className="w-4 h-4 text-white/30" />
               </button>
             </div>
-            <button
-              onClick={() => toggle(animeId)}
-              className="p-1.5 hover:bg-white/10 rounded transition-colors"
-              title={saved ? "Remove from watchlist" : "Add to watchlist"}
-            >
-              {saved
-                ? <BookmarkCheck className="w-4 h-4 text-white" />
-                : <Bookmark className="w-4 h-4 text-white/40 hover:text-white" />}
-            </button>
             {liveViewers > 0 && (
               <div className="flex items-center gap-1.5 px-2">
                 <span className="relative flex h-1.5 w-1.5">
@@ -1636,6 +1637,15 @@ export default function WatchAniList() {
                 </span>
               </div>
             )}
+            <button
+              onClick={() => toggle(animeId)}
+              className="p-1.5 hover:bg-white/10 rounded transition-colors"
+              title={saved ? "Remove from watchlist" : "Add to watchlist"}
+            >
+              {saved
+                ? <BookmarkCheck className="w-4 h-4 text-white" />
+                : <Bookmark className="w-4 h-4 text-white/40 hover:text-white" />}
+            </button>
           </div>
 
           {/* "You are watching" + SUB/DUB + Quality — desktop only */}
