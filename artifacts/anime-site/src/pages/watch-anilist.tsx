@@ -49,6 +49,7 @@ interface AniMedia {
   duration?: number | null;
   averageScore?: number | null;
   score?: number | null;
+  popularity?: number | null;
   status: string;
   seasonYear?: number | null;
   startDate?: { year?: number | null; month?: number | null; day?: number | null };
@@ -106,6 +107,7 @@ query ($id: Int!) {
     episodes
     duration
     averageScore
+    popularity
     status
     seasonYear
     startDate { year month day }
@@ -216,6 +218,7 @@ export default function WatchAniList() {
   const [newEpNotice, setNewEpNotice] = useState<number | null>(null);
   const prevNextAiringEpRef = useRef<number | null>(null);
   const [countdownSecs, setCountdownSecs] = useState<number | null>(null);
+  const [liveViewers, setLiveViewers] = useState<number>(0);
 
   const { toggle, isInList } = useWatchlist();
   const { markWatched, isWatched } = useWatchProgress();
@@ -1008,6 +1011,38 @@ export default function WatchAniList() {
     return () => clearInterval(id);
   }, [anime?.nextAiringEpisode?.airingAt]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Live viewer counter — seeded from AniList popularity, fluctuates realistically
+  useEffect(() => {
+    if (!anime) return;
+    // Derive a base count from popularity. popularity is # of users who have it listed.
+    // Scale: 1 in ~400 currently watching. Min 8, max 40,000.
+    const pop = anime.popularity ?? 5000;
+    const score = anime.averageScore ?? 70;
+    // Airing shows get a bump; older/lower-rated shows get fewer live viewers
+    const airingBump = anime.status === "RELEASING" ? 1.6 : 1.0;
+    const scoreMult = 0.4 + (score / 100) * 0.9;
+    const base = Math.min(40000, Math.max(8, Math.round((pop / 400) * airingBump * scoreMult)));
+    // Add per-episode jitter so every episode feels distinct (seeded, deterministic)
+    const epSeed = ((animeId * 31 + currentEp * 17) % 100) / 100;
+    const seed = Math.round(base * (0.85 + epSeed * 0.3));
+    setLiveViewers(seed);
+
+    // Slowly drift the counter up/down every 4-9 seconds
+    let current = seed;
+    const drift = () => {
+      const maxSwing = Math.max(1, Math.round(current * 0.012));
+      const delta = Math.floor(Math.random() * (maxSwing * 2 + 1)) - maxSwing;
+      current = Math.max(1, current + delta);
+      setLiveViewers(current);
+    };
+    const scheduleNext = () => {
+      const delay = 4000 + Math.random() * 5000;
+      return setTimeout(() => { drift(); timer = scheduleNext(); }, delay);
+    };
+    let timer = scheduleNext();
+    return () => clearTimeout(timer);
+  }, [anime?.id, animeId, currentEp]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const native = anime?.title.native ?? "";
   const cover = anime?.coverImage.extraLarge || anime?.coverImage.large || "";
   const banner = anime?.bannerImage || cover;
@@ -1461,9 +1496,22 @@ export default function WatchAniList() {
               ) : (
                 <p className="text-[13px] font-semibold text-white/70">Episode {currentEp}</p>
               )}
-              {getEpAired(currentEp) && (
-                <p className="text-[10px] text-white/30 font-mono mt-0.5">{getEpAired(currentEp)}</p>
-              )}
+              <div className="flex items-center gap-3 mt-1">
+                {getEpAired(currentEp) && (
+                  <p className="text-[10px] text-white/30 font-mono">{getEpAired(currentEp)}</p>
+                )}
+                {liveViewers > 0 && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="relative flex h-1.5 w-1.5">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                      <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-500" />
+                    </span>
+                    <span className="text-[10px] font-mono text-white/50">
+                      {liveViewers.toLocaleString()} watching
+                    </span>
+                  </div>
+                )}
+              </div>
             </div>
             {/* Prev / Next + sub/dub */}
             <div className="flex items-center gap-2 px-4 pb-3 border-b border-white/[0.06]">
@@ -1592,9 +1640,22 @@ export default function WatchAniList() {
               {getEpTitle(currentEp) !== `Episode ${currentEp}` && (
                 <p className="text-[11px] text-white/50 mt-0.5 line-clamp-1">{getEpTitle(currentEp)}</p>
               )}
-              <p className="text-[10px] text-white/25 mt-0.5">
-                If the current server doesn't work, try another server below.
-              </p>
+              <div className="flex items-center gap-3 mt-0.5">
+                <p className="text-[10px] text-white/25">
+                  If the current server doesn't work, try another server below.
+                </p>
+                {liveViewers > 0 && (
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className="relative flex h-1.5 w-1.5">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                      <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-500" />
+                    </span>
+                    <span className="text-[10px] font-mono text-white/40 tabular-nums">
+                      {liveViewers.toLocaleString()} watching
+                    </span>
+                  </div>
+                )}
+              </div>
             </div>
             <div className="flex flex-wrap items-center gap-2 ml-auto">
               {/* SUB/DUB toggle */}
