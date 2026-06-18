@@ -1,3 +1,6 @@
 - [GoGo iframe origin rule](gogo-iframe-origin.md) — megaplay.buzz must load directly in iframe (no proxy); streaming.php double-nest causes silent JW Player error.
 - [Koto player fallback](koto-player-fallback.md) — kotoPlayerUrl (iframe fallback) vs kotoHlsUrl (HLS); overlay only when both are null.
 - [Miruro X-Frame-Options block](miruro-xframe.md) — miruro.to has X-Frame-Options: SAMEORIGIN sitewide; must HEAD-check before advertising iframeUrl to prevent racing with a broken URL.
+- [AniZone ASS subtitle conversion](anizone-ass-vtt.md) — AniZone serves .ass subtitles; browser <track> can't load them; /api/anizone/sub-vtt endpoint converts on the fly.
+- [AniZone cascade search + year boost](anizone-slug-search.md) — long English titles return empty; cascade to shorter queries; bestAutoSlug needs seasonYear boost (+500) since AniZone appends (YYYY) not season ordinals.
+- [MIRURO overlay null crash](miruro-overlay-null.md) — romajiTitle is undefined during loading; any JSX template calling .toLowerCase() before anime loads crashes React; always use (romajiTitle ?? "").

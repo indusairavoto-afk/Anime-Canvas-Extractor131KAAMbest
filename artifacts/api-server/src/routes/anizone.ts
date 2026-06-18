@@ -59,7 +59,80 @@ function rewriteM3u8(body: string, baseUrl: string): string {
 }
 
 /**
- * Decode \uXXXX escapes embedded inside Alpine.js JSON.parse('...') strings.
+ * Convert a SubStation Alpha (.ass) subtitle string to WebVTT format.
+ * Strips override blocks and converts timing to HH:MM:SS.mmm form.
+ */
+function assToVtt(assContent: string): string {
+  let out = "WEBVTT\n\n";
+  const lines = assContent.replace(/\r\n/g, "\n").split("\n");
+  let inEvents = false;
+  const formatOrder: string[] = [];
+
+  for (const raw of lines) {
+    const t = raw.trim();
+    if (t === "[Events]") { inEvents = true; continue; }
+    if (t.startsWith("[") && t !== "[Events]") { inEvents = false; continue; }
+    if (!inEvents) continue;
+
+    if (t.startsWith("Format:")) {
+      t.replace("Format:", "").split(",").forEach((f) => formatOrder.push(f.trim().toLowerCase()));
+      continue;
+    }
+    if (!t.startsWith("Dialogue:")) continue;
+
+    const payload = t.slice("Dialogue:".length);
+    const parts: string[] = [];
+    let remaining = payload;
+    for (let i = 0; i < formatOrder.length; i++) {
+      if (i === formatOrder.length - 1) {
+        parts.push(remaining.trim());
+      } else {
+        const idx = remaining.indexOf(",");
+        if (idx === -1) { parts.push(remaining.trim()); break; }
+        parts.push(remaining.slice(0, idx).trim());
+        remaining = remaining.slice(idx + 1);
+      }
+    }
+
+    const field = (name: string) => {
+      const i = formatOrder.indexOf(name);
+      return i >= 0 ? (parts[i] ?? "") : "";
+    };
+
+    const start = field("start");
+    const end = field("end");
+    const text = field("text");
+    if (!start || !end || !text) continue;
+
+    const convertTime = (ts: string): string => {
+      const m = ts.match(/^(\d+):(\d{2}):(\d{2})\.(\d{2})$/);
+      if (!m) return ts;
+      const ms = Math.round(parseInt(m[4]) * 10);
+      return `${m[1].padStart(2, "0")}:${m[2]}:${m[3]}.${ms.toString().padStart(3, "0")}`;
+    };
+
+    const clean = text
+      .replace(/\{[^}]*\}/g, "")
+      .replace(/\\N/g, "\n")
+      .replace(/\\n/g, "\n")
+      .replace(/\\h/g, "\u00A0")
+      .trim();
+
+    if (!clean) continue;
+    out += `${convertTime(start)} --> ${convertTime(end)}\n${clean}\n\n`;
+  }
+  return out;
+}
+
+/**
+ * Build a proxied sub-vtt URL for a subtitle source (ASS or VTT).
+ */
+function subVttUrl(src: string): string {
+  return `/api/anizone/sub-vtt?u=${encodeProxyUrl(src)}`;
+}
+
+/**
+ * Decode \\uXXXX escapes embedded inside Alpine.js JSON.parse('...') strings.
  */
 function decodeAlpineJson(raw: string): Record<string, string> {
   const decoded = raw.replace(/\\u([0-9a-fA-F]{4})/g, (_, h) =>
@@ -81,6 +154,47 @@ function pickTitle(titles: Record<string, string>, fallback: string): string {
     fallback
   );
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/anizone/sub-vtt?u=<base64url-encoded-subtitle-url>
+//
+// Fetches a subtitle file (.ass or .vtt) and returns it as WebVTT.
+// .ass files are converted on the fly; .vtt files are passed through.
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/anizone/sub-vtt", async (req, res) => {
+  const encoded = (req.query.u as string | undefined)?.trim();
+  if (!encoded) return res.status(400).send("u param required");
+
+  let subUrl: string;
+  try {
+    subUrl = Buffer.from(encoded, "base64url").toString("utf8");
+    new URL(subUrl);
+  } catch {
+    return res.status(400).send("invalid u param");
+  }
+
+  try {
+    const upstream = await fetch(subUrl, {
+      headers: {
+        "User-Agent": BROWSER_HEADERS["User-Agent"],
+        Referer: "https://anizone.to/",
+        Origin: "https://anizone.to",
+      },
+    });
+    if (!upstream.ok) return res.status(upstream.status).send(`Upstream ${upstream.status}`);
+
+    const text = await upstream.text();
+    const isAss = subUrl.includes(".ass") || text.trimStart().startsWith("[Script Info]");
+    const vtt = isAss ? assToVtt(text) : text;
+
+    res.setHeader("Content-Type", "text/vtt; charset=utf-8");
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    return res.send(vtt);
+  } catch (err: unknown) {
+    return res.status(502).send(err instanceof Error ? err.message : "proxy error");
+  }
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/anizone/hls?u=<base64url-encoded-cdn-url>
@@ -373,11 +487,11 @@ router.get("/anizone/stream", async (req, res) => {
 
     const subtitles: { src: string; label: string; srclang: string; isDefault: boolean }[] = [];
     const trackRe =
-      /<track\s+src=(https:\/\/[^\s>]+\.ass)[^>]*?label="([^"]+)"[^>]*?srclang="([^"]+)"([^>]*?)\/?>/gi;
+      /<track\s+src=(https:\/\/[^\s>]+\.(?:ass|vtt)[^"'\s>]*)[^>]*?label="([^"]+)"[^>]*?srclang="([^"]+)"([^>]*?)\/?>/gi;
     let trm: RegExpExecArray | null;
     while ((trm = trackRe.exec(html)) !== null) {
       subtitles.push({
-        src: trm[1],
+        src: subVttUrl(trm[1]),
         label: trm[2],
         srclang: trm[3],
         isDefault: trm[4].includes("default"),

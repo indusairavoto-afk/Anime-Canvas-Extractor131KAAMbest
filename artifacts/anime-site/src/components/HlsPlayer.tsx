@@ -3,7 +3,7 @@ import Hls, { type Level } from "hls.js";
 import {
   Play, Pause, Volume2, VolumeX, Maximize, Minimize,
   SkipForward, SkipBack, Settings, Subtitles, Loader2,
-  AlertTriangle, RotateCcw, Languages,
+  AlertTriangle, RotateCcw, Languages, Download,
 } from "lucide-react";
 
 const TRANSLATE_LANGS = [
@@ -114,7 +114,9 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
   const [translateLang, setTranslateLang] = useState("es");
   const [translating, setTranslating] = useState(false);
   const [translateError, setTranslateError] = useState<string | null>(null);
+  const [currentTranslatedVtt, setCurrentTranslatedVtt] = useState<string | null>(null);
   const translatedCacheRef = useRef<Map<string, string>>(new Map());
+  const translatedTextCacheRef = useRef<Map<string, string>>(new Map());
   const blobUrlsRef = useRef<string[]>([]);
 
   useEffect(() => {
@@ -146,6 +148,8 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
       const blobUrl = URL.createObjectURL(blob);
       blobUrlsRef.current.push(blobUrl);
       translatedCacheRef.current.set(cacheKey, blobUrl);
+      translatedTextCacheRef.current.set(cacheKey, vtt);
+      setCurrentTranslatedVtt(vtt);
       setActiveSub(blobUrl);
     } catch (e) {
       setTranslateError(e instanceof Error ? e.message : "Translation failed");
@@ -621,6 +625,24 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
                       </div>
                       {translateError && (
                         <p className="px-2 pb-2 text-[9px] text-red-400 font-mono leading-tight">{translateError}</p>
+                      )}
+                      {currentTranslatedVtt && (
+                        <div className="px-2 pb-2.5">
+                          <button
+                            onClick={() => {
+                              const blob = new Blob([currentTranslatedVtt], { type: "text/plain" });
+                              const url = URL.createObjectURL(blob);
+                              const a = document.createElement("a");
+                              a.href = url;
+                              a.download = "subtitles_translated.txt";
+                              a.click();
+                              URL.revokeObjectURL(url);
+                            }}
+                            className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 text-[10px] font-mono bg-zinc-800/80 text-white/50 border border-white/10 hover:border-white/30 hover:text-white/80 transition-colors rounded-sm"
+                          >
+                            <Download className="w-3 h-3" /> Save .txt
+                          </button>
+                        </div>
                       )}
                     </div>
                   </div>

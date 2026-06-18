@@ -783,7 +783,8 @@ export default function WatchAniList() {
   function bestAutoSlug(
     results: { slug: string; title: string }[],
     query: string,
-    seasonNumber: number | null = null
+    seasonNumber: number | null = null,
+    seasonYear: number | null = null,
   ): string | null {
     if (results.length === 0) return null;
     const norm = (s: string) =>
@@ -799,22 +800,35 @@ export default function WatchAniList() {
       if (tNorm === qNorm) {
         score = 1000;
       } else if (tNorm.startsWith(qNorm)) {
-        // Extra words after the query (e.g. "Death Note Rewrite") — penalise by length diff
         score = 500 - (tNorm.length - qNorm.length) * 3;
       } else if (tNorm.includes(qNorm)) {
         score = 200 - (tNorm.length - qNorm.length) * 2;
       } else {
-        // Partial word overlap
-        const qWords = qNorm.split(" ");
-        const tWords = new Set(tNorm.split(" "));
-        const overlap = qWords.filter((w) => tWords.has(w)).length;
-        score = overlap > 0 ? (overlap / qWords.length) * 80 - 50 : -999;
+        // Partial word overlap — use space-split AND individual character normalization
+        // so "Re:Zero" (→ "rezero" in tNorm) also matches "re" + "zero" from qNorm
+        const splitWords = (s: string) =>
+          s.toLowerCase().replace(/[^\w]/g, " ").replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+        const qWords2 = splitWords(query);
+        const tWords2 = new Set(splitWords(r.title));
+        const overlap = qWords2.filter((w) => tWords2.has(w)).length;
+        score = overlap > 0 ? (overlap / qWords2.length) * 80 - 50 : -999;
       }
 
-      // Heavily penalise spin-off keywords that aren't in the original query
       for (const word of SPINOFF_WORDS) {
         if (tNorm.includes(word) && !qNorm.includes(word)) {
           score -= 400;
+        }
+      }
+
+      // Season year-based boost: AniZone appends "(YYYY)" to multi-season shows
+      if (seasonYear != null) {
+        const yearStr = String(seasonYear);
+        const rawTitle = r.title.toLowerCase();
+        if (rawTitle.includes(`(${yearStr})`) || rawTitle.includes(yearStr)) {
+          score += 500;
+        } else if (/\(\d{4}\)/.test(r.title)) {
+          // Has a different year suffix
+          score -= 300;
         }
       }
 
@@ -827,12 +841,10 @@ export default function WatchAniList() {
         if (hasCorrectSeason) {
           score += 400;
         } else {
-          // Check if it mentions any other season number — penalise those
           const otherSeasonMatch = combined.match(/\b(\d+)(st|nd|rd|th)\s*season\b|\bseason\s*(\d+)\b|\b(second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)\b/i);
           if (otherSeasonMatch) {
             score -= 350;
           } else if (seasonNumber > 1) {
-            // Season >1 was requested but result has no season indicator at all — likely S1
             score -= 200;
           }
         }
@@ -843,7 +855,6 @@ export default function WatchAniList() {
 
     scored.sort((a, b) => b.score - a.score);
     const best = scored[0];
-    // Only auto-pick if confident (score above threshold)
     return best.score >= 100 ? best.slug : null;
   }
 
@@ -852,6 +863,7 @@ export default function WatchAniList() {
     setKotoSearching(true);
     setKotoSearchDone(false);
     const seasonNum = extractSeasonNumber(query);
+    const seasonYear = anime?.seasonYear ?? null;
     const q = query.replace(/\s*season\s*\d+/i, "").replace(/\s*\d+(st|nd|rd|th)\s*season/i, "").trim();
     fetch(apiUrl(`/api/koto/search?q=${encodeURIComponent(q)}&limit=8`))
       .then((r) => r.json())
@@ -859,13 +871,12 @@ export default function WatchAniList() {
         const results = data.results ?? [];
         setKotoSearchResults(results);
         if (results.length > 0 && !kotoSlug) {
-          const slug = bestAutoSlug(results, q, seasonNum);
+          const slug = bestAutoSlug(results, q, seasonNum, seasonYear);
           if (slug) {
             setKotoSlug(slug);
             setKotoSlugInput(slug);
             localStorage.setItem(`na_koto3_${animeId}`, slug);
           }
-          // If no confident match, leave slug empty — backend falls back to malId mapper
         }
       })
       .catch(() => { setKotoSearchResults([]); })
@@ -877,23 +888,58 @@ export default function WatchAniList() {
     setAnizoneSearching(true);
     setAnizoneSearchDone(false);
     const seasonNum = extractSeasonNumber(query);
-    const q = query.replace(/\s*season\s*\d+/i, "").replace(/\s*\d+(st|nd|rd|th)\s*season/i, "").trim();
-    fetch(apiUrl(`/api/anizone/search?q=${encodeURIComponent(q)}&limit=8`))
-      .then((r) => r.json())
-      .then((data: { results?: { slug: string; title: string; thumbnail: string }[] }) => {
-        const results = data.results ?? [];
-        setAnizoneSearchResults(results);
-        if (results.length > 0 && !currentSlug) {
-          const slug = bestAutoSlug(results, q, seasonNum);
-          if (slug) {
-            setAnizoneSlug(slug);
-            setAnizoneSlugInput(slug);
-            localStorage.setItem(`na_anizone3_${animeId}`, slug);
+    const seasonYear = anime?.seasonYear ?? null;
+    const baseQ = query
+      .replace(/\s*season\s*\d+/i, "")
+      .replace(/\s*\d+(st|nd|rd|th)\s*season/i, "")
+      .trim();
+
+    // Build a cascade of progressively shorter search queries:
+    // 1. Full base title, 2. Alphanumeric-only version, 3. First 3 words, 4. First word only
+    const alphaQ = baseQ.replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim();
+    const words = alphaQ.split(/\s+/).filter((w) => w.length > 1);
+    const candidateQueries = [
+      baseQ,
+      alphaQ !== baseQ ? alphaQ : null,
+      words.length > 3 ? words.slice(0, 3).join(" ") : null,
+      // For shows where the first "word" is a short prefix (e.g. "Re" from "Re:Zero"),
+      // joining the first two words gives a workable search term ("rezero")
+      words.length >= 2 && words[0].length <= 3 ? (words[0] + words[1]).toLowerCase() : null,
+      words.length > 0 ? words[0] : null,
+    ].filter((v, i, arr): v is string => !!v && arr.indexOf(v) === i);
+
+    const tryQuery = (qIdx: number) => {
+      if (qIdx >= candidateQueries.length) {
+        setAnizoneSearchResults([]);
+        setAnizoneSearching(false);
+        setAnizoneSearchDone(true);
+        return;
+      }
+      const q = candidateQueries[qIdx];
+      fetch(apiUrl(`/api/anizone/search?q=${encodeURIComponent(q)}&limit=8`))
+        .then((r) => r.json())
+        .then((data: { results?: { slug: string; title: string; thumbnail: string }[] }) => {
+          const results = data.results ?? [];
+          if (results.length === 0 && qIdx < candidateQueries.length - 1) {
+            tryQuery(qIdx + 1);
+            return;
           }
-        }
-      })
-      .catch(() => { setAnizoneSearchResults([]); })
-      .finally(() => { setAnizoneSearching(false); setAnizoneSearchDone(true); });
+          setAnizoneSearchResults(results);
+          if (results.length > 0 && !currentSlug) {
+            const slug = bestAutoSlug(results, baseQ, seasonNum, seasonYear);
+            if (slug) {
+              setAnizoneSlug(slug);
+              setAnizoneSlugInput(slug);
+              localStorage.setItem(`na_anizone3_${animeId}`, slug);
+            }
+          }
+          setAnizoneSearching(false);
+          setAnizoneSearchDone(true);
+        })
+        .catch(() => { tryQuery(qIdx + 1); });
+    };
+
+    tryQuery(0);
   }
 
   // Pre-search KOTO as soon as the title is known (regardless of current server)
@@ -1603,10 +1649,18 @@ export default function WatchAniList() {
                     {banner && <img src={banner} alt="" className="absolute inset-0 w-full h-full object-cover opacity-10 scale-110 blur-sm" />}
                     <div className="relative z-10 flex flex-col items-center gap-4">
                       {miruroError ? (
-                        <div className="text-center space-y-2">
-                          <p className="text-white/70 text-sm font-semibold tracking-wide">Miruro unavailable</p>
-                          <p className="text-white/30 text-[11px] font-mono max-w-[260px] text-center">{miruroError}</p>
-                          <p className="text-white/20 text-[10px] font-mono max-w-[260px] text-center">Try switching to GogoAnimes or AniKoto.</p>
+                        <div className="text-center space-y-3">
+                          <p className="text-white/70 text-sm font-semibold tracking-wide">Miruro cannot be embedded</p>
+                          <p className="text-white/30 text-[10px] font-mono max-w-[240px] text-center">miruro.to blocks iframes — open it in a new tab instead.</p>
+                          <a
+                            href={`https://www.miruro.to/watch/${animeId}/${(romajiTitle ?? "").toLowerCase().replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "")}?ep=${currentEp}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-2 text-[11px] font-mono font-bold px-5 py-2.5 border border-purple-400 text-purple-300 hover:bg-purple-400 hover:text-black transition-all uppercase tracking-widest mt-1"
+                          >
+                            Watch on miruro.to →
+                          </a>
+                          <p className="text-white/20 text-[10px] font-mono max-w-[240px] text-center">Or switch to AniKoto / AniZone below.</p>
                         </div>
                       ) : (
                         <>
@@ -1615,7 +1669,7 @@ export default function WatchAniList() {
                             <div className="absolute inset-0 rounded-full border-2 border-t-purple-400 border-r-transparent border-b-transparent border-l-transparent animate-spin" />
                             <div className="absolute inset-2 rounded-full border border-white/20 border-t-purple-400/60 animate-spin" style={{ animationDuration: "0.6s", animationDirection: "reverse" }} />
                           </div>
-                          <p className="text-white/70 text-sm font-semibold tracking-wide">Fetching Miruro stream…</p>
+                          <p className="text-white/70 text-sm font-semibold tracking-wide">Checking Miruro…</p>
                         </>
                       )}
                       <p className="text-white/20 text-[11px] font-mono uppercase tracking-widest">
