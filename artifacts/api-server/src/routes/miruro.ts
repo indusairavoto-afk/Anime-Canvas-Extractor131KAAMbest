@@ -2,13 +2,9 @@ import { Router } from "express";
 
 const router = Router();
 
-const MIRURO_SITE = "https://www.miruro.to";
+const MIRURO_ORIGIN = "https://www.miruro.to";
+const PASS_PREFIX = "/api/miruro/pass";
 
-/**
- * Convert a romaji title to a miruro.to URL slug.
- * e.g. "Re:Zero kara Hajimeru Isekai Seikatsu 4th Season"
- *   → "rezero-kara-hajimeru-isekai-seikatsu-4th-season"
- */
 function toMiruroSlug(title: string): string {
   return title
     .toLowerCase()
@@ -18,12 +14,332 @@ function toMiruroSlug(title: string): string {
     .replace(/^-|-$/g, "");
 }
 
+const ASSET_HEADERS = {
+  "User-Agent":
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+  "Accept-Language": "en-US,en;q=0.9",
+};
+
+const PAGE_HEADERS = {
+  ...ASSET_HEADERS,
+  Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+  Referer: MIRURO_ORIGIN,
+};
+
+/**
+ * GET /api/miruro/pass/*
+ *
+ * Wildcard pass-through proxy: forwards any path to miruro.to and returns
+ * the response without X-Frame-Options or CORS restrictions. Because all
+ * assets share the /api/miruro/pass/ prefix, ES module relative imports
+ * (e.g. ./chunk.js inside a proxied JS bundle) resolve back through this
+ * same proxy automatically — no additional rewriting needed.
+ */
+router.all("/miruro/pass/*path", async (req, res) => {
+  // req.params.path is the wildcard portion after /miruro/pass/
+  const rawPath = (req.params as Record<string, string | string[]>).path;
+  const rest = (Array.isArray(rawPath) ? rawPath.join("/") : rawPath ?? "").replace(/^\//, "");
+  const search = req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : "";
+  const upstreamUrl = `${MIRURO_ORIGIN}/${rest}${search}`;
+
+  try {
+    const isPost = req.method === "POST" || req.method === "PUT" || req.method === "PATCH";
+    const upstream = await fetch(upstreamUrl, {
+      method: req.method,
+      headers: {
+        ...ASSET_HEADERS,
+        ...(req.headers["content-type"]
+          ? { "Content-Type": req.headers["content-type"] as string }
+          : {}),
+        Origin: MIRURO_ORIGIN,
+        Referer: MIRURO_ORIGIN + "/",
+      },
+      body: isPost ? req : undefined,
+    });
+
+    const contentType = upstream.headers.get("content-type") ?? "application/octet-stream";
+    const cacheControl = upstream.headers.get("cache-control");
+
+    // Forward safe headers; intentionally omit X-Frame-Options, CSP, and CORS restrictions
+    res.setHeader("Content-Type", contentType);
+    if (cacheControl) res.setHeader("Cache-Control", cacheControl);
+    else res.setHeader("Cache-Control", "public, max-age=86400");
+
+    // Add permissive CORS so the iframe (same Replit origin) can load cross-origin assets
+    res.setHeader("Access-Control-Allow-Origin", "*");
+
+    // Special: rewrite env2.js so VITE_PROXY_A/B point to our server instead of
+    // ultracloud.cc — ultracloud only allows Origin: miruro.to, so the browser
+    // can't call it directly from our iframe origin. We proxy it ourselves.
+    if (rest === "env2.js" && contentType.includes("javascript")) {
+      let js = await upstream.text();
+      js = js
+        .replace(/https:\/\/pro\.ultracloud\.cc\//g, "/api/miruro/ultra/pro/")
+        .replace(/https:\/\/pru\.ultracloud\.cc\//g, "/api/miruro/ultra/pru/");
+      res.status(upstream.status).send(js);
+      return;
+    }
+
+    // For CSS: rewrite root-relative url() paths (e.g. font URLs) through our proxy
+    if (contentType.includes("text/css")) {
+      let css = await upstream.text();
+      // url(/path) → url(/api/miruro/pass/path)  (unquoted)
+      css = css.replace(/url\(\/(?!\/|api\/miruro\/)/g, `url(${PASS_PREFIX}/`);
+      // url('/path') and url("/path")
+      css = css.replace(/url\('\/(?!\/|api\/miruro\/)/g, `url('${PASS_PREFIX}/`);
+      css = css.replace(/url\("\/(?!\/|api\/miruro\/)/g, `url("${PASS_PREFIX}/`);
+      // https://www.miruro.to/ absolute URLs in CSS
+      css = css.replace(new RegExp(`https://www\\.miruro\\.to/`, "g"), `${PASS_PREFIX}/`);
+      res.status(upstream.status).send(css);
+      return;
+    }
+
+    const buf = await upstream.arrayBuffer();
+    res.status(upstream.status).send(Buffer.from(buf));
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    res.status(502).json({ error: `Proxy error: ${msg}` });
+  }
+});
+
+/**
+ * GET /api/miruro/ultra/:subdomain/*path
+ *
+ * Proxies ultracloud.cc streaming API calls.  The Miruro SPA calls
+ * https://pro.ultracloud.cc/... and https://pru.ultracloud.cc/... but those
+ * endpoints only allow Origin: miruro.to.  We rewrite env2.js to point the
+ * proxy URLs here, then forward the requests server-side with the correct
+ * Origin header and return permissive CORS to the browser.
+ */
+const ULTRACLOUD_HOSTS: Record<string, string> = {
+  pro: "https://pro.ultracloud.cc",
+  pru: "https://pru.ultracloud.cc",
+};
+
+router.all("/miruro/ultra/:subdomain/*path", async (req, res) => {
+  const subdomain = req.params.subdomain;
+  const upstreamBase = ULTRACLOUD_HOSTS[subdomain];
+  if (!upstreamBase) {
+    res.status(400).json({ error: `Unknown ultracloud subdomain: ${subdomain}` });
+    return;
+  }
+
+  const rawPath = (req.params as Record<string, string | string[]>).path;
+  const rest = (Array.isArray(rawPath) ? rawPath.join("/") : rawPath ?? "").replace(/^\//, "");
+  const search = req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : "";
+  const upstreamUrl = `${upstreamBase}/${rest}${search}`;
+
+  try {
+    const upstream = await fetch(upstreamUrl, {
+      method: req.method,
+      headers: {
+        "User-Agent": ASSET_HEADERS["User-Agent"],
+        "Accept": "application/json, */*",
+        "Origin": MIRURO_ORIGIN,
+        "Referer": MIRURO_ORIGIN + "/",
+        ...(req.headers["content-type"]
+          ? { "Content-Type": req.headers["content-type"] as string }
+          : {}),
+      },
+      body: req.method !== "GET" && req.method !== "HEAD" ? req : undefined,
+    });
+
+    const contentType = upstream.headers.get("content-type") ?? "application/json";
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "*");
+    res.setHeader("Content-Type", contentType);
+
+    const buf = await upstream.arrayBuffer();
+    res.status(upstream.status).send(Buffer.from(buf));
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    res.status(502).json({ error: `Ultracloud proxy error: ${msg}` });
+  }
+});
+
+router.options("/miruro/ultra/:subdomain/*path", (_req, res) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "*");
+  res.status(204).end();
+});
+
+/**
+ * GET /api/miruro/proxy?url=https://www.miruro.to/...
+ *
+ * Fetches the Miruro watch page and:
+ * 1. Strips X-Frame-Options / CSP so it can be iframed
+ * 2. Rewrites ALL asset URLs (src, href, url()) to go via /api/miruro/pass/
+ *    so that relative imports inside JS bundles also resolve through our proxy
+ * 3. Injects history.replaceState so the SPA router sees the correct path
+ */
+router.get("/miruro/proxy", async (req, res) => {
+  const rawUrl = (req.query.url as string | undefined)?.trim();
+
+  if (!rawUrl) {
+    res.status(400).json({ error: "url query param is required" });
+    return;
+  }
+
+  let targetUrl: URL;
+  try {
+    targetUrl = new URL(rawUrl);
+  } catch {
+    res.status(400).json({ error: "Invalid URL" });
+    return;
+  }
+
+  if (!targetUrl.hostname.endsWith("miruro.to")) {
+    res.status(400).json({ error: "Only miruro.to URLs are allowed" });
+    return;
+  }
+
+  try {
+    const upstream = await fetch(targetUrl.toString(), {
+      headers: PAGE_HEADERS,
+    });
+
+    const contentType = upstream.headers.get("content-type") ?? "text/html";
+
+    if (!contentType.includes("text/html")) {
+      // Non-HTML: forward as-is
+      res.setHeader("Content-Type", contentType);
+      res.setHeader("Cache-Control", "public, max-age=3600");
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      const buf = await upstream.arrayBuffer();
+      res.send(Buffer.from(buf));
+      return;
+    }
+
+    let html = await upstream.text();
+
+    // ── Rewrite asset URLs ──────────────────────────────────────────────────
+    // Replace https://www.miruro.to/<path> → /api/miruro/pass/<path>
+    html = html.replace(
+      new RegExp(`https://www\\.miruro\\.to/`, "g"),
+      `${PASS_PREFIX}/`,
+    );
+
+    // Replace root-relative paths /foo → /api/miruro/pass/foo
+    // Handles src="/...", href="/...", url(/...) but not protocol-relative "//"
+    html = html
+      .replace(/(src|href)="\/(?!\/|api\/miruro\/)/g, `$1="${PASS_PREFIX}/`)
+      .replace(/(src|href)='\/(?!\/|api\/miruro\/)/g, `$1='${PASS_PREFIX}/`)
+      .replace(/url\(\/(?!\/|api\/miruro\/)/g, `url(${PASS_PREFIX}/`);
+
+    // ── SPA router fix + fetch interceptor ──────────────────────────────────
+    // 1. history.replaceState so the SPA initialises with the correct path.
+    // 2. Monkey-patch fetch/XHR so cross-origin calls to miruro.to go through
+    //    our server-side pass-through proxy (avoids CORS blocks on API calls).
+    const originalPath = targetUrl.pathname + targetUrl.search;
+    const PASS = PASS_PREFIX; // e.g. /api/miruro/pass
+    const routerFix = `<script>
+(function() {
+  try { history.replaceState(null, '', ${JSON.stringify(originalPath)}); } catch(e) {}
+
+  var MIRURO_ORIGINS = ['https://www.miruro.to', 'https://miruro.to'];
+  var PASS = ${JSON.stringify(PASS)};
+  var ULTRA_MAP = {
+    'https://pro.ultracloud.cc': '/api/miruro/ultra/pro',
+    'https://pru.ultracloud.cc': '/api/miruro/ultra/pru',
+  };
+
+  function rewriteUrl(url) {
+    if (!url || typeof url !== 'string') return url;
+    // Redirect ultracloud.cc API calls through our server-side proxy
+    for (var k in ULTRA_MAP) {
+      if (url.startsWith(k + '/')) return ULTRA_MAP[k] + '/' + url.slice(k.length + 1);
+      if (url === k) return ULTRA_MAP[k] + '/';
+    }
+    // Redirect miruro.to absolute URL calls through our pass-through proxy
+    for (var i = 0; i < MIRURO_ORIGINS.length; i++) {
+      if (url.startsWith(MIRURO_ORIGINS[i] + '/')) {
+        return PASS + '/' + url.slice(MIRURO_ORIGINS[i].length + 1);
+      }
+      if (url.startsWith(MIRURO_ORIGINS[i])) {
+        return PASS + '/';
+      }
+    }
+    // Redirect root-relative /api/ calls — the Miruro SPA calls its own backend
+    // at /api/secure/pipe, /api/secure/jwks, /api/monkey, /api/events etc.
+    // Those root-relative paths would hit our server and 404; route them through
+    // the pass-through proxy so they reach https://www.miruro.to/api/...
+    // Guard: don't redirect URLs that already go through our proxy.
+    if ((url.startsWith('/api/') || url === '/api') && !url.startsWith('/api/miruro/')) {
+      return PASS + url;
+    }
+    return url;
+  }
+
+  // Patch fetch
+  var _fetch = window.fetch;
+  window.fetch = function(input, init) {
+    if (typeof input === 'string') {
+      input = rewriteUrl(input);
+    } else if (input instanceof Request) {
+      var newUrl = rewriteUrl(input.url);
+      if (newUrl !== input.url) input = new Request(newUrl, input);
+    }
+    return _fetch.call(this, input, init);
+  };
+
+  // Patch XMLHttpRequest
+  var _open = XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open = function(method, url) {
+    var args = Array.prototype.slice.call(arguments);
+    args[1] = rewriteUrl(String(url));
+    return _open.apply(this, args);
+  };
+
+  // Patch EventSource (used for /api/events SSE connection)
+  if (window.EventSource) {
+    var _EventSource = window.EventSource;
+    window.EventSource = function(url, init) {
+      return new _EventSource(rewriteUrl(String(url)), init);
+    };
+    window.EventSource.prototype = _EventSource.prototype;
+  }
+
+  // Patch navigator.sendBeacon (/api/monkey analytics POSTs)
+  if (navigator.sendBeacon) {
+    var _sendBeacon = navigator.sendBeacon.bind(navigator);
+    navigator.sendBeacon = function(url, data) {
+      return _sendBeacon(rewriteUrl(String(url)), data);
+    };
+  }
+
+  // Auto-play helper: when Art Player creates a <video> element, unmute and
+  // dispatch a trusted-like play() call so autoplay is not blocked by the
+  // browser's "no-user-gesture" policy.
+  var _playOrig = HTMLMediaElement.prototype.play;
+  HTMLMediaElement.prototype.play = function() {
+    this.muted = true;
+    return _playOrig.call(this);
+  };
+})();
+</script>`;
+
+    if (html.includes("<head>")) {
+      html = html.replace("<head>", `<head>${routerFix}`);
+    } else {
+      html = html.replace(/<head[^>]*>/, (m) => `${m}${routerFix}`);
+    }
+
+    // Serve without X-Frame-Options or Content-Security-Policy
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("Cache-Control", "private, no-store");
+    res.send(html);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    res.status(502).json({ error: `Failed to proxy Miruro: ${msg}` });
+  }
+});
+
 /**
  * GET /api/miruro/stream?anilistId=...&ep=...&romajiTitle=...
  *
- * Returns an iframe URL for miruro.to only if the URL is actually embeddable.
- * Performs a HEAD check to verify no X-Frame-Options block is in place.
- * Returns 503 if the source cannot be iframed (sitewide SAMEORIGIN policy).
+ * Returns a proxy URL for miruro.to that bypasses X-Frame-Options.
  */
 router.get("/miruro/stream", async (req, res) => {
   const anilistId = (req.query.anilistId as string | undefined)?.trim();
@@ -31,43 +347,23 @@ router.get("/miruro/stream", async (req, res) => {
   const romajiTitle = (req.query.romajiTitle as string | undefined)?.trim();
 
   if (!anilistId || !ep) {
-    return res.status(400).json({ error: "anilistId and ep query params are required" });
+    res.status(400).json({ error: "anilistId and ep query params are required" });
+    return;
   }
 
   const epNum = parseInt(ep);
   if (isNaN(epNum) || epNum <= 0) {
-    return res.status(400).json({ error: `Invalid ep value: "${ep}"` });
+    res.status(400).json({ error: `Invalid ep value: "${ep}"` });
+    return;
   }
 
   const slug = romajiTitle ? toMiruroSlug(romajiTitle) : null;
-  const iframeUrl = slug
-    ? `${MIRURO_SITE}/watch/${anilistId}/${slug}?ep=${epNum}`
-    : `${MIRURO_SITE}/watch/${anilistId}?ep=${epNum}`;
+  const miruroUrl = slug
+    ? `${MIRURO_ORIGIN}/watch/${anilistId}/${slug}?ep=${epNum}`
+    : `${MIRURO_ORIGIN}/watch/${anilistId}?ep=${epNum}`;
 
-  // Verify the URL is actually embeddable before advertising it to the frontend.
-  // miruro.to uses X-Frame-Options: SAMEORIGIN sitewide, which prevents iframe
-  // embedding. If that changes in the future, this check will automatically allow it.
-  try {
-    const check = await fetch(iframeUrl, {
-      method: "HEAD",
-      redirect: "follow",
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-      },
-    });
-    const xfo = check.headers.get("x-frame-options");
-    if (xfo) {
-      const xfoLower = xfo.toLowerCase().trim();
-      // SAMEORIGIN and DENY both block cross-origin embedding
-      if (xfoLower === "sameorigin" || xfoLower === "deny") {
-        return res.status(503).json({ error: "Stream source not embeddable (X-Frame-Options: " + xfo + ")" });
-      }
-    }
-  } catch {
-    return res.status(503).json({ error: "Stream source unavailable" });
-  }
-
-  return res.json({ iframeUrl });
+  const iframeUrl = `/api/miruro/proxy?url=${encodeURIComponent(miruroUrl)}`;
+  res.json({ iframeUrl });
 });
 
 export default router;
