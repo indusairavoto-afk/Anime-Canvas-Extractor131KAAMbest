@@ -1651,14 +1651,14 @@ export default function WatchAniList() {
                       {miruroError ? (
                         <div className="text-center space-y-3">
                           <p className="text-white/70 text-sm font-semibold tracking-wide">Miruro cannot be embedded</p>
-                          <p className="text-white/30 text-[10px] font-mono max-w-[240px] text-center">miruro.to blocks iframes — open it in a new tab instead.</p>
+                          <p className="text-white/30 text-[10px] font-mono max-w-[240px] text-center">miruro.bz stream unavailable — open it in a new tab instead.</p>
                           <a
-                            href={`https://www.miruro.to/watch/${animeId}/${(romajiTitle ?? "").toLowerCase().replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "")}?ep=${currentEp}`}
+                            href={`https://www.miruro.bz/watch/${animeId}/${(romajiTitle ?? "").toLowerCase().replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "")}?ep=${currentEp}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="inline-flex items-center gap-2 text-[11px] font-mono font-bold px-5 py-2.5 border border-purple-400 text-purple-300 hover:bg-purple-400 hover:text-black transition-all uppercase tracking-widest mt-1"
                           >
-                            Watch on miruro.to →
+                            Watch on miruro.bz →
                           </a>
                           <p className="text-white/20 text-[10px] font-mono max-w-[240px] text-center">Or switch to AniKoto / AniZone below.</p>
                         </div>
@@ -2172,7 +2172,7 @@ export default function WatchAniList() {
               ) : miruroIframeUrl ? (
                 <>
                   <div className="w-2 h-2 rounded-full bg-purple-400 shrink-0" />
-                  <span className="text-[10px] font-mono text-purple-400/70 uppercase tracking-widest">miruro.to</span>
+                  <span className="text-[10px] font-mono text-purple-400/70 uppercase tracking-widest">miruro.bz</span>
                 </>
               ) : (
                 <>

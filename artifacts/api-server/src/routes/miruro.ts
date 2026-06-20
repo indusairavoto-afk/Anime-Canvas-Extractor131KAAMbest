@@ -2,7 +2,7 @@ import { Router } from "express";
 
 const router = Router();
 
-const MIRURO_ORIGIN = "https://www.miruro.to";
+const MIRURO_ORIGIN = "https://www.miruro.bz";
 const PASS_PREFIX = "/api/miruro/pass";
 
 function toMiruroSlug(title: string): string {
@@ -88,7 +88,8 @@ router.all("/miruro/pass/*path", async (req, res) => {
       // url('/path') and url("/path")
       css = css.replace(/url\('\/(?!\/|api\/miruro\/)/g, `url('${PASS_PREFIX}/`);
       css = css.replace(/url\("\/(?!\/|api\/miruro\/)/g, `url("${PASS_PREFIX}/`);
-      // https://www.miruro.to/ absolute URLs in CSS
+      // https://www.miruro.bz/ and https://www.miruro.to/ absolute URLs in CSS
+      css = css.replace(new RegExp(`https://www\\.miruro\\.bz/`, "g"), `${PASS_PREFIX}/`);
       css = css.replace(new RegExp(`https://www\\.miruro\\.to/`, "g"), `${PASS_PREFIX}/`);
       res.status(upstream.status).send(css);
       return;
@@ -190,8 +191,8 @@ router.get("/miruro/proxy", async (req, res) => {
     return;
   }
 
-  if (!targetUrl.hostname.endsWith("miruro.to")) {
-    res.status(400).json({ error: "Only miruro.to URLs are allowed" });
+  if (!targetUrl.hostname.endsWith("miruro.bz") && !targetUrl.hostname.endsWith("miruro.to")) {
+    res.status(400).json({ error: "Only miruro URLs are allowed" });
     return;
   }
 
@@ -238,7 +239,7 @@ router.get("/miruro/proxy", async (req, res) => {
 (function() {
   try { history.replaceState(null, '', ${JSON.stringify(originalPath)}); } catch(e) {}
 
-  var MIRURO_ORIGINS = ['https://www.miruro.to', 'https://miruro.to'];
+  var MIRURO_ORIGINS = ['https://www.miruro.bz', 'https://miruro.bz', 'https://www.miruro.to', 'https://miruro.to'];
   var PASS = ${JSON.stringify(PASS)};
   var ULTRA_MAP = {
     'https://pro.ultracloud.cc': '/api/miruro/ultra/pro',
