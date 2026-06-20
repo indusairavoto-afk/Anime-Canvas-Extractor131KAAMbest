@@ -270,6 +270,15 @@ router.get("/miruro/proxy", async (req, res) => {
     if ((url.startsWith('/api/') || url === '/api') && !url.startsWith('/api/miruro/')) {
       return PASS + url;
     }
+    // Redirect other known root-level paths the SPA fetches directly:
+    // /health — server health check; failing this shows "Server unreachable..."
+    //           toast permanently and prevents secure-crypto initialisation,
+    //           which in turn prevents the encrypted /api/secure/pipe call that
+    //           actually fetches episode sources.
+    // /random-pool.json — random anime pool used by the randomiser button.
+    if (url.startsWith('/health') || url.startsWith('/random-pool.json')) {
+      return PASS + url;
+    }
     return url;
   }
 

@@ -5,3 +5,4 @@
 - [AniZone ASS subtitle conversion](anizone-ass-vtt.md) — AniZone serves .ass subtitles; browser <track> can't load them; /api/anizone/sub-vtt endpoint converts on the fly.
 - [AniZone cascade search + year boost](anizone-slug-search.md) — long English titles return empty; cascade to shorter queries; bestAutoSlug needs seasonYear boost (+500) since AniZone appends (YYYY) not season ordinals.
 - [MIRURO overlay null crash](miruro-overlay-null.md) — romajiTitle is undefined during loading; any JSX template calling .toLowerCase() before anime loads crashes React; always use (romajiTitle ?? "").
+- [Miruro proxy health fix](miruro-proxy-health.md) — proxy injected script must rewrite /health and /random-pool.json through PASS; missing /health caused "Server unreachable" toast + blocked crypto init + "Couldn't find episodes".
