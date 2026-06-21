@@ -76,6 +76,29 @@ router.all("/miruro/pass/*path", async (req, res) => {
       res.setHeader("Cache-Control", "public, max-age=86400");
     }
 
+    // Forward x-obfuscated header — the Miruro SPA reads this to decide how to
+    // decrypt the /api/secure/pipe response (XOR + decompress when value is "2").
+    // Without it the SPA JSON-parses the raw encrypted bytes → parse error →
+    // falls back to YouTube trailer instead of the episode.
+    const xObfuscated = upstream.headers.get("x-obfuscated");
+    if (xObfuscated !== null) {
+      res.setHeader("x-obfuscated", xObfuscated);
+    }
+    // Forward any other x- prefixed metadata headers the SPA may rely on,
+    // except security headers (x-frame-options, x-xss-protection, etc.).
+    for (const [key, value] of upstream.headers.entries()) {
+      if (
+        key.startsWith("x-") &&
+        key !== "x-frame-options" &&
+        key !== "x-xss-protection" &&
+        key !== "x-content-type-options" &&
+        key !== "x-request-id" &&
+        key !== "x-robots-tag"
+      ) {
+        res.setHeader(key, value);
+      }
+    }
+
     // Add permissive CORS so the iframe (same Replit origin) can load cross-origin assets
     res.setHeader("Access-Control-Allow-Origin", "*");
 
