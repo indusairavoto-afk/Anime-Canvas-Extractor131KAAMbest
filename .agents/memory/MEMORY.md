@@ -11,3 +11,4 @@
 - [comix.to search API blocked](comix-search-api.md) — /api/v1/manga?q= exists but needs an encrypted cfg token (binary, not simple base64/XOR); browse pages never have SSR results; only home page has ~150 trending HIDs; fallback uses AniList externalLinks + comick.dev slug.
 - [onisaga.com proxy](onisaga-proxy.md) — SSR Laravel+Livewire site; slug-based URLs (/manga/{slug}, /read/{slug}/{id}); no HID needed; /api/onisaga/find works for any title; primary manga reader replacing comix.to.
 - [MangaFire slug pattern + sitemap search](mangafire-slug.md) — MangaFire always doubles the last char of the slug (man→mann, piece→piecee); AJAX search is Cloudflare-gated; use sitemap-list-N.xml files (54 total) in parallel batches to find full slug.
+- [atsu.moe search API](atsu-search-api.md) — Typesense proxied at relative `/collections/manga/documents/search`, no auth; reader URL is `/read/{mangaId}/{chapterId}`; parse SSR `/manga/{id}` for chapters.

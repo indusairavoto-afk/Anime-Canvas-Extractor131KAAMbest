@@ -22,6 +22,7 @@ import repliesRouter from "./replies";
 import verifyRouter from "./verify";
 import translateRouter from "./translate";
 import mangadexRouter from "./mangadex";
+import atsuRouter from "./atsu";
 
 const router: IRouter = Router();
 
@@ -48,5 +49,6 @@ router.use(repliesRouter);
 router.use(verifyRouter);
 router.use(translateRouter);
 router.use(mangadexRouter);
+router.use(atsuRouter);
 
 export default router;

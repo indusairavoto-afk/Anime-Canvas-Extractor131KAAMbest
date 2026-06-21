@@ -2,7 +2,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Link, useParams } from "wouter";
 import { ArrowLeft, Star, BookOpen, X, ExternalLink, ChevronLeft, ChevronRight, ChevronDown, Check, Minus, Plus, Loader2 } from "lucide-react";
 import { useMangaList, type ReadStatus } from "@/hooks/useMangaList";
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 const READ_STATUSES: { value: ReadStatus; label: string; dot: string }[] = [
   { value: "reading",      label: "Reading",      dot: "bg-green-400" },
@@ -99,16 +99,15 @@ function stripHtml(html: string) {
     .trim();
 }
 
-interface MdChapter {
+interface AtsuChapter {
   id: string;
-  chapter: string | null;
-  volume: string | null;
+  number: number;
   title: string | null;
-  pages: number;
+  pageCount: number;
+  index: number;
 }
 
 function ReaderModal({
-  anilistId,
   title,
   onClose,
 }: {
@@ -116,37 +115,28 @@ function ReaderModal({
   title: string;
   onClose: () => void;
 }) {
-  const scrollRef = useRef<HTMLDivElement>(null);
-
-  // Step 1: find MangaDex manga ID
   const [mangaId, setMangaId] = useState<string | null>(null);
   const [findStatus, setFindStatus] = useState<"searching" | "found" | "not_found">("searching");
-
-  // Step 2: chapters
-  const [chapters, setChapters] = useState<MdChapter[]>([]);
-  const [chaptersLoading, setChaptersLoading] = useState(false);
-  const [selectedChapter, setSelectedChapter] = useState<MdChapter | null>(null);
+  const [chapters, setChapters] = useState<AtsuChapter[]>([]);
+  const [selectedChapter, setSelectedChapter] = useState<AtsuChapter | null>(null);
   const [chapterMenuOpen, setChapterMenuOpen] = useState(false);
 
-  // Step 3: pages
-  const [pages, setPages] = useState<string[]>([]);
-  const [pagesLoading, setPagesLoading] = useState(false);
-
-  // Find manga by AniList ID
   useEffect(() => {
     let cancelled = false;
     setFindStatus("searching");
     setMangaId(null);
     setChapters([]);
     setSelectedChapter(null);
-    setPages([]);
 
-    fetch(`/api/mangadex/by-anilist?alId=${anilistId}&title=${encodeURIComponent(title)}`)
+    fetch(`/api/atsu/find?title=${encodeURIComponent(title)}`)
       .then(r => r.json())
-      .then((data: { found: boolean; mangaId?: string }) => {
+      .then((data: { found: boolean; mangaId?: string; chapters?: AtsuChapter[] }) => {
         if (cancelled) return;
         if (data.found && data.mangaId) {
           setMangaId(data.mangaId);
+          const chs = data.chapters ?? [];
+          setChapters(chs);
+          if (chs.length) setSelectedChapter(chs[0]);
           setFindStatus("found");
         } else {
           setFindStatus("not_found");
@@ -154,44 +144,8 @@ function ReaderModal({
       })
       .catch(() => { if (!cancelled) setFindStatus("not_found"); });
     return () => { cancelled = true; };
-  }, [anilistId, title]);
+  }, [title]);
 
-  // Fetch chapters when manga found
-  useEffect(() => {
-    if (!mangaId) return;
-    let cancelled = false;
-    setChaptersLoading(true);
-    fetch(`/api/mangadex/chapters?mangaId=${mangaId}&offset=0`)
-      .then(r => r.json())
-      .then((data: { chapters: MdChapter[] }) => {
-        if (cancelled) return;
-        setChapters(data.chapters ?? []);
-        if (data.chapters?.length) setSelectedChapter(data.chapters[0]);
-      })
-      .catch(() => {})
-      .finally(() => { if (!cancelled) setChaptersLoading(false); });
-    return () => { cancelled = true; };
-  }, [mangaId]);
-
-  // Fetch pages when chapter selected
-  useEffect(() => {
-    if (!selectedChapter) return;
-    let cancelled = false;
-    setPagesLoading(true);
-    setPages([]);
-    if (scrollRef.current) scrollRef.current.scrollTop = 0;
-    fetch(`/api/mangadex/pages?chapterId=${selectedChapter.id}`)
-      .then(r => r.json())
-      .then((data: { pages: string[] }) => {
-        if (cancelled) return;
-        setPages(data.pages ?? []);
-      })
-      .catch(() => {})
-      .finally(() => { if (!cancelled) setPagesLoading(false); });
-    return () => { cancelled = true; };
-  }, [selectedChapter]);
-
-  // Keyboard nav
   const goNextChapter = useCallback(() => {
     if (!selectedChapter) return;
     const idx = chapters.findIndex(c => c.id === selectedChapter.id);
@@ -220,8 +174,11 @@ function ReaderModal({
 
   const currentIdx = selectedChapter ? chapters.findIndex(c => c.id === selectedChapter.id) : -1;
   const chapterLabel = selectedChapter
-    ? `Ch. ${selectedChapter.chapter ?? "?"}${selectedChapter.title ? ` — ${selectedChapter.title}` : ""}`
+    ? `Ch. ${selectedChapter.number}${selectedChapter.title ? ` — ${selectedChapter.title}` : ""}`
     : "Select chapter";
+  const iframeSrc = mangaId && selectedChapter
+    ? `https://atsu.moe/read/${mangaId}/${selectedChapter.id}`
+    : null;
 
   return (
     <motion.div
@@ -246,17 +203,16 @@ function ReaderModal({
             <ChevronLeft className="w-4 h-4" />
           </button>
 
-          {/* Chapter dropdown */}
           <div className="relative">
             <button
               onClick={() => setChapterMenuOpen(v => !v)}
               disabled={chapters.length === 0}
               className="flex items-center gap-1.5 px-3 py-1 border border-white/10 text-[11px] font-mono text-white/50 hover:border-white/25 hover:text-white/80 transition-colors disabled:opacity-30 disabled:cursor-not-allowed min-w-[130px] justify-between"
             >
-              {chaptersLoading ? (
+              {findStatus === "searching" ? (
                 <span className="flex items-center gap-1.5">
                   <Loader2 className="w-3 h-3 animate-spin" />
-                  Loading…
+                  Finding…
                 </span>
               ) : (
                 <span className="truncate">{chapterLabel}</span>
@@ -273,7 +229,7 @@ function ReaderModal({
                   transition={{ duration: 0.1 }}
                   className="absolute top-full left-0 mt-1 z-50 bg-zinc-900 border border-white/10 shadow-2xl w-56 max-h-72 overflow-y-auto"
                 >
-                  {chapters.map((ch, i) => (
+                  {chapters.map(ch => (
                     <button
                       key={ch.id}
                       onClick={() => { setSelectedChapter(ch); setChapterMenuOpen(false); }}
@@ -283,8 +239,8 @@ function ReaderModal({
                           : "text-white/45 hover:bg-white/[0.05] hover:text-white/80"
                       }`}
                     >
-                      <span className="truncate">Ch. {ch.chapter ?? i + 1}{ch.title ? ` — ${ch.title}` : ""}</span>
-                      <span className="text-white/20 shrink-0">{ch.pages}p</span>
+                      <span className="truncate">Ch. {ch.number}{ch.title ? ` — ${ch.title}` : ""}</span>
+                      <span className="text-white/20 shrink-0">{ch.pageCount}p</span>
                     </button>
                   ))}
                 </motion.div>
@@ -301,9 +257,21 @@ function ReaderModal({
           </button>
         </div>
 
+        {iframeSrc && (
+          <a
+            href={iframeSrc}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="p-1.5 text-white/25 hover:text-white/70 transition-colors"
+            title="Open on atsu.moe"
+          >
+            <ExternalLink className="w-4 h-4" />
+          </a>
+        )}
+
         <button
           onClick={onClose}
-          className="p-1.5 text-white/25 hover:text-white/70 transition-colors ml-auto"
+          className="p-1.5 text-white/25 hover:text-white/70 transition-colors"
           title="Close (Esc)"
         >
           <X className="w-4 h-4" />
@@ -311,63 +279,30 @@ function ReaderModal({
       </div>
 
       {/* Content */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto bg-[#111]">
-        {/* Searching for manga */}
+      <div className="flex-1 relative bg-[#111]">
         {findStatus === "searching" && (
-          <div className="flex flex-col items-center justify-center h-full gap-3">
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
             <Loader2 className="w-6 h-6 text-white/30 animate-spin" />
             <p className="text-[11px] font-mono text-white/25 uppercase tracking-widest">Finding manga…</p>
           </div>
         )}
 
-        {/* Not found */}
         {findStatus === "not_found" && (
-          <div className="flex flex-col items-center justify-center h-full gap-4 px-6">
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 px-6">
             <BookOpen className="w-10 h-10 text-white/10" />
             <p className="text-white/40 font-serif text-lg text-center">{title}</p>
-            <p className="text-[11px] font-mono text-white/20 uppercase tracking-widest">Not found on MangaDex</p>
+            <p className="text-[11px] font-mono text-white/20 uppercase tracking-widest">Not found on atsu.moe</p>
           </div>
         )}
 
-        {/* Loading pages */}
-        {findStatus === "found" && pagesLoading && (
-          <div className="flex flex-col items-center justify-center h-full gap-3">
-            <Loader2 className="w-6 h-6 text-white/30 animate-spin" />
-            <p className="text-[11px] font-mono text-white/25 uppercase tracking-widest">Loading pages…</p>
-          </div>
-        )}
-
-        {/* Pages */}
-        {!pagesLoading && pages.length > 0 && (
-          <div className="flex flex-col items-center py-4 gap-1">
-            {pages.map((src, i) => (
-              <img
-                key={i}
-                src={src}
-                alt={`Page ${i + 1}`}
-                className="w-full max-w-2xl block"
-                loading={i < 3 ? "eager" : "lazy"}
-                draggable={false}
-              />
-            ))}
-            {/* Next chapter button at bottom */}
-            {currentIdx < chapters.length - 1 && (
-              <button
-                onClick={goNextChapter}
-                className="mt-8 mb-4 flex items-center gap-2 px-6 py-3 border border-white/15 text-white/50 text-[11px] font-mono uppercase tracking-widest hover:border-white/30 hover:text-white/80 transition-colors"
-              >
-                Next Chapter <ChevronRight className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
-        )}
-
-        {/* No pages for this chapter */}
-        {!pagesLoading && findStatus === "found" && pages.length === 0 && selectedChapter && (
-          <div className="flex flex-col items-center justify-center h-full gap-3">
-            <BookOpen className="w-8 h-8 text-white/10" />
-            <p className="text-[11px] font-mono text-white/25 uppercase tracking-widest">No pages available for this chapter</p>
-          </div>
+        {findStatus === "found" && iframeSrc && (
+          <iframe
+            key={iframeSrc}
+            src={iframeSrc}
+            className="w-full h-full border-0"
+            allow="fullscreen"
+            title={`Reading ${title}`}
+          />
         )}
       </div>
     </motion.div>
@@ -649,7 +584,7 @@ export default function MangaDetail() {
                 </div>
               )}
 
-              <p className="text-[9px] font-mono text-white/20">Powered by MangaDex</p>
+              <p className="text-[9px] font-mono text-white/20">Powered by atsu.moe</p>
             </div>
           </div>
 
