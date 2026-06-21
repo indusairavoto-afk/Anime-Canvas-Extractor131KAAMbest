@@ -194,7 +194,7 @@ html, body {
     if (href.startsWith('http') && !href.startsWith(ORIGIN) && !href.startsWith(PASS)) return;
     e.preventDefault();
     var path = href.startsWith(ORIGIN) ? href.slice(ORIGIN.length) : href;
-    if (path.startsWith(PASS)) path = '/' + path.slice(PASS.length);
+    if (path.startsWith(PASS)) path = path.slice(PASS.length);
     window.location.href = '/api/onisaga/reader?path=' + encodeURIComponent(path);
   }, true);
 
