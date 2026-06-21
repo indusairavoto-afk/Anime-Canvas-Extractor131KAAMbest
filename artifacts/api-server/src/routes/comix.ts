@@ -72,6 +72,49 @@ router.all("/comix/pass/*path", async (req, res) => {
  * comix.to title path if found so the frontend can open the SSR-rendered title page
  * instead of the broken SPA browse/search page.
  */
+/** Fetch one comix.to page and extract all manga items from its initial-data. */
+async function fetchComixPageManga(url: string): Promise<Array<{ hid: string; title: string; altTitles: string[]; url: string }>> {
+  try {
+    const res = await fetch(url, {
+      headers: { ...HEADERS, Accept: "text/html,application/xhtml+xml", Referer: COMIX_ORIGIN + "/" },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return [];
+    const html = await res.text();
+    const m = html.match(/id="initial-data">(\{[\s\S]+?\})<\/script>/);
+    if (!m) return [];
+    const data = JSON.parse(m[1]) as { queries?: Record<string, unknown>; list?: unknown };
+    const result: Array<{ hid: string; title: string; altTitles: string[]; url: string }> = [];
+
+    function extractFromValue(val: unknown) {
+      if (Array.isArray(val)) {
+        for (const item of val) {
+          const it = item as Record<string, unknown>;
+          if (it && typeof it.hid === "string" && typeof it.title === "string" && typeof it.url === "string" && it.url.startsWith("/title/")) {
+            result.push({ hid: it.hid, title: it.title, altTitles: Array.isArray(it.altTitles) ? (it.altTitles as string[]) : [], url: it.url });
+          }
+          // Also recurse into nested objects (e.g. {data: [...manga]})
+          if (it && typeof it === "object") {
+            for (const v of Object.values(it)) {
+              if (Array.isArray(v)) extractFromValue(v);
+            }
+          }
+        }
+      } else if (val && typeof val === "object") {
+        for (const v of Object.values(val as Record<string, unknown>)) {
+          extractFromValue(v);
+        }
+      }
+    }
+
+    extractFromValue(data.queries);
+    extractFromValue(data.list);
+    return result;
+  } catch {
+    return [];
+  }
+}
+
 router.get("/comix/find", async (req, res) => {
   const title = typeof req.query.title === "string" ? req.query.title.trim() : "";
   if (!title) {
@@ -80,50 +123,25 @@ router.get("/comix/find", async (req, res) => {
   }
 
   try {
-    const homeRes = await fetch(`${COMIX_ORIGIN}/`, {
-      headers: {
-        ...HEADERS,
-        Accept: "text/html,application/xhtml+xml",
-        Referer: COMIX_ORIGIN + "/",
-      },
-    });
+    // Fetch multiple comix.to pages in parallel to build a broader search index.
+    // We probe: home page (trending/featured), hot/popular pages, and new releases.
+    const pagesToFetch = [
+      `${COMIX_ORIGIN}/`,
+      `${COMIX_ORIGIN}/hot`,
+      `${COMIX_ORIGIN}/new`,
+      `${COMIX_ORIGIN}/browse?sort=views_total:desc`,
+      `${COMIX_ORIGIN}/browse?sort=score:desc`,
+      `${COMIX_ORIGIN}/browse?sort=follows_total:desc`,
+    ];
 
-    if (!homeRes.ok) {
-      res.json({ found: false });
-      return;
-    }
-
-    const homeHtml = await homeRes.text();
-    const m = homeHtml.match(/id="initial-data">(\{[\s\S]+?\})<\/script>/);
-    if (!m) {
-      res.json({ found: false });
-      return;
-    }
-
-    const data = JSON.parse(m[1]) as {
-      queries?: Record<string, unknown>;
-    };
-
-    type ComixManga = {
-      hid: string;
-      title: string;
-      altTitles?: string[];
-      url: string;
-    };
-
-    const allManga: ComixManga[] = [];
-    for (const val of Object.values(data.queries ?? {})) {
-      if (Array.isArray(val)) {
-        for (const item of val as unknown[]) {
-          const it = item as Record<string, unknown>;
-          if (it && typeof it.hid === "string" && typeof it.title === "string" && typeof it.url === "string") {
-            allManga.push({
-              hid: it.hid,
-              title: it.title,
-              altTitles: Array.isArray(it.altTitles) ? (it.altTitles as string[]) : [],
-              url: it.url,
-            });
-          }
+    const mangaLists = await Promise.all(pagesToFetch.map(fetchComixPageManga));
+    const seenHids = new Set<string>();
+    const allManga: Array<{ hid: string; title: string; altTitles: string[]; url: string }> = [];
+    for (const list of mangaLists) {
+      for (const m of list) {
+        if (!seenHids.has(m.hid)) {
+          seenHids.add(m.hid);
+          allManga.push(m);
         }
       }
     }
@@ -136,18 +154,16 @@ router.get("/comix/find", async (req, res) => {
     function titlesMatch(a: string, b: string): boolean {
       if (!a || !b || a.length < 2 || b.length < 2) return false;
       if (a === b) return true;
-      // Only accept substring match when the shorter title is at least 5 chars
-      // (avoids false positives from short normalized strings)
       const shorter = a.length < b.length ? a : b;
       const longer = a.length < b.length ? b : a;
       return shorter.length >= 5 && longer.includes(shorter);
     }
 
-    let best: ComixManga | null = null;
+    let best: (typeof allManga)[0] | null = null;
     for (const manga of allManga) {
       const t = normalize(manga.title);
       if (titlesMatch(t, q)) { best = manga; break; }
-      for (const alt of manga.altTitles ?? []) {
+      for (const alt of manga.altTitles) {
         const a = normalize(alt);
         if (titlesMatch(a, q)) { best = manga; break; }
       }

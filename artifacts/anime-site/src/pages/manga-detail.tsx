@@ -114,6 +114,7 @@ function ReaderModal({
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [iframeLoading, setIframeLoading] = useState(true);
   const [findResult, setFindResult] = useState<FindResult>({ status: "searching" });
+  const [blankDetected, setBlankDetected] = useState(false);
 
   /* On mount: find the comix.to title page URL so we load SSR content
      instead of the broken SPA browse/search page. */
@@ -137,7 +138,7 @@ function ReaderModal({
 
   const searchQuery = encodeURIComponent(title);
   const src =
-    findResult.status === "found"
+    findResult.status === "found" && !blankDetected
       ? `/api/comix/reader?path=${encodeURIComponent(findResult.url)}`
       : null;
 
@@ -147,9 +148,33 @@ function ReaderModal({
 
   function refresh() {
     if (iframeRef.current && src) {
+      setBlankDetected(false);
       setIframeLoading(true);
       iframeRef.current.src = src;
     }
+  }
+
+  function handleIframeLoad() {
+    setIframeLoading(false);
+    // After the iframe loads, wait 3 s for the SPA to hydrate, then check
+    // if the app-root is empty (blank white SPA shell). If so, fall back to
+    // the "not found" UI so the user sees the external link instead of white.
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+    const timer = setTimeout(() => {
+      try {
+        const doc = iframe.contentDocument ?? iframe.contentWindow?.document;
+        if (!doc) return;
+        const appRoot = doc.getElementById("app-root");
+        // Blank if app-root exists but has no rendered children
+        if (appRoot && appRoot.childElementCount === 0) {
+          setBlankDetected(true);
+        }
+      } catch {
+        // Cross-origin guard — shouldn't happen since we proxy through /api
+      }
+    }, 3000);
+    return () => clearTimeout(timer);
   }
 
   useEffect(() => {
@@ -162,7 +187,8 @@ function ReaderModal({
     };
   }, [onClose]);
 
-  const isLoading = findResult.status === "searching" || (findResult.status === "found" && iframeLoading);
+  const isLoading = findResult.status === "searching" || (findResult.status === "found" && !blankDetected && iframeLoading);
+  const showFallback = findResult.status === "not_found" || blankDetected;
 
   return (
     <motion.div
@@ -208,8 +234,8 @@ function ReaderModal({
         </div>
       </div>
 
-      {/* Content area */}
-      <div className="flex-1 relative overflow-hidden">
+      {/* Content area — always dark so there's never a white flash */}
+      <div className="flex-1 relative overflow-hidden bg-[#0a0a0a]">
         {/* Spinner overlay — shown while searching or while iframe is loading */}
         {isLoading && (
           <div className="absolute inset-0 flex items-center justify-center bg-[#0a0a0a] z-10 pointer-events-none">
@@ -222,14 +248,16 @@ function ReaderModal({
           </div>
         )}
 
-        {/* Not-found fallback */}
-        {findResult.status === "not_found" && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-6 px-6">
+        {/* Not-found / blank-page fallback */}
+        {showFallback && (
+          <div className="absolute inset-0 bg-[#0a0a0a] flex flex-col items-center justify-center gap-6 px-6">
             <div className="flex flex-col items-center gap-3 text-center max-w-sm">
               <BookOpen className="w-10 h-10 text-white/10" />
               <p className="text-white/50 font-serif text-lg leading-snug">{title}</p>
               <p className="text-[11px] font-mono text-white/25 uppercase tracking-widest leading-relaxed">
-                This title isn't indexed locally — search for it on comix.to to read chapters.
+                {blankDetected
+                  ? "The reader couldn't load — open it directly on comix.to."
+                  : "This title isn't indexed locally — search for it on comix.to to read chapters."}
               </p>
             </div>
             <div className="flex flex-col items-center gap-2">
@@ -247,7 +275,7 @@ function ReaderModal({
           </div>
         )}
 
-        {/* Iframe — only mounted when we have a URL */}
+        {/* Iframe — only mounted when we have a URL and blank not yet detected */}
         {src && (
           <iframe
             ref={iframeRef}
@@ -255,7 +283,7 @@ function ReaderModal({
             className="w-full h-full border-0"
             title="Manga Reader"
             allow="fullscreen"
-            onLoad={() => setIframeLoading(false)}
+            onLoad={handleIframeLoad}
           />
         )}
       </div>
