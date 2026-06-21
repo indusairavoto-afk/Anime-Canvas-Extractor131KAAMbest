@@ -106,7 +106,12 @@ router.get("/mangafire/find", async (req, res) => {
   for (const d of doubled) {
     const slug = await searchAllSitemaps(d);
     if (slug) {
-      res.json({ found: true, slug, url: `/manga/${slug}` });
+      res.json({
+        found: true,
+        slug,
+        url: `/manga/${slug}`,
+        readUrl: `/read/${slug}/en/chapter-1`,
+      });
       return;
     }
   }
@@ -141,14 +146,14 @@ html, body {
 ::-webkit-scrollbar-track { background: #111; }
 ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: #555; }
-/* reader page: hide non-essential chrome */
-#chapter-head, .chapter-head, .chapter-toolbar .non-reader { display: none !important; }
+#chapter-head, .chapter-head { display: none !important; }
 </style>
 <script>
 (function() {
   var PASS = ${JSON.stringify(PASS)};
   var ORIGIN = ${JSON.stringify(ORIGIN)};
 
+  /* Rewrite asset/API URLs through the pass proxy */
   function rewriteUrl(url) {
     if (!url || typeof url !== 'string') return url;
     if (url.startsWith('data:') || url.startsWith('blob:')) return url;
@@ -159,6 +164,26 @@ html, body {
     return url;
   }
 
+  /* Convert any URL to a reader page (for navigation) */
+  function toReaderPath(url) {
+    if (!url || typeof url !== 'string') return null;
+    if (url.startsWith('data:') || url.startsWith('blob:') || url.startsWith('javascript:')) return null;
+    if (url.startsWith('/api/mangafire/reader')) return url; // already a reader URL
+    var path;
+    if (url.startsWith(ORIGIN)) {
+      path = url.slice(ORIGIN.length) || '/';
+    } else if (url.startsWith('/api/mangafire/pass')) {
+      path = url.slice('/api/mangafire/pass'.length) || '/';
+    } else if (url.startsWith('/')) {
+      path = url;
+    } else {
+      // relative, e.g. "home", "newest"
+      path = '/' + url;
+    }
+    return '/api/mangafire/reader?path=' + encodeURIComponent(path);
+  }
+
+  /* Patch fetch */
   var _fetch = window.fetch;
   window.fetch = function(input, init) {
     if (typeof input === 'string') input = rewriteUrl(input);
@@ -169,6 +194,7 @@ html, body {
     return _fetch.call(this, input, init);
   };
 
+  /* Patch XHR */
   var _open = XMLHttpRequest.prototype.open;
   XMLHttpRequest.prototype.open = function() {
     var args = Array.prototype.slice.call(arguments);
@@ -176,30 +202,54 @@ html, body {
     return _open.apply(this, args);
   };
 
+  /* Intercept location.href, location.assign, location.replace
+     so MangaFire JS cannot redirect the iframe to our app root */
+  try {
+    var locProto = Location.prototype;
+    var _hrefDesc = Object.getOwnPropertyDescriptor(locProto, 'href');
+    if (_hrefDesc && _hrefDesc.set) {
+      Object.defineProperty(locProto, 'href', {
+        get: _hrefDesc.get,
+        set: function(url) {
+          var r = toReaderPath(url);
+          if (r) { _hrefDesc.set.call(window.location, r); }
+          else    { _hrefDesc.set.call(window.location, url); }
+        },
+        configurable: true,
+      });
+    }
+    var _assign = locProto.assign;
+    locProto.assign = function(url) { var r = toReaderPath(url); _assign.call(window.location, r || url); };
+    var _replace = locProto.replace;
+    locProto.replace = function(url) { var r = toReaderPath(url); _replace.call(window.location, r || url); };
+  } catch(e) { /* best-effort */ }
+
+  /* Intercept link clicks */
   document.addEventListener('click', function(e) {
     var el = e.target && e.target.closest && e.target.closest('a');
     if (!el) return;
     var href = el.getAttribute('href');
     if (!href || href.startsWith('#') || href.startsWith('mailto:') || href.startsWith('javascript:')) return;
-    if (href.startsWith('http') && !href.startsWith(ORIGIN) && !href.startsWith(PASS)) return;
+    /* allow clicks to external sites (ads etc.) to open normally */
+    if (href.startsWith('http') && !href.startsWith(ORIGIN)) return;
     e.preventDefault();
-    var path = href.startsWith(ORIGIN) ? href.slice(ORIGIN.length) : href;
-    if (path.startsWith(PASS)) path = path.slice(PASS.length);
-    window.location.href = '/api/mangafire/reader?path=' + encodeURIComponent(path);
+    var r = toReaderPath(href);
+    if (r) window.location.href = r;
   }, true);
 
-  var _pushState = history.pushState.bind(history);
-  history.pushState = function(state, title, url) {
-    if (url && typeof url === 'string' && !url.startsWith('/api/mangafire/')) {
-      var rewritten = rewriteUrl(url);
-      if (rewritten !== url) {
-        // convert to a reader path so a hard reload still works
-        var path = url.startsWith(ORIGIN) ? url.slice(ORIGIN.length) : url;
-        url = '/api/mangafire/reader?path=' + encodeURIComponent(path);
+  /* Intercept history.pushState / replaceState */
+  function wrapHistoryMethod(name) {
+    var orig = history[name].bind(history);
+    history[name] = function(state, title, url) {
+      if (url && typeof url === 'string' && !url.startsWith('/api/mangafire/reader')) {
+        var r = toReaderPath(url);
+        if (r) url = r;
       }
-    }
-    return _pushState(state, title, url);
-  };
+      return orig(state, title, url);
+    };
+  }
+  wrapHistoryMethod('pushState');
+  wrapHistoryMethod('replaceState');
 })();
 </script>`;
 }

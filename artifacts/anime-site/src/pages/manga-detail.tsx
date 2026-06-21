@@ -122,10 +122,10 @@ function ReaderModal({
     setIframeLoading(true);
     fetch(`/api/mangafire/find?title=${encodeURIComponent(title)}`)
       .then(r => r.json())
-      .then((data: { found: boolean; slug?: string; url?: string }) => {
+      .then((data: { found: boolean; slug?: string; url?: string; readUrl?: string }) => {
         if (cancelled) return;
-        if (data.found && data.slug && data.url) {
-          setFindResult({ status: "found", slug: data.slug, url: data.url });
+        if (data.found && data.slug && (data.readUrl || data.url)) {
+          setFindResult({ status: "found", slug: data.slug, url: data.readUrl ?? data.url! });
         } else {
           setFindResult({ status: "not_found" });
         }
