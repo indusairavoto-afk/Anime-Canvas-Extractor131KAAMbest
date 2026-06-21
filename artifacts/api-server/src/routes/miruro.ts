@@ -62,8 +62,19 @@ router.all("/miruro/pass/*path", async (req, res) => {
 
     // Forward safe headers; intentionally omit X-Frame-Options, CSP, and CORS restrictions
     res.setHeader("Content-Type", contentType);
-    if (cacheControl) res.setHeader("Cache-Control", cacheControl);
-    else res.setHeader("Cache-Control", "public, max-age=86400");
+    // API paths carry session-encrypted payloads (pipe, jwks, monkey, events).
+    // The browser MUST NOT cache these — a cached pipe response decrypted with a
+    // fresh session key produces garbage (→ empty sources → black player).
+    // Force no-store for any /api/* path so the browser always makes a fresh
+    // request and never sends If-None-Match / If-Modified-Since conditionals.
+    if (rest.startsWith("api/")) {
+      res.setHeader("Cache-Control", "no-store, no-cache");
+      res.setHeader("Pragma", "no-cache");
+    } else if (cacheControl) {
+      res.setHeader("Cache-Control", cacheControl);
+    } else {
+      res.setHeader("Cache-Control", "public, max-age=86400");
+    }
 
     // Add permissive CORS so the iframe (same Replit origin) can load cross-origin assets
     res.setHeader("Access-Control-Allow-Origin", "*");
@@ -117,16 +128,33 @@ const ULTRACLOUD_HOSTS: Record<string, string> = {
   pru: "https://pru.ultracloud.cc",
 };
 
-router.all("/miruro/ultra/:subdomain/*path", async (req, res) => {
-  const subdomain = req.params.subdomain;
-  const upstreamBase = ULTRACLOUD_HOSTS[subdomain];
-  if (!upstreamBase) {
-    res.status(400).json({ error: `Unknown ultracloud subdomain: ${subdomain}` });
+// Use router.use instead of router.all with path params to avoid Express 5's
+// path-to-regexp v8 automatic URL-decoding of wildcard segments.  The encoded
+// stream IDs contain base64url characters (_) and XOR'd bytes that confuse the
+// built-in decoder, causing 400 responses before our handler runs.
+// Inside the handler, req.path is the remaining path after /miruro/ultra.
+router.use("/miruro/ultra", async (req, res, next) => {
+  if (req.method === "OPTIONS") {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, HEAD, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "*");
+    res.status(204).end();
     return;
   }
 
-  const rawPath = (req.params as Record<string, string | string[]>).path;
-  const rest = (Array.isArray(rawPath) ? rawPath.join("/") : rawPath ?? "").replace(/^\//, "");
+  // req.path = /pro/<encoded>~~anon/pl.m3u8 (relative to /miruro/ultra mount point)
+  const pathStr = req.path.replace(/^\//, ""); // remove leading slash
+  const firstSlash = pathStr.indexOf("/");
+  const subdomain = firstSlash >= 0 ? pathStr.slice(0, firstSlash) : pathStr;
+  const rest = firstSlash >= 0 ? pathStr.slice(firstSlash + 1) : "";
+
+  const upstreamBase = ULTRACLOUD_HOSTS[subdomain];
+  if (!upstreamBase) {
+    void next(); // fall through to 404
+    return;
+  }
+
+  // Preserve query string from the original URL
   const search = req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : "";
   const upstreamUrl = `${upstreamBase}/${rest}${search}`;
 
@@ -135,7 +163,8 @@ router.all("/miruro/ultra/:subdomain/*path", async (req, res) => {
       method: req.method,
       headers: {
         "User-Agent": ASSET_HEADERS["User-Agent"],
-        "Accept": "application/json, */*",
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Encoding": "identity",
         "Origin": MIRURO_ORIGIN,
         "Referer": MIRURO_ORIGIN + "/",
         ...(req.headers["content-type"]
@@ -145,11 +174,16 @@ router.all("/miruro/ultra/:subdomain/*path", async (req, res) => {
       body: req.method !== "GET" && req.method !== "HEAD" ? req : undefined,
     });
 
-    const contentType = upstream.headers.get("content-type") ?? "application/json";
+    const contentType = upstream.headers.get("content-type") ?? "application/octet-stream";
     res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, HEAD, OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "*");
     res.setHeader("Content-Type", contentType);
+
+    if (req.method === "HEAD") {
+      res.status(upstream.status).end();
+      return;
+    }
 
     const buf = await upstream.arrayBuffer();
     res.status(upstream.status).send(Buffer.from(buf));
@@ -157,13 +191,6 @@ router.all("/miruro/ultra/:subdomain/*path", async (req, res) => {
     const msg = err instanceof Error ? err.message : "Unknown error";
     res.status(502).json({ error: `Ultracloud proxy error: ${msg}` });
   }
-});
-
-router.options("/miruro/ultra/:subdomain/*path", (_req, res) => {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "*");
-  res.status(204).end();
 });
 
 /**
@@ -197,9 +224,16 @@ router.get("/miruro/proxy", async (req, res) => {
   }
 
   try {
-    const upstream = await fetch(targetUrl.toString(), {
-      headers: PAGE_HEADERS,
-    });
+    // Fetch the HTML page and env2.js in parallel so we can inline env2.js
+    // synchronously. This is critical: env2.js sets window.env (VITE_PROXY_A/B,
+    // VITE_PIPE_OBF_KEY etc.), and the SPA's module bundle reads these values at
+    // module-evaluation time. If env2.js is "defer"d it may run AFTER the module
+    // bundle, leaving window.env unset → decryption key _a = null → sources
+    // request returns empty → YouTube trailer instead of episode.
+    const [upstream, env2Upstream] = await Promise.all([
+      fetch(targetUrl.toString(), { headers: PAGE_HEADERS }),
+      fetch(`${MIRURO_ORIGIN}/env2.js`, { headers: ASSET_HEADERS }).catch(() => null),
+    ]);
 
     const contentType = upstream.headers.get("content-type") ?? "text/html";
 
@@ -211,6 +245,18 @@ router.get("/miruro/proxy", async (req, res) => {
       const buf = await upstream.arrayBuffer();
       res.send(Buffer.from(buf));
       return;
+    }
+
+    // Build the inlined env2.js content with our proxy URL rewrites applied.
+    // We replace VITE_PROXY_A/B to point at our server instead of ultracloud.cc
+    // directly — ultracloud blocks browser cross-origin requests.
+    let env2Inline = "";
+    if (env2Upstream?.ok) {
+      let env2js = await env2Upstream.text();
+      env2js = env2js
+        .replace(/https:\/\/pro\.ultracloud\.cc\//g, "/api/miruro/ultra/pro/")
+        .replace(/https:\/\/pru\.ultracloud\.cc\//g, "/api/miruro/ultra/pru/");
+      env2Inline = env2js;
     }
 
     let html = await upstream.text();
@@ -229,15 +275,42 @@ router.get("/miruro/proxy", async (req, res) => {
       .replace(/(src|href)='\/(?!\/|api\/miruro\/)/g, `$1='${PASS_PREFIX}/`)
       .replace(/url\(\/(?!\/|api\/miruro\/)/g, `url(${PASS_PREFIX}/`);
 
+    // Remove the deferred env2.js script tag — we inline it synchronously below
+    // so window.env is set before any module/defer scripts evaluate.
+    html = html.replace(/<script[^>]+env2\.js[^>]*><\/script>/gi, "");
+
     // ── SPA router fix + fetch interceptor ──────────────────────────────────
-    // 1. history.replaceState so the SPA initialises with the correct path.
-    // 2. Monkey-patch fetch/XHR so cross-origin calls to miruro.to go through
+    // 1. Inline env2.js SYNCHRONOUSLY so window.env is set before module scripts.
+    // 2. history.replaceState so the SPA initialises with the correct path.
+    // 3. Monkey-patch fetch/XHR so cross-origin calls to miruro.to go through
     //    our server-side pass-through proxy (avoids CORS blocks on API calls).
+    // 4. Block service worker registration (the miruro SW tries to precache
+    //    files at root paths like /assets/vidstack-*.js that don't exist on
+    //    our server, flooding the console with 404s and crashing workbox).
     const originalPath = targetUrl.pathname + targetUrl.search;
     const PASS = PASS_PREFIX; // e.g. /api/miruro/pass
     const routerFix = `<script>
+${env2Inline ? `// env2.js inlined synchronously to ensure window.env is set before module scripts\n${env2Inline}` : ""}
 (function() {
   try { history.replaceState(null, '', ${JSON.stringify(originalPath)}); } catch(e) {}
+
+  // Block service worker registration — the miruro SW precaches files at root
+  // paths (/assets/vidstack-*.js etc.) that don't exist on our proxy server,
+  // causing a flood of 404s and breaking workbox, without helping the player.
+  try {
+    Object.defineProperty(navigator, 'serviceWorker', {
+      value: {
+        register: function() { return Promise.resolve({ scope: '/', active: null }); },
+        ready: Promise.resolve({ scope: '/', active: null }),
+        controller: null,
+        getRegistrations: function() { return Promise.resolve([]); },
+        getRegistration: function() { return Promise.resolve(undefined); },
+        addEventListener: function() {},
+        removeEventListener: function() {},
+      },
+      configurable: true,
+    });
+  } catch(e) {}
 
   var MIRURO_ORIGINS = ['https://www.miruro.bz', 'https://miruro.bz', 'https://www.miruro.to', 'https://miruro.to'];
   var PASS = ${JSON.stringify(PASS)};
@@ -265,7 +338,7 @@ router.get("/miruro/proxy", async (req, res) => {
     // Redirect root-relative /api/ calls — the Miruro SPA calls its own backend
     // at /api/secure/pipe, /api/secure/jwks, /api/monkey, /api/events etc.
     // Those root-relative paths would hit our server and 404; route them through
-    // the pass-through proxy so they reach https://www.miruro.to/api/...
+    // the pass-through proxy so they reach https://www.miruro.bz/api/...
     // Guard: don't redirect URLs that already go through our proxy.
     if ((url.startsWith('/api/') || url === '/api') && !url.startsWith('/api/miruro/')) {
       return PASS + url;
@@ -319,9 +392,8 @@ router.get("/miruro/proxy", async (req, res) => {
     };
   }
 
-  // Auto-play helper: when Art Player creates a <video> element, unmute and
-  // dispatch a trusted-like play() call so autoplay is not blocked by the
-  // browser's "no-user-gesture" policy.
+  // Auto-play helper: mute video so autoplay is not blocked by the browser's
+  // "no-user-gesture" policy inside the nested iframe.
   var _playOrig = HTMLMediaElement.prototype.play;
   HTMLMediaElement.prototype.play = function() {
     this.muted = true;
