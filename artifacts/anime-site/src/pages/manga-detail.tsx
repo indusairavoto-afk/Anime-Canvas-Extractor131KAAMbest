@@ -134,8 +134,10 @@ function ReaderModal({
     return () => { cancelled = true; };
   }, [title]);
 
+  // Load directly — mangafire has no X-Frame-Options on chapter pages,
+  // and Cloudflare Turnstile must run in a real browser context (not our proxy).
   const src = findResult.status === "found"
-    ? `/api/mangafire/reader?path=${encodeURIComponent(findResult.url)}`
+    ? `https://mangafire.to${findResult.url}`
     : null;
 
   function goBack() {
@@ -160,9 +162,7 @@ function ReaderModal({
   }, [onClose]);
 
   const isLoading = findResult.status === "searching" || (findResult.status === "found" && iframeLoading);
-  const externalUrl = findResult.status === "found"
-    ? `https://mangafire.to${findResult.url}`
-    : `https://mangafire.to/filter?keyword=${encodeURIComponent(title)}`;
+  const externalUrl = src ?? `https://mangafire.to/filter?keyword=${encodeURIComponent(title)}`;
 
   return (
     <motion.div
@@ -246,6 +246,7 @@ function ReaderModal({
             className="w-full h-full border-0"
             title="Manga Reader"
             allow="fullscreen"
+            referrerPolicy="no-referrer-when-downgrade"
             onLoad={() => setIframeLoading(false)}
           />
         )}
