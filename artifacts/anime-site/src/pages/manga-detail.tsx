@@ -1,6 +1,6 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { Link, useParams } from "wouter";
-import { ArrowLeft, Star, BookOpen, X, ExternalLink, ChevronLeft, RefreshCw, Home, ChevronDown, Check, Minus, Plus } from "lucide-react";
+import { ArrowLeft, Star, BookOpen, X, ExternalLink, ChevronLeft, RefreshCw, ChevronDown, Check, Minus, Plus } from "lucide-react";
 import { useMangaList, type ReadStatus } from "@/hooks/useMangaList";
 import { useState, useEffect, useRef } from "react";
 
@@ -99,6 +99,11 @@ function stripHtml(html: string) {
     .trim();
 }
 
+type FindResult =
+  | { status: "searching" }
+  | { status: "found"; url: string; comixTitle: string }
+  | { status: "not_found" };
+
 function ReaderModal({
   title,
   onClose,
@@ -107,25 +112,43 @@ function ReaderModal({
   onClose: () => void;
 }) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const [loading, setLoading] = useState(true);
-  const searchQuery = encodeURIComponent(title);
-  const src = `/api/comix/reader?path=/browse%3Fsearch%3D${searchQuery}`;
+  const [iframeLoading, setIframeLoading] = useState(true);
+  const [findResult, setFindResult] = useState<FindResult>({ status: "searching" });
 
-  function goHome() {
-    if (iframeRef.current) {
-      setLoading(true);
-      iframeRef.current.src = `/api/comix/reader?path=/browse`;
-    }
-  }
+  /* On mount: find the comix.to title page URL so we load SSR content
+     instead of the broken SPA browse/search page. */
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/comix/find?title=${encodeURIComponent(title)}`)
+      .then(r => r.json())
+      .then((data: { found: boolean; url?: string; title?: string }) => {
+        if (cancelled) return;
+        if (data.found && data.url) {
+          setFindResult({ status: "found", url: data.url, comixTitle: data.title ?? title });
+        } else {
+          setFindResult({ status: "not_found" });
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setFindResult({ status: "not_found" });
+      });
+    return () => { cancelled = true; };
+  }, [title]);
+
+  const searchQuery = encodeURIComponent(title);
+  const src =
+    findResult.status === "found"
+      ? `/api/comix/reader?path=${encodeURIComponent(findResult.url)}`
+      : null;
 
   function goBack() {
     try { iframeRef.current?.contentWindow?.history.go(-1); } catch { /* cross-origin */ }
   }
 
   function refresh() {
-    if (iframeRef.current) {
-      setLoading(true);
-      iframeRef.current.src = iframeRef.current.src;
+    if (iframeRef.current && src) {
+      setIframeLoading(true);
+      iframeRef.current.src = src;
     }
   }
 
@@ -138,6 +161,8 @@ function ReaderModal({
       document.body.style.overflow = "";
     };
   }, [onClose]);
+
+  const isLoading = findResult.status === "searching" || (findResult.status === "found" && iframeLoading);
 
   return (
     <motion.div
@@ -154,25 +179,26 @@ function ReaderModal({
         <span className="text-white/10 text-xs">·</span>
         <span className="text-[10px] font-mono text-white/20 max-w-[200px] truncate">{title}</span>
 
-        {loading && (
+        {isLoading && (
           <span className="ml-1 flex items-center gap-1 text-[10px] font-mono text-white/20">
             <span className="w-1.5 h-1.5 rounded-full bg-white/30 animate-pulse inline-block" />
-            Loading…
+            {findResult.status === "searching" ? "Searching…" : "Loading…"}
           </span>
         )}
 
         <div className="ml-auto flex items-center gap-0.5">
-          <button onClick={goHome} className="p-1.5 rounded hover:bg-white/[0.07] transition-colors text-white/25 hover:text-white/70" title="Search">
-            <Home className="w-3.5 h-3.5" />
-          </button>
-          <button onClick={goBack} className="p-1.5 rounded hover:bg-white/[0.07] transition-colors text-white/25 hover:text-white/70" title="Go back">
-            <ChevronLeft className="w-3.5 h-3.5" />
-          </button>
-          <button onClick={refresh} className="p-1.5 rounded hover:bg-white/[0.07] transition-colors text-white/25 hover:text-white/70" title="Refresh">
-            <RefreshCw className="w-3.5 h-3.5" />
-          </button>
+          {src && (
+            <>
+              <button onClick={goBack} className="p-1.5 rounded hover:bg-white/[0.07] transition-colors text-white/25 hover:text-white/70" title="Go back">
+                <ChevronLeft className="w-3.5 h-3.5" />
+              </button>
+              <button onClick={refresh} className="p-1.5 rounded hover:bg-white/[0.07] transition-colors text-white/25 hover:text-white/70" title="Refresh">
+                <RefreshCw className="w-3.5 h-3.5" />
+              </button>
+            </>
+          )}
           <a href={`https://comix.to/browse?search=${searchQuery}`} target="_blank" rel="noopener noreferrer"
-            className="p-1.5 rounded hover:bg-white/[0.07] transition-colors text-white/20 hover:text-white/60" title="Open externally">
+            className="p-1.5 rounded hover:bg-white/[0.07] transition-colors text-white/20 hover:text-white/60" title="Open on comix.to">
             <ExternalLink className="w-3.5 h-3.5" />
           </a>
           <div className="w-px h-4 bg-white/10 mx-1" />
@@ -182,24 +208,56 @@ function ReaderModal({
         </div>
       </div>
 
-      {/* Iframe */}
+      {/* Content area */}
       <div className="flex-1 relative overflow-hidden">
-        {loading && (
+        {/* Spinner overlay — shown while searching or while iframe is loading */}
+        {isLoading && (
           <div className="absolute inset-0 flex items-center justify-center bg-[#0a0a0a] z-10 pointer-events-none">
             <div className="flex flex-col items-center gap-3">
               <div className="w-7 h-7 border border-white/20 border-t-white/60 rounded-full animate-spin" />
-              <p className="text-[10px] font-mono text-white/20 uppercase tracking-widest">Loading reader…</p>
+              <p className="text-[10px] font-mono text-white/20 uppercase tracking-widest">
+                {findResult.status === "searching" ? "Finding on comix.to…" : "Loading reader…"}
+              </p>
             </div>
           </div>
         )}
-        <iframe
-          ref={iframeRef}
-          src={src}
-          className="w-full h-full border-0"
-          title="Manga Reader"
-          allow="fullscreen"
-          onLoad={() => setLoading(false)}
-        />
+
+        {/* Not-found fallback */}
+        {findResult.status === "not_found" && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-6 px-6">
+            <div className="flex flex-col items-center gap-3 text-center max-w-sm">
+              <BookOpen className="w-10 h-10 text-white/10" />
+              <p className="text-white/50 font-serif text-lg leading-snug">{title}</p>
+              <p className="text-[11px] font-mono text-white/25 uppercase tracking-widest leading-relaxed">
+                This title isn't indexed locally — search for it on comix.to to read chapters.
+              </p>
+            </div>
+            <div className="flex flex-col items-center gap-2">
+              <a
+                href={`https://comix.to/browse?search=${searchQuery}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 px-5 py-2.5 bg-white text-black text-[11px] font-mono uppercase tracking-widest hover:bg-white/90 transition-colors"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                Search on comix.to
+              </a>
+              <p className="text-[10px] font-mono text-white/15 mt-1">Opens in a new tab</p>
+            </div>
+          </div>
+        )}
+
+        {/* Iframe — only mounted when we have a URL */}
+        {src && (
+          <iframe
+            ref={iframeRef}
+            src={src}
+            className="w-full h-full border-0"
+            title="Manga Reader"
+            allow="fullscreen"
+            onLoad={() => setIframeLoading(false)}
+          />
+        )}
       </div>
     </motion.div>
   );

@@ -7,3 +7,4 @@
 - [MIRURO overlay null crash](miruro-overlay-null.md) — romajiTitle is undefined during loading; any JSX template calling .toLowerCase() before anime loads crashes React; always use (romajiTitle ?? "").
 - [Miruro proxy health fix](miruro-proxy-health.md) — proxy injected script must rewrite /health and /random-pool.json through PASS; missing /health caused "Server unreachable" toast + blocked crypto init + "Couldn't find episodes".
 - [Miruro x-obfuscated header](miruro-x-obfuscated.md) — pass-through proxy must forward x-obfuscated response header; without it SPA JSON-parses raw XOR-encrypted bytes → parse error → YouTube fallback instead of episode.
+- [comix.to browse SPA white screen fix](comix-ssr-browse-fix.md) — browse/search pages have no SSR; only title pages (/title/{hid}-slug) work in proxy; reader now tries /api/comix/find then falls back to "Search on comix.to" button.

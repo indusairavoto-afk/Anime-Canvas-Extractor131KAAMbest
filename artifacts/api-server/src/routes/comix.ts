@@ -65,12 +65,229 @@ router.all("/comix/pass/*path", async (req, res) => {
 });
 
 /**
+ * GET /api/comix/find?title=<manga title>
+ *
+ * Fetches comix.to's home page SSR data (which embeds ~100 trending/popular manga
+ * with their HIDs and URLs) and tries to match the requested title. Returns the
+ * comix.to title path if found so the frontend can open the SSR-rendered title page
+ * instead of the broken SPA browse/search page.
+ */
+router.get("/comix/find", async (req, res) => {
+  const title = typeof req.query.title === "string" ? req.query.title.trim() : "";
+  if (!title) {
+    res.status(400).json({ error: "title is required" });
+    return;
+  }
+
+  try {
+    const homeRes = await fetch(`${COMIX_ORIGIN}/`, {
+      headers: {
+        ...HEADERS,
+        Accept: "text/html,application/xhtml+xml",
+        Referer: COMIX_ORIGIN + "/",
+      },
+    });
+
+    if (!homeRes.ok) {
+      res.json({ found: false });
+      return;
+    }
+
+    const homeHtml = await homeRes.text();
+    const m = homeHtml.match(/id="initial-data">(\{[\s\S]+?\})<\/script>/);
+    if (!m) {
+      res.json({ found: false });
+      return;
+    }
+
+    const data = JSON.parse(m[1]) as {
+      queries?: Record<string, unknown>;
+    };
+
+    type ComixManga = {
+      hid: string;
+      title: string;
+      altTitles?: string[];
+      url: string;
+    };
+
+    const allManga: ComixManga[] = [];
+    for (const val of Object.values(data.queries ?? {})) {
+      if (Array.isArray(val)) {
+        for (const item of val as unknown[]) {
+          const it = item as Record<string, unknown>;
+          if (it && typeof it.hid === "string" && typeof it.title === "string" && typeof it.url === "string") {
+            allManga.push({
+              hid: it.hid,
+              title: it.title,
+              altTitles: Array.isArray(it.altTitles) ? (it.altTitles as string[]) : [],
+              url: it.url,
+            });
+          }
+        }
+      }
+    }
+
+    const normalize = (s: string) =>
+      s.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+
+    const q = normalize(title);
+
+    function titlesMatch(a: string, b: string): boolean {
+      if (!a || !b || a.length < 2 || b.length < 2) return false;
+      if (a === b) return true;
+      // Only accept substring match when the shorter title is at least 5 chars
+      // (avoids false positives from short normalized strings)
+      const shorter = a.length < b.length ? a : b;
+      const longer = a.length < b.length ? b : a;
+      return shorter.length >= 5 && longer.includes(shorter);
+    }
+
+    let best: ComixManga | null = null;
+    for (const manga of allManga) {
+      const t = normalize(manga.title);
+      if (titlesMatch(t, q)) { best = manga; break; }
+      for (const alt of manga.altTitles ?? []) {
+        const a = normalize(alt);
+        if (titlesMatch(a, q)) { best = manga; break; }
+      }
+      if (best) break;
+    }
+
+    if (best) {
+      res.json({ found: true, url: best.url, hid: best.hid, title: best.title });
+    } else {
+      res.json({ found: false });
+    }
+  } catch (err: unknown) {
+    req.log.error(err);
+    res.json({ found: false });
+  }
+});
+
+/**
+ * Builds the JavaScript + CSS injection for the comix.to proxy pages.
+ * Rewrites ALL root-relative fetch/XHR calls through the pass proxy so the
+ * SPA's TanStack Query refetches (e.g. /browse?search=...) hit comix.to
+ * instead of our own server.
+ */
+function buildInjection(PASS: string, COMIX: string, extraCss = ""): string {
+  return `<style id="na-comix-hide">
+header,nav,footer,
+[role="banner"],[role="navigation"],[role="contentinfo"],
+[class*="header"],[class*="Header"],
+[class*="navbar"],[class*="Navbar"],
+[class*="topbar"],[class*="Topbar"],
+[class*="top-bar"],[class*="TopBar"],
+[class*="sidebar"],[class*="Sidebar"],
+[class*="footer"],[class*="Footer"],
+[class*="modal-backdrop"],
+[class*="cookie"],[class*="Cookie"],
+[class*="banner"],[class*="Banner"],
+[class*="popup"],[class*="Popup"],
+[class*="notification"],[class*="Notification"],
+[class*="toast"],[class*="Toast"],
+[class*="ad-"],[class*="-ad"],[class*="advert"],
+[id*="ad-"],[id*="-ad"],[id*="advert"],
+#header,#nav,#navbar,#topbar,#footer,#sidebar {
+  display: none !important;
+}
+html,body {
+  padding-top: 0 !important;
+  margin-top: 0 !important;
+  background: #0a0a0a !important;
+}
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: #111; }
+::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #555; }
+${extraCss}
+</style>
+<script>
+(function() {
+  try {
+    Object.defineProperty(navigator, 'serviceWorker', {
+      value: {
+        register: function() { return Promise.resolve({ scope: '/', active: null }); },
+        ready: Promise.resolve({ scope: '/', active: null }),
+        controller: null,
+        getRegistrations: function() { return Promise.resolve([]); },
+        getRegistration: function() { return Promise.resolve(undefined); },
+        addEventListener: function() {},
+        removeEventListener: function() {},
+      },
+      configurable: true,
+    });
+  } catch(e) {}
+
+  var PASS = ${JSON.stringify(PASS)};
+  var COMIX = ${JSON.stringify(COMIX)};
+
+  function rewriteUrl(url) {
+    if (!url || typeof url !== 'string') return url;
+    /* Absolute comix.to URLs */
+    if (url.startsWith(COMIX + '/')) return PASS + '/' + url.slice(COMIX.length + 1);
+    if (url === COMIX) return PASS + '/';
+    /* Leave our own proxy paths alone */
+    if (url.startsWith('/api/comix/')) return url;
+    /* Rewrite ALL other root-relative paths through the pass proxy so the
+       SPA's data fetches (e.g. /browse?search=...) hit comix.to */
+    if (url.startsWith('/')) return PASS + url;
+    return url;
+  }
+
+  var _fetch = window.fetch;
+  window.fetch = function(input, init) {
+    if (typeof input === 'string') input = rewriteUrl(input);
+    else if (input instanceof Request) {
+      var newUrl = rewriteUrl(input.url);
+      if (newUrl !== input.url) input = new Request(newUrl, input);
+    }
+    return _fetch.call(this, input, init);
+  };
+
+  var _open = XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open = function(method, url) {
+    var args = Array.prototype.slice.call(arguments);
+    if (typeof args[1] === 'string') args[1] = rewriteUrl(args[1]);
+    return _open.apply(this, args);
+  };
+
+  /* Intercept link clicks — keep navigation inside the reader */
+  document.addEventListener('click', function(e) {
+    var el = e.target && e.target.closest && e.target.closest('a');
+    if (!el) return;
+    var href = el.getAttribute('href');
+    if (!href) return;
+    if (href.startsWith('http') && !href.startsWith(COMIX) && !href.startsWith(PASS)) return;
+    e.preventDefault();
+    var path = href.startsWith(COMIX) ? href.slice(COMIX.length) : href;
+    if (path.startsWith(PASS)) path = '/' + path.slice(PASS.length);
+    window.location.href = '/api/comix/reader?path=' + encodeURIComponent(path);
+  }, true);
+})();
+</script>`;
+}
+
+function injectIntoHtml(html: string, injection: string): string {
+  return html.includes("<head>")
+    ? html.replace("<head>", "<head>" + injection)
+    : injection + html;
+}
+
+function rewriteHtmlUrls(html: string): string {
+  return html
+    .replace(/https:\/\/comix\.to\//g, `${PASS_PREFIX}/`)
+    .replace(/(src|href)="\/(?!\/|api\/comix\/)/g, `$1="${PASS_PREFIX}/`)
+    .replace(/(src|href)='\/(?!\/|api\/comix\/)/g, `$1='${PASS_PREFIX}/`)
+    .replace(/url\(\/(?!\/|api\/comix\/)/g, `url(${PASS_PREFIX}/`);
+}
+
+/**
  * GET /api/comix/proxy?path=<comix.to path>
  *
- * Fetches a comix.to HTML page, rewrites all asset/API URLs to go through
- * /api/comix/pass/*, injects CSS to hide comix.to's top navigation (we embed
- * the reader inside our own app shell), and patches fetch/XHR so dynamic API
- * calls also resolve through the proxy.
+ * Fetches a comix.to HTML page, rewrites asset/API URLs and injects the pass proxy
+ * script. Intended for browsing comix.to within an embedded context.
  */
 router.get("/comix/proxy", async (req, res) => {
   const path =
@@ -87,105 +304,14 @@ router.get("/comix/proxy", async (req, res) => {
     });
 
     if (!upstream.ok) {
-      res
-        .status(upstream.status)
-        .send(`<html><body style="background:#111;color:#fff;font-family:monospace;padding:2rem">comix.to returned ${upstream.status} for ${path}</body></html>`);
+      res.status(upstream.status).send(
+        `<html><body style="background:#111;color:#fff;font-family:monospace;padding:2rem">comix.to returned ${upstream.status} for ${path}</body></html>`
+      );
       return;
     }
 
-    let html = await upstream.text();
-
-    // Rewrite absolute comix.to URLs → /api/comix/pass/...
-    html = html.replace(/https:\/\/comix\.to\//g, `${PASS_PREFIX}/`);
-
-    // Rewrite root-relative src/href/url() → /api/comix/pass/...
-    html = html
-      .replace(/(src|href)="\/(?!\/|api\/comix\/)/g, `$1="${PASS_PREFIX}/`)
-      .replace(/(src|href)='\/(?!\/|api\/comix\/)/g, `$1='${PASS_PREFIX}/`)
-      .replace(/url\(\/(?!\/|api\/comix\/)/g, `url(${PASS_PREFIX}/`);
-
-    const PASS = PASS_PREFIX;
-    const COMIX = COMIX_ORIGIN;
-
-    const injection = `<style id="na-comix-hide">
-/* Hide comix.to top nav — embedded inside our app shell */
-header,nav,
-[role="banner"],[role="navigation"],
-[class*="header"],[class*="Header"],
-[class*="navbar"],[class*="Navbar"],
-[class*="topbar"],[class*="Topbar"],
-[class*="top-bar"],[class*="TopBar"] {
-  display: none !important;
-}
-html,body {
-  padding-top: 0 !important;
-  margin-top: 0 !important;
-  background: #0f0f0f !important;
-}
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: #111; }
-::-webkit-scrollbar-thumb { background: #444; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #666; }
-</style>
-<script>
-(function() {
-  /* Block service worker — avoid asset precache flooding our proxy with 404s */
-  try {
-    Object.defineProperty(navigator, 'serviceWorker', {
-      value: {
-        register: function() { return Promise.resolve({ scope: '/', active: null }); },
-        ready: Promise.resolve({ scope: '/', active: null }),
-        controller: null,
-        getRegistrations: function() { return Promise.resolve([]); },
-        getRegistration: function() { return Promise.resolve(undefined); },
-        addEventListener: function() {},
-        removeEventListener: function() {},
-      },
-      configurable: true,
-    });
-  } catch(e) {}
-
-  var PASS = ${JSON.stringify(PASS)};
-  var COMIX = ${JSON.stringify(COMIX)};
-
-  function rewriteUrl(url) {
-    if (!url || typeof url !== 'string') return url;
-    if (url.startsWith(COMIX + '/')) return PASS + '/' + url.slice(COMIX.length + 1);
-    if (url === COMIX) return PASS + '/';
-    if (!url.startsWith('/api/comix/')) {
-      if (url.startsWith('/api/') || url.startsWith('/assets/') ||
-          url.startsWith('/uploads/') || url.startsWith('/manga/') ||
-          url.startsWith('/graphql')) {
-        return PASS + url;
-      }
-    }
-    return url;
-  }
-
-  var _fetch = window.fetch;
-  window.fetch = function(input, init) {
-    if (typeof input === 'string') input = rewriteUrl(input);
-    else if (input instanceof Request) {
-      var newUrl = rewriteUrl(input.url);
-      if (newUrl !== input.url) input = new Request(newUrl, input);
-    }
-    return _fetch.call(this, input, init);
-  };
-
-  var _open = XMLHttpRequest.prototype.open;
-  XMLHttpRequest.prototype.open = function(method, url) {
-    var args = Array.prototype.slice.call(arguments);
-    if (typeof args[1] === 'string') args[1] = rewriteUrl(args[1]);
-    return _open.apply(this, args);
-  };
-})();
-</script>`;
-
-    if (html.includes("<head>")) {
-      html = html.replace("<head>", "<head>" + injection);
-    } else {
-      html = injection + html;
-    }
+    let html = rewriteHtmlUrls(await upstream.text());
+    html = injectIntoHtml(html, buildInjection(PASS_PREFIX, COMIX_ORIGIN));
 
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.setHeader("X-Frame-Options", "SAMEORIGIN");
@@ -201,12 +327,12 @@ html,body {
 /**
  * GET /api/comix/reader?path=<comix.to path>
  *
- * Like /comix/proxy but with aggressive CSS to hide ALL comix.to UI chrome —
- * only manga page content is visible. Intended for the in-app reader overlay.
+ * Like /comix/proxy but intended for the in-app reader overlay — same URL rewriting
+ * and injection so the SPA can make its data fetches through the pass proxy.
  */
 router.get("/comix/reader", async (req, res) => {
   const path =
-    typeof req.query.path === "string" ? req.query.path : "/browse";
+    typeof req.query.path === "string" ? req.query.path : "/";
   const upstreamUrl = `${COMIX_ORIGIN}${path.startsWith("/") ? path : "/" + path}`;
 
   try {
@@ -219,133 +345,14 @@ router.get("/comix/reader", async (req, res) => {
     });
 
     if (!upstream.ok) {
-      res
-        .status(upstream.status)
-        .send(`<html><body style="background:#0a0a0a;color:#fff;font-family:monospace;padding:2rem">comix.to returned ${upstream.status}</body></html>`);
+      res.status(upstream.status).send(
+        `<html><body style="background:#0a0a0a;color:#fff;font-family:monospace;padding:2rem">comix.to returned ${upstream.status}</body></html>`
+      );
       return;
     }
 
-    let html = await upstream.text();
-
-    html = html.replace(/https:\/\/comix\.to\//g, `${PASS_PREFIX}/`);
-    html = html
-      .replace(/(src|href)="\/(?!\/|api\/comix\/)/g, `$1="${PASS_PREFIX}/`)
-      .replace(/(src|href)='\/(?!\/|api\/comix\/)/g, `$1='${PASS_PREFIX}/`)
-      .replace(/url\(\/(?!\/|api\/comix\/)/g, `url(${PASS_PREFIX}/`);
-
-    const PASS = PASS_PREFIX;
-    const COMIX = COMIX_ORIGIN;
-
-    const injection = `<style id="na-reader-hide">
-/* Hide all comix.to UI — show only page content */
-header, nav, footer,
-[role="banner"], [role="navigation"], [role="contentinfo"],
-[class*="header"], [class*="Header"],
-[class*="navbar"], [class*="Navbar"],
-[class*="topbar"], [class*="Topbar"],
-[class*="top-bar"], [class*="TopBar"],
-[class*="sidebar"], [class*="Sidebar"],
-[class*="footer"], [class*="Footer"],
-[class*="modal-backdrop"],
-[class*="cookie"], [class*="Cookie"],
-[class*="banner"], [class*="Banner"],
-[class*="popup"], [class*="Popup"],
-[class*="overlay"]:not([class*="chapter"]):not([class*="page"]):not([class*="reader"]),
-[class*="notification"], [class*="Notification"],
-[class*="toast"], [class*="Toast"],
-[class*="ad-"], [class*="-ad"], [class*="advert"],
-[id*="ad-"], [id*="-ad"], [id*="advert"],
-#header, #nav, #navbar, #topbar, #footer, #sidebar {
-  display: none !important;
-}
-html, body {
-  padding-top: 0 !important;
-  margin-top: 0 !important;
-  background: #0a0a0a !important;
-}
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: #111; }
-::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #555; }
-/* Re-show browse/search results when on the listing page */
-[class*="comic-item"], [class*="manga-item"], [class*="series-item"],
-[class*="grid"], [class*="list"], [class*="card"],
-[class*="search"], [class*="browse"], [class*="content"],
-[class*="main"], [class*="container"], main, section, article {
-  display: revert !important;
-}
-</style>
-<script>
-(function() {
-  try {
-    Object.defineProperty(navigator, 'serviceWorker', {
-      value: {
-        register: function() { return Promise.resolve({ scope: '/', active: null }); },
-        ready: Promise.resolve({ scope: '/', active: null }),
-        controller: null,
-        getRegistrations: function() { return Promise.resolve([]); },
-        getRegistration: function() { return Promise.resolve(undefined); },
-        addEventListener: function() {},
-        removeEventListener: function() {},
-      },
-      configurable: true,
-    });
-  } catch(e) {}
-
-  var PASS = ${JSON.stringify(PASS)};
-  var COMIX = ${JSON.stringify(COMIX)};
-
-  function rewriteUrl(url) {
-    if (!url || typeof url !== 'string') return url;
-    if (url.startsWith(COMIX + '/')) return PASS + '/' + url.slice(COMIX.length + 1);
-    if (url === COMIX) return PASS + '/';
-    if (!url.startsWith('/api/comix/')) {
-      if (url.startsWith('/api/') || url.startsWith('/assets/') ||
-          url.startsWith('/uploads/') || url.startsWith('/manga/') ||
-          url.startsWith('/graphql')) {
-        return PASS + url;
-      }
-    }
-    return url;
-  }
-
-  var _fetch = window.fetch;
-  window.fetch = function(input, init) {
-    if (typeof input === 'string') input = rewriteUrl(input);
-    else if (input instanceof Request) {
-      var newUrl = rewriteUrl(input.url);
-      if (newUrl !== input.url) input = new Request(newUrl, input);
-    }
-    return _fetch.call(this, input, init);
-  };
-
-  var _open = XMLHttpRequest.prototype.open;
-  XMLHttpRequest.prototype.open = function(method, url) {
-    var args = Array.prototype.slice.call(arguments);
-    if (typeof args[1] === 'string') args[1] = rewriteUrl(args[1]);
-    return _open.apply(this, args);
-  };
-
-  /* Intercept navigation — rewrite any link clicks to stay in proxy */
-  document.addEventListener('click', function(e) {
-    var el = e.target && e.target.closest && e.target.closest('a');
-    if (!el) return;
-    var href = el.getAttribute('href');
-    if (!href) return;
-    if (href.startsWith('http') && !href.startsWith(COMIX) && !href.startsWith(PASS)) return;
-    e.preventDefault();
-    var path = href.startsWith(COMIX) ? href.slice(COMIX.length) : href;
-    if (path.startsWith(PASS)) path = '/' + path.slice(PASS.length);
-    window.location.href = '/api/comix/reader?path=' + encodeURIComponent(path);
-  }, true);
-})();
-</script>`;
-
-    if (html.includes("<head>")) {
-      html = html.replace("<head>", "<head>" + injection);
-    } else {
-      html = injection + html;
-    }
+    let html = rewriteHtmlUrls(await upstream.text());
+    html = injectIntoHtml(html, buildInjection(PASS_PREFIX, COMIX_ORIGIN));
 
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.setHeader("X-Frame-Options", "SAMEORIGIN");
