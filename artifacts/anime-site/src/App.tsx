@@ -22,6 +22,7 @@ import Watchlist from "@/pages/watchlist";
 import Ranking from "@/pages/ranking";
 import AuthPage from "@/pages/auth";
 import ProfilePage from "@/pages/profile";
+import MangaPage from "@/pages/manga";
 
 const queryClient = new QueryClient();
 
@@ -43,6 +44,7 @@ function Router() {
       <Route path="/login" component={AuthPage} />
       <Route path="/register" component={AuthPage} />
       <Route path="/u/:username" component={ProfilePage} />
+      <Route path="/manga" component={MangaPage} />
       <Route component={NotFound} />
     </Switch>
   );
