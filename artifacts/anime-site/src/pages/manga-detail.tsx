@@ -584,7 +584,6 @@ export default function MangaDetail() {
                 </div>
               )}
 
-              <p className="text-[9px] font-mono text-white/20">Powered by atsu.moe</p>
             </div>
           </div>
 
