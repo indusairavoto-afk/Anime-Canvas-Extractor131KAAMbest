@@ -1208,6 +1208,53 @@ export default function WatchAniList() {
     }
   };
 
+  // ── Keyboard shortcuts ──────────────────────────────────────────────────────
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      // Don't fire when typing in an input/textarea/select
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if ((e.target as HTMLElement)?.isContentEditable) return;
+
+      switch (e.key) {
+        case "t":
+        case "T":
+          e.preventDefault();
+          setTheaterMode(prev => !prev);
+          break;
+        case "f":
+        case "F":
+          e.preventDefault();
+          handleFullscreen();
+          break;
+        case "m":
+        case "M":
+          e.preventDefault();
+          toggleMute();
+          break;
+        case " ":
+          e.preventDefault();
+          sendCmd({ na_cmd: "toggle" });
+          break;
+        case "ArrowLeft":
+          if (currentEp > 1) {
+            e.preventDefault();
+            navigate(`/watch/al/${animeId}/${currentEp - 1}`);
+          }
+          break;
+        case "ArrowRight":
+          if (totalEps === 0 || currentEp < totalEps) {
+            e.preventDefault();
+            navigate(`/watch/al/${animeId}/${currentEp + 1}`);
+          }
+          break;
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentEp, animeId, totalEps, theaterMode]);
+
   // Periodic sync: query the bridge every 2 s so videoState stays accurate for ANY server
   useEffect(() => {
     if (!iframeLoaded) return;
