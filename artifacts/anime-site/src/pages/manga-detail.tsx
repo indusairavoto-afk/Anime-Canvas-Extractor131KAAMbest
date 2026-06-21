@@ -135,19 +135,30 @@ function ReaderModal({
   const [findResult, setFindResult] = useState<FindResult>({ status: "searching" });
   const [blankDetected, setBlankDetected] = useState(false);
 
-  /* On mount: find the comix.to title page URL so we load SSR content
-     instead of the broken SPA browse/search page. */
+  /* On mount: find the manga on onisaga.com (slug-based SSR site).
+     Falls back to comix.to if onisaga doesn't have it. */
   useEffect(() => {
     let cancelled = false;
-    fetch(`/api/comix/find?title=${encodeURIComponent(title)}`)
+    const encoded = encodeURIComponent(title);
+    fetch(`/api/onisaga/find?title=${encoded}`)
       .then(r => r.json())
-      .then((data: { found: boolean; url?: string; title?: string }) => {
+      .then((data: { found: boolean; url?: string }) => {
         if (cancelled) return;
         if (data.found && data.url) {
-          setFindResult({ status: "found", url: data.url, comixTitle: data.title ?? title });
-        } else {
-          setFindResult({ status: "not_found" });
+          setFindResult({ status: "found", url: data.url, comixTitle: title });
+          return;
         }
+        // Fall back to comix.to
+        return fetch(`/api/comix/find?title=${encoded}`)
+          .then(r => r.json())
+          .then((d: { found: boolean; url?: string; title?: string }) => {
+            if (cancelled) return;
+            if (d.found && d.url) {
+              setFindResult({ status: "found", url: `__comix__${d.url}`, comixTitle: d.title ?? title });
+            } else {
+              setFindResult({ status: "not_found" });
+            }
+          });
       })
       .catch(() => {
         if (!cancelled) setFindResult({ status: "not_found" });
@@ -156,9 +167,13 @@ function ReaderModal({
   }, [title]);
 
   const searchQuery = encodeURIComponent(title);
+
+  const isOnisaga = findResult.status === "found" && !findResult.url.startsWith("__comix__");
   const src =
     findResult.status === "found" && !blankDetected
-      ? `/api/comix/reader?path=${encodeURIComponent(findResult.url)}`
+      ? isOnisaga
+        ? `/api/onisaga/reader?path=${encodeURIComponent(findResult.url)}`
+        : `/api/comix/reader?path=${encodeURIComponent(findResult.url.replace("__comix__", ""))}`
       : null;
 
   function goBack() {
@@ -175,9 +190,9 @@ function ReaderModal({
 
   function handleIframeLoad() {
     setIframeLoading(false);
-    // After the iframe loads, wait 3 s for the SPA to hydrate, then check
-    // if the app-root is empty (blank white SPA shell). If so, fall back to
-    // the "not found" UI so the user sees the external link instead of white.
+    // onisaga is server-side rendered — no blank SPA shell to detect.
+    // Only run the SPA blank check for comix.to fallback pages.
+    if (isOnisaga) return;
     const iframe = iframeRef.current;
     if (!iframe) return;
     const timer = setTimeout(() => {
@@ -185,7 +200,6 @@ function ReaderModal({
         const doc = iframe.contentDocument ?? iframe.contentWindow?.document;
         if (!doc) return;
         const appRoot = doc.getElementById("app-root");
-        // Blank if app-root exists but has no rendered children
         if (appRoot && appRoot.childElementCount === 0) {
           setBlankDetected(true);
         }
@@ -614,7 +628,7 @@ export default function MangaDetail() {
                 </div>
               )}
 
-              <p className="text-[9px] font-mono text-white/20">Powered by comix.to</p>
+              <p className="text-[9px] font-mono text-white/20">Powered by onisaga.com</p>
             </div>
           </div>
 

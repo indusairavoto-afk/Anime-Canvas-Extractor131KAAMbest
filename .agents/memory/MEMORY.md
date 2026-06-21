@@ -9,3 +9,4 @@
 - [Miruro x-obfuscated header](miruro-x-obfuscated.md) — pass-through proxy must forward x-obfuscated response header; without it SPA JSON-parses raw XOR-encrypted bytes → parse error → YouTube fallback instead of episode.
 - [comix.to browse SPA white screen fix](comix-ssr-browse-fix.md) — browse/search pages have no SSR; only title pages (/title/{hid}-slug) work in proxy; reader now tries /api/comix/find then falls back to "Search on comix.to" button.
 - [comix.to search API blocked](comix-search-api.md) — /api/v1/manga?q= exists but needs an encrypted cfg token (binary, not simple base64/XOR); browse pages never have SSR results; only home page has ~150 trending HIDs; fallback uses AniList externalLinks + comick.dev slug.
+- [onisaga.com proxy](onisaga-proxy.md) — SSR Laravel+Livewire site; slug-based URLs (/manga/{slug}, /read/{slug}/{id}); no HID needed; /api/onisaga/find works for any title; primary manga reader replacing comix.to.
