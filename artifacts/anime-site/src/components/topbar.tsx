@@ -189,11 +189,17 @@ export function Topbar() {
   return (
     <>
       <header
-        className="fixed top-0 left-0 right-0 z-50 h-14 flex items-center px-3 sm:px-4 gap-3"
+        className="fixed top-0 left-0 right-0 z-50 h-20 flex items-center px-3 sm:px-5 gap-3"
         style={{ background: headerBg, transition: "background 0.35s ease" }}
       >
         <Link href="/" className="flex-shrink-0 flex items-center">
-          <img src="/nexa-logo.png" alt="Nexa Anime" className="h-9 w-[160px] object-contain" />
+          <div className="h-14 overflow-hidden flex-shrink-0" style={{ width: 210 }}>
+            <img
+              src="/nexa-logo.png"
+              alt="Nexa Anime"
+              style={{ height: 145, width: "auto", marginTop: -44, marginLeft: -8 }}
+            />
+          </div>
         </Link>
 
         <button
