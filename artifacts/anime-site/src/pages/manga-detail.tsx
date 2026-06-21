@@ -1,6 +1,7 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { Link, useParams } from "wouter";
-import { ArrowLeft, Star, BookOpen, X, ExternalLink, ChevronLeft, RefreshCw, Home } from "lucide-react";
+import { ArrowLeft, Star, BookOpen, X, ExternalLink, ChevronLeft, RefreshCw, Home, Bookmark, BookmarkCheck } from "lucide-react";
+import { useMangaList } from "@/hooks/useMangaList";
 import { useState, useEffect, useRef } from "react";
 
 const STATUS_LABEL: Record<string, string> = {
@@ -196,6 +197,7 @@ export default function MangaDetail() {
   const { id } = useParams<{ id: string }>();
   const [manga, setManga] = useState<AniManga | null>(null);
   const [loading, setLoading] = useState(true);
+  const { toggle: toggleList, isInList } = useMangaList();
   const [descExpanded, setDescExpanded] = useState(false);
   const [readerOpen, setReaderOpen] = useState(false);
 
@@ -334,14 +336,30 @@ export default function MangaDetail() {
                 )}
               </div>
 
-              {/* Read button */}
-              <button
-                onClick={() => setReaderOpen(true)}
-                className="flex items-center gap-2 px-5 py-2.5 bg-white text-black text-sm font-mono uppercase tracking-widest hover:bg-white/90 transition-colors mb-2"
-              >
-                <BookOpen className="w-4 h-4" />
-                Read Now
-              </button>
+              {/* Action buttons */}
+              <div className="flex items-center gap-2 flex-wrap mb-2">
+                <button
+                  onClick={() => setReaderOpen(true)}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-white text-black text-sm font-mono uppercase tracking-widest hover:bg-white/90 transition-colors"
+                >
+                  <BookOpen className="w-4 h-4" />
+                  Read Now
+                </button>
+                <button
+                  onClick={() => manga && toggleList(manga.id)}
+                  className={`flex items-center gap-2 px-4 py-2.5 border text-sm font-mono uppercase tracking-widest transition-colors ${
+                    manga && isInList(manga.id)
+                      ? "border-white bg-white text-black"
+                      : "border-white/20 text-white/50 hover:border-white/50 hover:text-white/80"
+                  }`}
+                  title={manga && isInList(manga.id) ? "Remove from My List" : "Save to My List"}
+                >
+                  {manga && isInList(manga.id)
+                    ? <><BookmarkCheck className="w-4 h-4" /> Saved</>
+                    : <><Bookmark className="w-4 h-4" /> Save</>
+                  }
+                </button>
+              </div>
               <p className="text-[9px] font-mono text-white/20">Powered by comix.to</p>
             </div>
           </div>

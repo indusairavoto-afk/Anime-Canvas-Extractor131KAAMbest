@@ -1,7 +1,8 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect, useCallback } from "react";
 import { Link } from "wouter";
-import { Search, X, Star, Loader2, ChevronDown, BookOpen } from "lucide-react";
+import { Search, X, Star, Loader2, ChevronDown, BookOpen, Bookmark, BookmarkCheck } from "lucide-react";
+import { useMangaList } from "@/hooks/useMangaList";
 
 const GENRES = [
   "Action","Adventure","Comedy","Drama","Fantasy","Horror",
@@ -93,7 +94,7 @@ async function fetchManga(
   };
 }
 
-function MangaCard({ manga, index }: { manga: MangaMedia; index: number }) {
+function MangaCard({ manga, index, saved, onToggle }: { manga: MangaMedia; index: number; saved: boolean; onToggle: () => void }) {
   const cover = manga.coverImage?.extraLarge ?? manga.coverImage?.large ?? "";
   const title = manga.title.english ?? manga.title.romaji;
   const score = manga.averageScore ? (manga.averageScore / 10).toFixed(1) : null;
@@ -133,6 +134,19 @@ function MangaCard({ manga, index }: { manga: MangaMedia; index: number }) {
             )}
           </div>
 
+          {/* Bookmark button */}
+          <button
+            onClick={(e) => { e.preventDefault(); onToggle(); }}
+            className={`absolute top-2 left-2 z-10 w-7 h-7 flex items-center justify-center border transition-all duration-200 opacity-0 group-hover:opacity-100 ${
+              saved
+                ? "bg-white text-black border-white opacity-100"
+                : "bg-black/60 text-white border-white/20 hover:bg-white hover:text-black hover:border-white"
+            }`}
+            title={saved ? "Remove from My List" : "Save to My List"}
+          >
+            {saved ? <BookmarkCheck className="w-3.5 h-3.5" /> : <Bookmark className="w-3.5 h-3.5" />}
+          </button>
+
           <div className="absolute bottom-0 left-0 p-3 w-full">
             <h3 className="text-white font-serif text-sm leading-tight line-clamp-2 mb-1 drop-shadow-lg">
               {title}
@@ -160,6 +174,7 @@ function MangaCardSkeleton() {
 }
 
 export default function MangaPage() {
+  const { toggle, isInList } = useMangaList();
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [genre, setGenre] = useState("");
@@ -328,7 +343,7 @@ export default function MangaPage() {
         ) : (
           <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-3">
             {items.map((manga, i) => (
-              <MangaCard key={manga.id} manga={manga} index={i} />
+              <MangaCard key={manga.id} manga={manga} index={i} saved={isInList(manga.id)} onToggle={() => toggle(manga.id)} />
             ))}
           </div>
         )}
