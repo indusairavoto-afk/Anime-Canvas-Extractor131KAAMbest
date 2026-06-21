@@ -14,29 +14,88 @@ interface AniResult {
   status?: string | null;
 }
 
-async function searchAniList(query: string): Promise<AniResult[]> {
-  if (!query.trim()) return [];
-  const res = await fetch("https://graphql.anilist.co", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      query: `{
-        Page(perPage: 8) {
-          media(search: "${query.replace(/"/g, "")}", type: ANIME, isAdult: false) {
-            id
-            title { romaji english }
-            coverImage { medium large }
-            format
-            seasonYear
-            averageScore
-            status
+async function aniListQuery(q: string, perPage = 12): Promise<AniResult[]> {
+  try {
+    const res = await fetch("https://graphql.anilist.co", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        query: `{
+          Page(perPage: ${perPage}) {
+            media(search: "${q.replace(/"/g, "")}", type: ANIME, isAdult: false, sort: SEARCH_MATCH) {
+              id
+              title { romaji english }
+              coverImage { medium large }
+              format
+              seasonYear
+              averageScore
+              status
+            }
           }
-        }
-      }`,
-    }),
-  });
-  const json = await res.json();
-  return json?.data?.Page?.media ?? [];
+        }`,
+      }),
+    });
+    const json = await res.json();
+    return json?.data?.Page?.media ?? [];
+  } catch {
+    return [];
+  }
+}
+
+/** Score how well a result title matches the raw query. */
+function titleScore(anime: AniResult, query: string): number {
+  const q = query.toLowerCase();
+  const candidates = [
+    anime.title.romaji?.toLowerCase() ?? "",
+    anime.title.english?.toLowerCase() ?? "",
+    // "no-space" version: "Kono Subarashii" → "konosubarashii"
+    (anime.title.romaji ?? "").toLowerCase().replace(/[\s\W_]+/g, ""),
+    (anime.title.english ?? "").toLowerCase().replace(/[\s\W_]+/g, ""),
+  ];
+  let best = 0;
+  for (const t of candidates) {
+    if (!t) continue;
+    if (t === q)                     best = Math.max(best, 100); // exact
+    else if (t.startsWith(q))        best = Math.max(best, 90);  // prefix
+    else if (t.includes(q))          best = Math.max(best, 75);  // contains
+    else {
+      // fuzzy: every char of query appears in order inside title
+      let ni = 0;
+      for (let i = 0; i < t.length && ni < q.length; i++) {
+        if (t[i] === q[ni]) ni++;
+      }
+      if (ni === q.length) best = Math.max(best, 40 + Math.floor(40 * (q.length / t.length)));
+    }
+  }
+  return best;
+}
+
+async function searchAniList(query: string): Promise<AniResult[]> {
+  const q = query.trim();
+  if (!q) return [];
+
+  // Fire two queries in parallel:
+  // 1. The full query (AniList fuzzy on exact string)
+  // 2. A shorter prefix (broadens recall for partial inputs like "konos" → "kon")
+  const shortQ = q.length >= 5 ? q.slice(0, Math.max(3, Math.ceil(q.length * 0.6))) : q;
+  const [primary, broad] = await Promise.all([
+    aniListQuery(q),
+    shortQ !== q ? aniListQuery(shortQ, 16) : Promise.resolve<AniResult[]>([]),
+  ]);
+
+  // Merge, deduplicate by id
+  const seen = new Set<number>();
+  const merged: AniResult[] = [];
+  for (const item of [...primary, ...broad]) {
+    if (!seen.has(item.id)) { seen.add(item.id); merged.push(item); }
+  }
+
+  // Re-rank by how well the titles actually match the original query
+  return merged
+    .map(a => ({ a, s: titleScore(a, q) }))
+    .sort((x, y) => y.s - x.s)
+    .slice(0, 8)
+    .map(({ a }) => a);
 }
 
 export function Topbar() {
