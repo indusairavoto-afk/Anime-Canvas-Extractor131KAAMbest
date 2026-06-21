@@ -312,7 +312,18 @@ router.get("/miruro/proxy", async (req, res) => {
     //    our server, flooding the console with 404s and crashing workbox).
     const originalPath = targetUrl.pathname + targetUrl.search;
     const PASS = PASS_PREFIX; // e.g. /api/miruro/pass
-    const routerFix = `<script>
+    const routerFix = `<style id="na-player-only">
+/* Hide Miruro header/nav/bookmark chrome — applied server-side before React mounts */
+header,nav,footer,
+[role="banner"],[role="navigation"],
+[class*="_header_"],[class*="_nav_"],[class*="_topbar_"],[class*="_navbar_"],
+[class*="_notification_"],[class*="_banner_"],[class*="_bookmark_"],
+[class*="Header"],[class*="Topbar"],[class*="Navbar"],[class*="Notification"]{
+  display:none!important;
+}
+html,body{margin:0!important;padding:0!important;overflow:hidden!important;background:#000!important}
+</style>
+<script>
 ${env2Inline ? `// env2.js inlined synchronously to ensure window.env is set before module scripts\n${env2Inline}` : ""}
 (function() {
   try { history.replaceState(null, '', ${JSON.stringify(originalPath)}); } catch(e) {}
@@ -422,6 +433,51 @@ ${env2Inline ? `// env2.js inlined synchronously to ensure window.env is set bef
     this.muted = true;
     return _playOrig.call(this);
   };
+
+  // ── Player-only mode: hide Miruro chrome, show only the video player ────────
+  // Inject immediate CSS to suppress header/nav before React renders.
+  var _naStyle = document.createElement('style');
+  _naStyle.textContent =
+    'header,nav,footer,[role="banner"],[role="navigation"]{display:none!important}' +
+    'html,body{margin:0;padding:0;overflow:hidden;background:#000}';
+  document.head.appendChild(_naStyle);
+
+  function _naIsolatePlayer() {
+    // Miruro uses Vidstack — its root is a <media-player> custom element.
+    // Fallback: walk up from <video> to the first large-enough container.
+    var player = document.querySelector('media-player') ||
+                 document.querySelector('[data-media-player]');
+    if (!player) {
+      var video = document.querySelector('video');
+      if (!video) return false;
+      var el = video;
+      while (el.parentElement && el.parentElement !== document.body) {
+        el = el.parentElement;
+        if (el.offsetWidth > 300 && el.offsetHeight > 150) { player = el; break; }
+      }
+      if (!player) return false;
+    }
+    // Lift the player to cover the whole iframe viewport.
+    player.removeAttribute('style');
+    player.style.cssText =
+      'position:fixed!important;top:0!important;left:0!important;' +
+      'width:100vw!important;height:100vh!important;z-index:2147483647!important;' +
+      'background:#000!important;border-radius:0!important;margin:0!important;';
+    document.body.style.cssText = 'margin:0;padding:0;background:#000;overflow:hidden';
+    document.documentElement.style.cssText = 'height:100%;overflow:hidden;background:#000';
+    return true;
+  }
+
+  // Try immediately then watch — MutationObserver catches React mounting the player.
+  if (!_naIsolatePlayer()) {
+    var _naObs = new MutationObserver(function() {
+      if (_naIsolatePlayer()) _naObs.disconnect();
+    });
+    _naObs.observe(document.documentElement, { childList: true, subtree: true });
+    setTimeout(_naIsolatePlayer, 500);
+    setTimeout(_naIsolatePlayer, 1500);
+    setTimeout(_naIsolatePlayer, 4000);
+  }
 })();
 </script>`;
 
