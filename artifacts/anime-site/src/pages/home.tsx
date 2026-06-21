@@ -1,6 +1,6 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { Link } from "wouter";
-import { Play, Star, Clock, ChevronRight, TrendingUp, ChevronLeft, X, History } from "lucide-react";
+import { Play, Star, Clock, ChevronRight, TrendingUp, ChevronLeft, X, History, CalendarClock } from "lucide-react";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { AnimeCardSkeleton } from "@/components/anime-card";
 import { useContinueWatching, type ContinueWatchingEntry } from "@/hooks/useContinueWatching";
@@ -22,6 +22,7 @@ interface AniMedia {
   seasonYear?: number | null;
   format?: string | null;
   episodes?: number | null;
+  season?: string | null;
   studios?: { nodes: { name: string }[] };
 }
 
@@ -130,6 +131,32 @@ function buildSeasonQuery(season: string, year: number) {
   }
 }`;
 }
+
+const UPCOMING_QUERY = `{
+  Page(perPage: 20) {
+    media(
+      type: ANIME
+      status: NOT_YET_RELEASED
+      sort: POPULARITY_DESC
+      isAdult: false
+      format_in: [TV, TV_SHORT, ONA]
+    ) {
+      id
+      title { romaji english }
+      coverImage { extraLarge large }
+      bannerImage
+      averageScore
+      status
+      seasonYear
+      season
+      format
+      episodes
+      startDate { year month day }
+      genres
+      studios(isMain: true) { nodes { name } }
+    }
+  }
+}`;
 
 interface AiringEpisodeEntry {
   id: string;
@@ -552,6 +579,55 @@ function Top10Card({ anime, rank, index }: { anime: AniMedia; rank: number; inde
   );
 }
 
+function UpcomingCard({ anime, index }: { anime: AniMedia; index: number }) {
+  const cover = anime.coverImage?.extraLarge || anime.coverImage?.large || "";
+  const title = anime.title.english || anime.title.romaji;
+  const season = anime.season ? anime.season.charAt(0) + anime.season.slice(1).toLowerCase() : null;
+  const year = anime.seasonYear;
+  const airLabel = season && year ? `${season} ${year}` : year ? String(year) : "Coming Soon";
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, delay: index * 0.05, ease: [0.16, 1, 0.3, 1] }}
+    >
+      <Link href={`/anime/al/${anime.id}`}>
+        <div className="group relative cursor-pointer">
+          <div className="relative w-full aspect-[2/3] border border-white/5 bg-zinc-950 overflow-hidden">
+            <img
+              src={cover}
+              alt={title}
+              className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+              loading="lazy"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black via-black/10 to-transparent" />
+            {/* Upcoming badge */}
+            <div className="absolute top-2 left-2">
+              <span className="flex items-center gap-1 px-1.5 py-0.5 bg-violet-600/90 text-white text-[8px] font-mono uppercase tracking-widest border border-violet-400/30">
+                <CalendarClock className="w-2.5 h-2.5" /> Upcoming
+              </span>
+            </div>
+            {anime.format && (
+              <div className="absolute top-2 right-2">
+                <span className="px-1.5 py-0.5 bg-white/10 backdrop-blur-sm text-white text-[8px] font-mono uppercase tracking-widest border border-white/10">
+                  {anime.format}
+                </span>
+              </div>
+            )}
+            <div className="absolute bottom-0 left-0 p-3 w-full">
+              <h3 className="text-white font-serif text-sm leading-tight line-clamp-2 mb-1">{title}</h3>
+              <div className="flex items-center gap-1 text-[9px] font-mono text-violet-300/80 uppercase tracking-widest">
+                <CalendarClock className="w-2.5 h-2.5" />
+                <span>{airLabel}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Link>
+    </motion.div>
+  );
+}
+
 function PopularCard({ anime, index }: { anime: AniMedia; index: number }) {
   const cover = anime.coverImage?.extraLarge || anime.coverImage?.large || "";
   const title = anime.title.english || anime.title.romaji;
@@ -613,6 +689,7 @@ export default function Home() {
   const [top10Loading, setTop10Loading] = useState(true);
   const [recentEpisodes, setRecentEpisodes] = useState<AiringEpisodeEntry[]>([]);
   const [thisSeasonAnime, setThisSeasonAnime] = useState<AniMedia[]>([]);
+  const [upcomingAnime, setUpcomingAnime] = useState<AniMedia[]>([]);
   const [aniLoading, setAniLoading] = useState(true);
 
   useEffect(() => {
@@ -623,11 +700,13 @@ export default function Home() {
       fetchAniList(POPULAR_QUERY),
       fetchRecentAiring(),
       fetchAniList(buildSeasonQuery(season, year)),
-    ]).then(([hero, popular, recent, seasonal]) => {
+      fetchAniList(UPCOMING_QUERY),
+    ]).then(([hero, popular, recent, seasonal, upcoming]) => {
       setHeroAnime(hero.filter((m) => m.bannerImage));
       setPopularAnime(popular);
       setRecentEpisodes(recent);
       setThisSeasonAnime(seasonal);
+      setUpcomingAnime(upcoming);
       setAniLoading(false);
     });
   }, []);
@@ -897,6 +976,32 @@ export default function Home() {
                   ? Array.from({ length: 12 }).map((_, i) => <AnimeCardSkeleton key={i} />)
                   : thisSeasonAnime.slice(0, 18).map((anime, i) => (
                       <PopularCard key={anime.id} anime={anime} index={i} />
+                    ))}
+              </div>
+            </section>
+          )}
+
+          {/* Upcoming Anime */}
+          {(aniLoading || upcomingAnime.length > 0) && (
+            <section className="px-4 sm:px-6 py-8 sm:py-10 border-b border-white/5">
+              <div className="flex items-center justify-between mb-5 sm:mb-6">
+                <div>
+                  <p className="text-[9px] font-mono text-violet-400/70 uppercase tracking-[0.3em] mb-0.5 flex items-center gap-1.5">
+                    <CalendarClock className="w-3 h-3" /> Coming Soon
+                  </p>
+                  <h2 className="font-serif text-xl sm:text-2xl text-white leading-none">Upcoming Anime</h2>
+                </div>
+                <Link href="/browse?status=NOT_YET_RELEASED">
+                  <span className="flex items-center gap-1 text-[10px] font-mono uppercase tracking-widest text-white/30 hover:text-white transition-colors">
+                    See all <ChevronRight className="w-3 h-3" />
+                  </span>
+                </Link>
+              </div>
+              <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-2 sm:gap-3">
+                {aniLoading
+                  ? Array.from({ length: 12 }).map((_, i) => <AnimeCardSkeleton key={i} />)
+                  : upcomingAnime.slice(0, 18).map((anime, i) => (
+                      <UpcomingCard key={anime.id} anime={anime} index={i} />
                     ))}
               </div>
             </section>
