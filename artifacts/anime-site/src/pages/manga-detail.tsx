@@ -104,11 +104,30 @@ type FindResult =
   | { status: "found"; url: string; comixTitle: string }
   | { status: "not_found" };
 
+const READER_SITES: Record<string, string> = {
+  "MANGA Plus": "MangaPlus",
+  "Shonen Jump": "Shonen Jump",
+  "Shonen Jump Plus": "Shonen Jump+",
+  "VIZ": "VIZ",
+  "Azuki": "Azuki",
+  "Comikey": "Comikey",
+  "Pocket Comics": "Pocket Comics",
+  "Tapas": "Tapas",
+  "Webtoon": "Webtoon",
+  "Toomics": "Toomics",
+};
+
+function toComickSlug(t: string): string {
+  return t.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
 function ReaderModal({
   title,
+  externalLinks,
   onClose,
 }: {
   title: string;
+  externalLinks?: { url: string; site: string; type: string }[];
   onClose: () => void;
 }) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -250,27 +269,56 @@ function ReaderModal({
 
         {/* Not-found / blank-page fallback */}
         {showFallback && (
-          <div className="absolute inset-0 bg-[#0a0a0a] flex flex-col items-center justify-center gap-6 px-6">
+          <div className="absolute inset-0 bg-[#0a0a0a] flex flex-col items-center justify-center gap-6 px-6 overflow-y-auto">
             <div className="flex flex-col items-center gap-3 text-center max-w-sm">
               <BookOpen className="w-10 h-10 text-white/10" />
               <p className="text-white/50 font-serif text-lg leading-snug">{title}</p>
               <p className="text-[11px] font-mono text-white/25 uppercase tracking-widest leading-relaxed">
                 {blankDetected
-                  ? "The reader couldn't load — open it directly on comix.to."
-                  : "This title isn't indexed locally — search for it on comix.to to read chapters."}
+                  ? "Reader couldn't load — open directly in a new tab below."
+                  : "Not indexed yet — read it from one of these sources."}
               </p>
             </div>
-            <div className="flex flex-col items-center gap-2">
+
+            <div className="flex flex-col items-center gap-2 w-full max-w-xs">
+              {/* Official streaming sources from AniList */}
+              {(externalLinks ?? [])
+                .filter(l => l.type === "STREAMING" && READER_SITES[l.site])
+                .filter((l, i, arr) => arr.findIndex(x => x.site === l.site) === i)
+                .map(l => (
+                  <a
+                    key={l.url}
+                    href={l.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full flex items-center justify-center gap-2 px-5 py-2.5 bg-white text-black text-[11px] font-mono uppercase tracking-widest hover:bg-white/90 transition-colors"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5 shrink-0" />
+                    Read on {READER_SITES[l.site]}
+                  </a>
+                ))}
+
+              {/* comick.dev — same database as comix.to, slug-based URL */}
+              <a
+                href={`https://comick.dev/comic/${toComickSlug(title)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full flex items-center justify-center gap-2 px-5 py-2.5 border border-white/15 text-white/60 text-[11px] font-mono uppercase tracking-widest hover:border-white/30 hover:text-white/80 transition-colors"
+              >
+                <ExternalLink className="w-3.5 h-3.5 shrink-0" />
+                Read on comick.dev
+              </a>
+
+              {/* comix.to search fallback */}
               <a
                 href={`https://comix.to/browse?search=${searchQuery}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-2 px-5 py-2.5 bg-white text-black text-[11px] font-mono uppercase tracking-widest hover:bg-white/90 transition-colors"
+                className="w-full flex items-center justify-center gap-2 px-5 py-2.5 border border-white/8 text-white/30 text-[11px] font-mono uppercase tracking-widest hover:border-white/20 hover:text-white/50 transition-colors"
               >
-                <ExternalLink className="w-3.5 h-3.5" />
+                <ExternalLink className="w-3.5 h-3.5 shrink-0" />
                 Search on comix.to
               </a>
-              <p className="text-[10px] font-mono text-white/15 mt-1">Opens in a new tab</p>
             </div>
           </div>
         )}
@@ -662,6 +710,7 @@ export default function MangaDetail() {
         {readerOpen && (
           <ReaderModal
             title={manga.title.english ?? manga.title.romaji}
+            externalLinks={manga.externalLinks}
             onClose={() => setReaderOpen(false)}
           />
         )}
