@@ -23,6 +23,7 @@ import Ranking from "@/pages/ranking";
 import AuthPage from "@/pages/auth";
 import ProfilePage from "@/pages/profile";
 import MangaPage from "@/pages/manga";
+import MangaDetail from "@/pages/manga-detail";
 
 const queryClient = new QueryClient();
 
@@ -45,6 +46,7 @@ function Router() {
       <Route path="/register" component={AuthPage} />
       <Route path="/u/:username" component={ProfilePage} />
       <Route path="/manga" component={MangaPage} />
+      <Route path="/manga/al/:id" component={MangaDetail} />
       <Route component={NotFound} />
     </Switch>
   );

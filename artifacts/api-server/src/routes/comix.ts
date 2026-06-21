@@ -198,4 +198,164 @@ html,body {
   }
 });
 
+/**
+ * GET /api/comix/reader?path=<comix.to path>
+ *
+ * Like /comix/proxy but with aggressive CSS to hide ALL comix.to UI chrome —
+ * only manga page content is visible. Intended for the in-app reader overlay.
+ */
+router.get("/comix/reader", async (req, res) => {
+  const path =
+    typeof req.query.path === "string" ? req.query.path : "/browse";
+  const upstreamUrl = `${COMIX_ORIGIN}${path.startsWith("/") ? path : "/" + path}`;
+
+  try {
+    const upstream = await fetch(upstreamUrl, {
+      headers: {
+        ...HEADERS,
+        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        Referer: COMIX_ORIGIN + "/",
+      },
+    });
+
+    if (!upstream.ok) {
+      res
+        .status(upstream.status)
+        .send(`<html><body style="background:#0a0a0a;color:#fff;font-family:monospace;padding:2rem">comix.to returned ${upstream.status}</body></html>`);
+      return;
+    }
+
+    let html = await upstream.text();
+
+    html = html.replace(/https:\/\/comix\.to\//g, `${PASS_PREFIX}/`);
+    html = html
+      .replace(/(src|href)="\/(?!\/|api\/comix\/)/g, `$1="${PASS_PREFIX}/`)
+      .replace(/(src|href)='\/(?!\/|api\/comix\/)/g, `$1='${PASS_PREFIX}/`)
+      .replace(/url\(\/(?!\/|api\/comix\/)/g, `url(${PASS_PREFIX}/`);
+
+    const PASS = PASS_PREFIX;
+    const COMIX = COMIX_ORIGIN;
+
+    const injection = `<style id="na-reader-hide">
+/* Hide all comix.to UI — show only page content */
+header, nav, footer,
+[role="banner"], [role="navigation"], [role="contentinfo"],
+[class*="header"], [class*="Header"],
+[class*="navbar"], [class*="Navbar"],
+[class*="topbar"], [class*="Topbar"],
+[class*="top-bar"], [class*="TopBar"],
+[class*="sidebar"], [class*="Sidebar"],
+[class*="footer"], [class*="Footer"],
+[class*="modal-backdrop"],
+[class*="cookie"], [class*="Cookie"],
+[class*="banner"], [class*="Banner"],
+[class*="popup"], [class*="Popup"],
+[class*="overlay"]:not([class*="chapter"]):not([class*="page"]):not([class*="reader"]),
+[class*="notification"], [class*="Notification"],
+[class*="toast"], [class*="Toast"],
+[class*="ad-"], [class*="-ad"], [class*="advert"],
+[id*="ad-"], [id*="-ad"], [id*="advert"],
+#header, #nav, #navbar, #topbar, #footer, #sidebar {
+  display: none !important;
+}
+html, body {
+  padding-top: 0 !important;
+  margin-top: 0 !important;
+  background: #0a0a0a !important;
+}
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: #111; }
+::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #555; }
+/* Re-show browse/search results when on the listing page */
+[class*="comic-item"], [class*="manga-item"], [class*="series-item"],
+[class*="grid"], [class*="list"], [class*="card"],
+[class*="search"], [class*="browse"], [class*="content"],
+[class*="main"], [class*="container"], main, section, article {
+  display: revert !important;
+}
+</style>
+<script>
+(function() {
+  try {
+    Object.defineProperty(navigator, 'serviceWorker', {
+      value: {
+        register: function() { return Promise.resolve({ scope: '/', active: null }); },
+        ready: Promise.resolve({ scope: '/', active: null }),
+        controller: null,
+        getRegistrations: function() { return Promise.resolve([]); },
+        getRegistration: function() { return Promise.resolve(undefined); },
+        addEventListener: function() {},
+        removeEventListener: function() {},
+      },
+      configurable: true,
+    });
+  } catch(e) {}
+
+  var PASS = ${JSON.stringify(PASS)};
+  var COMIX = ${JSON.stringify(COMIX)};
+
+  function rewriteUrl(url) {
+    if (!url || typeof url !== 'string') return url;
+    if (url.startsWith(COMIX + '/')) return PASS + '/' + url.slice(COMIX.length + 1);
+    if (url === COMIX) return PASS + '/';
+    if (!url.startsWith('/api/comix/')) {
+      if (url.startsWith('/api/') || url.startsWith('/assets/') ||
+          url.startsWith('/uploads/') || url.startsWith('/manga/') ||
+          url.startsWith('/graphql')) {
+        return PASS + url;
+      }
+    }
+    return url;
+  }
+
+  var _fetch = window.fetch;
+  window.fetch = function(input, init) {
+    if (typeof input === 'string') input = rewriteUrl(input);
+    else if (input instanceof Request) {
+      var newUrl = rewriteUrl(input.url);
+      if (newUrl !== input.url) input = new Request(newUrl, input);
+    }
+    return _fetch.call(this, input, init);
+  };
+
+  var _open = XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open = function(method, url) {
+    var args = Array.prototype.slice.call(arguments);
+    if (typeof args[1] === 'string') args[1] = rewriteUrl(args[1]);
+    return _open.apply(this, args);
+  };
+
+  /* Intercept navigation — rewrite any link clicks to stay in proxy */
+  document.addEventListener('click', function(e) {
+    var el = e.target && e.target.closest && e.target.closest('a');
+    if (!el) return;
+    var href = el.getAttribute('href');
+    if (!href) return;
+    if (href.startsWith('http') && !href.startsWith(COMIX) && !href.startsWith(PASS)) return;
+    e.preventDefault();
+    var path = href.startsWith(COMIX) ? href.slice(COMIX.length) : href;
+    if (path.startsWith(PASS)) path = '/' + path.slice(PASS.length);
+    window.location.href = '/api/comix/reader?path=' + encodeURIComponent(path);
+  }, true);
+})();
+</script>`;
+
+    if (html.includes("<head>")) {
+      html = html.replace("<head>", "<head>" + injection);
+    } else {
+      html = injection + html;
+    }
+
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("X-Frame-Options", "SAMEORIGIN");
+    res.send(html);
+  } catch (err: unknown) {
+    req.log.error(err);
+    res.status(502).send(
+      `<html><body style="background:#0a0a0a;color:#fff;font-family:monospace;padding:2rem">Failed to load manga reader</body></html>`
+    );
+  }
+});
+
 export default router;
