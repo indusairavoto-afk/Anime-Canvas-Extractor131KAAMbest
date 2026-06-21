@@ -27,7 +27,6 @@ router.get("/mangadex/search", async (req, res) => {
       "order[relevance]": "desc",
     });
     ["safe","suggestive","erotica","pornographic"].forEach(r => qs.append("contentRating[]", r));
-    ["manga","manhwa","manhua"].forEach(t => qs.append("type[]", t));
 
     const data = await mdFetch(`/manga?${qs}`) as { data: MangaDxManga[] };
     if (!data.data?.length) { res.json({ found: false }); return; }
@@ -161,12 +160,52 @@ router.get("/mangadex/img", async (req, res) => {
   }
 });
 
+/**
+ * GET /api/mangadex/by-anilist?alId=...&title=...
+ * Finds a MangaDex manga by AniList ID (checks links.al field).
+ * Falls back to title search if needed.
+ */
+router.get("/mangadex/by-anilist", async (req, res) => {
+  const alId = typeof req.query.alId === "string" ? req.query.alId.trim() : "";
+  const title = typeof req.query.title === "string" ? req.query.title.trim() : "";
+  if (!alId) { res.status(400).json({ error: "alId required" }); return; }
+
+  try {
+    const qs = new URLSearchParams({ limit: "10", "order[relevance]": "desc" });
+    if (title) qs.set("title", title);
+    ["safe","suggestive","erotica","pornographic"].forEach(r => qs.append("contentRating[]", r));
+
+    const data = await mdFetch(`/manga?${qs}`) as { data: MangaDxMangaFull[] };
+    if (!data.data?.length) { res.json({ found: false }); return; }
+
+    const match = data.data.find(m => String(m.attributes?.links?.al ?? "") === alId);
+    const best = match ?? data.data[0];
+
+    res.json({
+      found: true,
+      mangaId: best.id,
+      title: best.attributes?.title?.en ?? best.attributes?.title?.["ja-ro"] ?? title,
+    });
+  } catch (err) {
+    req.log.error(err);
+    res.status(502).json({ error: "MangaDex unavailable" });
+  }
+});
+
 // ---- Types ----
 
 interface MangaDxManga {
   id: string;
   attributes: {
     title: Record<string, string>;
+  };
+}
+
+interface MangaDxMangaFull {
+  id: string;
+  attributes: {
+    title: Record<string, string>;
+    links?: Record<string, string>;
   };
 }
 

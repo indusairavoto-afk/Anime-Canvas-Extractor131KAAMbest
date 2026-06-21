@@ -1,8 +1,8 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { Link, useParams } from "wouter";
-import { ArrowLeft, Star, BookOpen, X, ExternalLink, ChevronLeft, ChevronDown, Check, Minus, Plus, RefreshCw } from "lucide-react";
+import { ArrowLeft, Star, BookOpen, X, ExternalLink, ChevronLeft, ChevronRight, ChevronDown, Check, Minus, Plus, Loader2 } from "lucide-react";
 import { useMangaList, type ReadStatus } from "@/hooks/useMangaList";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 
 const READ_STATUSES: { value: ReadStatus; label: string; dot: string }[] = [
   { value: "reading",      label: "Reading",      dot: "bg-green-400" },
@@ -99,156 +99,275 @@ function stripHtml(html: string) {
     .trim();
 }
 
-type FindResult =
-  | { status: "searching" }
-  | { status: "found"; slug: string; url: string }
-  | { status: "not_found" };
+interface MdChapter {
+  id: string;
+  chapter: string | null;
+  volume: string | null;
+  title: string | null;
+  pages: number;
+}
 
 function ReaderModal({
+  anilistId,
   title,
   onClose,
 }: {
+  anilistId: number;
   title: string;
-  externalLinks?: { url: string; site: string; type: string }[];
   onClose: () => void;
 }) {
-  const iframeRef = useRef<HTMLIFrameElement>(null);
-  const [iframeLoading, setIframeLoading] = useState(true);
-  const [findResult, setFindResult] = useState<FindResult>({ status: "searching" });
+  const scrollRef = useRef<HTMLDivElement>(null);
 
+  // Step 1: find MangaDex manga ID
+  const [mangaId, setMangaId] = useState<string | null>(null);
+  const [findStatus, setFindStatus] = useState<"searching" | "found" | "not_found">("searching");
+
+  // Step 2: chapters
+  const [chapters, setChapters] = useState<MdChapter[]>([]);
+  const [chaptersLoading, setChaptersLoading] = useState(false);
+  const [selectedChapter, setSelectedChapter] = useState<MdChapter | null>(null);
+  const [chapterMenuOpen, setChapterMenuOpen] = useState(false);
+
+  // Step 3: pages
+  const [pages, setPages] = useState<string[]>([]);
+  const [pagesLoading, setPagesLoading] = useState(false);
+
+  // Find manga by AniList ID
   useEffect(() => {
     let cancelled = false;
-    setFindResult({ status: "searching" });
-    setIframeLoading(true);
-    fetch(`/api/mangafire/find?title=${encodeURIComponent(title)}`)
+    setFindStatus("searching");
+    setMangaId(null);
+    setChapters([]);
+    setSelectedChapter(null);
+    setPages([]);
+
+    fetch(`/api/mangadex/by-anilist?alId=${anilistId}&title=${encodeURIComponent(title)}`)
       .then(r => r.json())
-      .then((data: { found: boolean; slug?: string; url?: string; readUrl?: string }) => {
+      .then((data: { found: boolean; mangaId?: string }) => {
         if (cancelled) return;
-        if (data.found && data.slug && (data.readUrl || data.url)) {
-          setFindResult({ status: "found", slug: data.slug, url: data.readUrl ?? data.url! });
+        if (data.found && data.mangaId) {
+          setMangaId(data.mangaId);
+          setFindStatus("found");
         } else {
-          setFindResult({ status: "not_found" });
+          setFindStatus("not_found");
         }
       })
-      .catch(() => { if (!cancelled) setFindResult({ status: "not_found" }); });
+      .catch(() => { if (!cancelled) setFindStatus("not_found"); });
     return () => { cancelled = true; };
-  }, [title]);
+  }, [anilistId, title]);
 
-  // Load directly — mangafire has no X-Frame-Options on chapter pages,
-  // and Cloudflare Turnstile must run in a real browser context (not our proxy).
-  const src = findResult.status === "found"
-    ? `https://mangafire.to${findResult.url}`
-    : null;
+  // Fetch chapters when manga found
+  useEffect(() => {
+    if (!mangaId) return;
+    let cancelled = false;
+    setChaptersLoading(true);
+    fetch(`/api/mangadex/chapters?mangaId=${mangaId}&offset=0`)
+      .then(r => r.json())
+      .then((data: { chapters: MdChapter[] }) => {
+        if (cancelled) return;
+        setChapters(data.chapters ?? []);
+        if (data.chapters?.length) setSelectedChapter(data.chapters[0]);
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setChaptersLoading(false); });
+    return () => { cancelled = true; };
+  }, [mangaId]);
 
-  function goBack() {
-    try { iframeRef.current?.contentWindow?.history.go(-1); } catch { /* cross-origin */ }
-  }
+  // Fetch pages when chapter selected
+  useEffect(() => {
+    if (!selectedChapter) return;
+    let cancelled = false;
+    setPagesLoading(true);
+    setPages([]);
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
+    fetch(`/api/mangadex/pages?chapterId=${selectedChapter.id}`)
+      .then(r => r.json())
+      .then((data: { pages: string[] }) => {
+        if (cancelled) return;
+        setPages(data.pages ?? []);
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setPagesLoading(false); });
+    return () => { cancelled = true; };
+  }, [selectedChapter]);
 
-  function refresh() {
-    if (iframeRef.current && src) {
-      setIframeLoading(true);
-      iframeRef.current.src = src;
-    }
-  }
+  // Keyboard nav
+  const goNextChapter = useCallback(() => {
+    if (!selectedChapter) return;
+    const idx = chapters.findIndex(c => c.id === selectedChapter.id);
+    if (idx < chapters.length - 1) setSelectedChapter(chapters[idx + 1]);
+  }, [selectedChapter, chapters]);
+
+  const goPrevChapter = useCallback(() => {
+    if (!selectedChapter) return;
+    const idx = chapters.findIndex(c => c.id === selectedChapter.id);
+    if (idx > 0) setSelectedChapter(chapters[idx - 1]);
+  }, [selectedChapter, chapters]);
 
   useEffect(() => {
-    function onKey(e: KeyboardEvent) { if (e.key === "Escape") onClose(); }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+      if (e.key === "ArrowRight") goNextChapter();
+      if (e.key === "ArrowLeft") goPrevChapter();
+    }
     document.addEventListener("keydown", onKey);
     document.body.style.overflow = "hidden";
     return () => {
       document.removeEventListener("keydown", onKey);
       document.body.style.overflow = "";
     };
-  }, [onClose]);
+  }, [onClose, goNextChapter, goPrevChapter]);
 
-  const isLoading = findResult.status === "searching" || (findResult.status === "found" && iframeLoading);
-  const externalUrl = src ?? `https://mangafire.to/filter?keyword=${encodeURIComponent(title)}`;
+  const currentIdx = selectedChapter ? chapters.findIndex(c => c.id === selectedChapter.id) : -1;
+  const chapterLabel = selectedChapter
+    ? `Ch. ${selectedChapter.chapter ?? "?"}${selectedChapter.title ? ` — ${selectedChapter.title}` : ""}`
+    : "Select chapter";
 
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 bg-[#0a0a0a] flex flex-col"
+      className="fixed inset-0 z-50 bg-[#080808] flex flex-col"
       style={{ top: 56 }}
     >
-      {/* Reader chrome */}
-      <div className="flex items-center gap-2.5 px-4 py-2 border-b border-white/[0.06] bg-[#0d0d0d] shrink-0">
-        <BookOpen className="w-3.5 h-3.5 text-white/30" />
-        <span className="text-[11px] font-mono uppercase tracking-widest text-white/40">Reading</span>
-        <span className="text-white/10 text-xs">·</span>
-        <span className="text-[10px] font-mono text-white/20 max-w-[200px] truncate">{title}</span>
+      {/* Toolbar */}
+      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-white/[0.06] bg-[#0d0d0d] shrink-0">
+        <BookOpen className="w-3.5 h-3.5 text-white/25 shrink-0" />
+        <span className="text-[10px] font-mono uppercase tracking-widest text-white/30 truncate max-w-[120px] hidden sm:block">{title}</span>
 
-        {isLoading && (
-          <span className="ml-1 flex items-center gap-1 text-[10px] font-mono text-white/20">
-            <span className="w-1.5 h-1.5 rounded-full bg-white/30 animate-pulse inline-block" />
-            {findResult.status === "searching" ? "Searching…" : "Loading…"}
-          </span>
-        )}
+        {/* Chapter nav */}
+        <div className="flex items-center gap-1 mx-auto">
+          <button
+            onClick={goPrevChapter}
+            disabled={currentIdx <= 0}
+            className="p-1.5 text-white/30 hover:text-white/70 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
 
-        <div className="ml-auto flex items-center gap-0.5">
-          {src && (
-            <>
-              <button onClick={goBack} className="p-1.5 rounded hover:bg-white/[0.07] transition-colors text-white/25 hover:text-white/70" title="Go back">
-                <ChevronLeft className="w-3.5 h-3.5" />
-              </button>
-              <button onClick={refresh} className="p-1.5 rounded hover:bg-white/[0.07] transition-colors text-white/25 hover:text-white/70" title="Refresh">
-                <RefreshCw className="w-3.5 h-3.5" />
-              </button>
-            </>
-          )}
-          <a href={externalUrl} target="_blank" rel="noopener noreferrer"
-            className="p-1.5 rounded hover:bg-white/[0.07] transition-colors text-white/20 hover:text-white/60" title="Open on mangafire.to">
-            <ExternalLink className="w-3.5 h-3.5" />
-          </a>
-          <div className="w-px h-4 bg-white/10 mx-1" />
-          <button onClick={onClose} className="p-1.5 rounded hover:bg-white/[0.07] transition-colors text-white/25 hover:text-white/70" title="Close reader (Esc)">
-            <X className="w-3.5 h-3.5" />
+          {/* Chapter dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => setChapterMenuOpen(v => !v)}
+              disabled={chapters.length === 0}
+              className="flex items-center gap-1.5 px-3 py-1 border border-white/10 text-[11px] font-mono text-white/50 hover:border-white/25 hover:text-white/80 transition-colors disabled:opacity-30 disabled:cursor-not-allowed min-w-[130px] justify-between"
+            >
+              {chaptersLoading ? (
+                <span className="flex items-center gap-1.5">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  Loading…
+                </span>
+              ) : (
+                <span className="truncate">{chapterLabel}</span>
+              )}
+              <ChevronDown className={`w-3 h-3 shrink-0 transition-transform ${chapterMenuOpen ? "rotate-180" : ""}`} />
+            </button>
+
+            <AnimatePresence>
+              {chapterMenuOpen && chapters.length > 0 && (
+                <motion.div
+                  initial={{ opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 4 }}
+                  transition={{ duration: 0.1 }}
+                  className="absolute top-full left-0 mt-1 z-50 bg-zinc-900 border border-white/10 shadow-2xl w-56 max-h-72 overflow-y-auto"
+                >
+                  {chapters.map((ch, i) => (
+                    <button
+                      key={ch.id}
+                      onClick={() => { setSelectedChapter(ch); setChapterMenuOpen(false); }}
+                      className={`w-full text-left px-3 py-2 text-[11px] font-mono transition-colors flex items-center justify-between gap-2 ${
+                        selectedChapter?.id === ch.id
+                          ? "bg-white/10 text-white"
+                          : "text-white/45 hover:bg-white/[0.05] hover:text-white/80"
+                      }`}
+                    >
+                      <span className="truncate">Ch. {ch.chapter ?? i + 1}{ch.title ? ` — ${ch.title}` : ""}</span>
+                      <span className="text-white/20 shrink-0">{ch.pages}p</span>
+                    </button>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          <button
+            onClick={goNextChapter}
+            disabled={currentIdx === -1 || currentIdx >= chapters.length - 1}
+            className="p-1.5 text-white/30 hover:text-white/70 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
+          >
+            <ChevronRight className="w-4 h-4" />
           </button>
         </div>
+
+        <button
+          onClick={onClose}
+          className="p-1.5 text-white/25 hover:text-white/70 transition-colors ml-auto"
+          title="Close (Esc)"
+        >
+          <X className="w-4 h-4" />
+        </button>
       </div>
 
-      {/* Content area */}
-      <div className="flex-1 relative overflow-hidden bg-[#0a0a0a]">
-        {isLoading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-[#0a0a0a] z-10 pointer-events-none">
-            <div className="flex flex-col items-center gap-3">
-              <div className="w-7 h-7 border border-white/20 border-t-white/60 rounded-full animate-spin" />
-              <p className="text-[10px] font-mono text-white/20 uppercase tracking-widest">
-                {findResult.status === "searching" ? "Searching mangafire…" : "Loading reader…"}
-              </p>
-            </div>
+      {/* Content */}
+      <div ref={scrollRef} className="flex-1 overflow-y-auto bg-[#111]">
+        {/* Searching for manga */}
+        {findStatus === "searching" && (
+          <div className="flex flex-col items-center justify-center h-full gap-3">
+            <Loader2 className="w-6 h-6 text-white/30 animate-spin" />
+            <p className="text-[11px] font-mono text-white/25 uppercase tracking-widest">Finding manga…</p>
           </div>
         )}
 
-        {findResult.status === "not_found" && (
-          <div className="absolute inset-0 bg-[#0a0a0a] flex flex-col items-center justify-center gap-6 px-6">
-            <div className="flex flex-col items-center gap-3 text-center max-w-sm">
-              <BookOpen className="w-10 h-10 text-white/10" />
-              <p className="text-white/50 font-serif text-lg leading-snug">{title}</p>
-              <p className="text-[11px] font-mono text-white/25 uppercase tracking-widest leading-relaxed">
-                Not found on MangaFire
-              </p>
-            </div>
-            <a href={`https://mangafire.to/filter?keyword=${encodeURIComponent(title)}`}
-              target="_blank" rel="noopener noreferrer"
-              className="flex items-center gap-2 px-5 py-2.5 border border-white/15 text-white/60 text-[11px] font-mono uppercase tracking-widest hover:border-white/30 hover:text-white/80 transition-colors">
-              <ExternalLink className="w-3.5 h-3.5 shrink-0" />
-              Search on MangaFire
-            </a>
+        {/* Not found */}
+        {findStatus === "not_found" && (
+          <div className="flex flex-col items-center justify-center h-full gap-4 px-6">
+            <BookOpen className="w-10 h-10 text-white/10" />
+            <p className="text-white/40 font-serif text-lg text-center">{title}</p>
+            <p className="text-[11px] font-mono text-white/20 uppercase tracking-widest">Not found on MangaDex</p>
           </div>
         )}
 
-        {src && (
-          <iframe
-            ref={iframeRef}
-            src={src}
-            className="w-full h-full border-0"
-            title="Manga Reader"
-            allow="fullscreen"
-            referrerPolicy="no-referrer-when-downgrade"
-            onLoad={() => setIframeLoading(false)}
-          />
+        {/* Loading pages */}
+        {findStatus === "found" && pagesLoading && (
+          <div className="flex flex-col items-center justify-center h-full gap-3">
+            <Loader2 className="w-6 h-6 text-white/30 animate-spin" />
+            <p className="text-[11px] font-mono text-white/25 uppercase tracking-widest">Loading pages…</p>
+          </div>
+        )}
+
+        {/* Pages */}
+        {!pagesLoading && pages.length > 0 && (
+          <div className="flex flex-col items-center py-4 gap-1">
+            {pages.map((src, i) => (
+              <img
+                key={i}
+                src={src}
+                alt={`Page ${i + 1}`}
+                className="w-full max-w-2xl block"
+                loading={i < 3 ? "eager" : "lazy"}
+                draggable={false}
+              />
+            ))}
+            {/* Next chapter button at bottom */}
+            {currentIdx < chapters.length - 1 && (
+              <button
+                onClick={goNextChapter}
+                className="mt-8 mb-4 flex items-center gap-2 px-6 py-3 border border-white/15 text-white/50 text-[11px] font-mono uppercase tracking-widest hover:border-white/30 hover:text-white/80 transition-colors"
+              >
+                Next Chapter <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* No pages for this chapter */}
+        {!pagesLoading && findStatus === "found" && pages.length === 0 && selectedChapter && (
+          <div className="flex flex-col items-center justify-center h-full gap-3">
+            <BookOpen className="w-8 h-8 text-white/10" />
+            <p className="text-[11px] font-mono text-white/25 uppercase tracking-widest">No pages available for this chapter</p>
+          </div>
         )}
       </div>
     </motion.div>
@@ -530,7 +649,7 @@ export default function MangaDetail() {
                 </div>
               )}
 
-              <p className="text-[9px] font-mono text-white/20">Powered by MangaFire</p>
+              <p className="text-[9px] font-mono text-white/20">Powered by MangaDex</p>
             </div>
           </div>
 
@@ -625,8 +744,8 @@ export default function MangaDetail() {
       <AnimatePresence>
         {readerOpen && (
           <ReaderModal
+            anilistId={manga.id}
             title={manga.title.english ?? manga.title.romaji}
-            externalLinks={manga.externalLinks}
             onClose={() => setReaderOpen(false)}
           />
         )}
