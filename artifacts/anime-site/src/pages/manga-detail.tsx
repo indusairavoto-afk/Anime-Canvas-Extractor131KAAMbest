@@ -101,29 +101,11 @@ function stripHtml(html: string) {
 
 type FindResult =
   | { status: "searching" }
-  | { status: "found"; url: string; comixTitle: string }
+  | { status: "found"; slug: string; url: string }
   | { status: "not_found" };
-
-const READER_SITES: Record<string, string> = {
-  "MANGA Plus": "MangaPlus",
-  "Shonen Jump": "Shonen Jump",
-  "Shonen Jump Plus": "Shonen Jump+",
-  "VIZ": "VIZ",
-  "Azuki": "Azuki",
-  "Comikey": "Comikey",
-  "Pocket Comics": "Pocket Comics",
-  "Tapas": "Tapas",
-  "Webtoon": "Webtoon",
-  "Toomics": "Toomics",
-};
-
-function toComickSlug(t: string): string {
-  return t.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-}
 
 function ReaderModal({
   title,
-  externalLinks,
   onClose,
 }: {
   title: string;
@@ -133,45 +115,28 @@ function ReaderModal({
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [iframeLoading, setIframeLoading] = useState(true);
   const [findResult, setFindResult] = useState<FindResult>({ status: "searching" });
-  const [blankDetected, setBlankDetected] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    const encoded = encodeURIComponent(title);
-    fetch(`/api/onisaga/find?title=${encoded}`)
+    setFindResult({ status: "searching" });
+    setIframeLoading(true);
+    fetch(`/api/mangafire/find?title=${encodeURIComponent(title)}`)
       .then(r => r.json())
-      .then((data: { found: boolean; url?: string }) => {
+      .then((data: { found: boolean; slug?: string; url?: string }) => {
         if (cancelled) return;
-        if (data.found && data.url) {
-          setFindResult({ status: "found", url: data.url, comixTitle: title });
-          return;
+        if (data.found && data.slug && data.url) {
+          setFindResult({ status: "found", slug: data.slug, url: data.url });
+        } else {
+          setFindResult({ status: "not_found" });
         }
-        return fetch(`/api/comix/find?title=${encoded}`)
-          .then(r => r.json())
-          .then((d: { found: boolean; url?: string; title?: string }) => {
-            if (cancelled) return;
-            if (d.found && d.url) {
-              setFindResult({ status: "found", url: `__comix__${d.url}`, comixTitle: d.title ?? title });
-            } else {
-              setFindResult({ status: "not_found" });
-            }
-          });
       })
-      .catch(() => {
-        if (!cancelled) setFindResult({ status: "not_found" });
-      });
+      .catch(() => { if (!cancelled) setFindResult({ status: "not_found" }); });
     return () => { cancelled = true; };
   }, [title]);
 
-  const searchQuery = encodeURIComponent(title);
-
-  const isOnisaga = findResult.status === "found" && !findResult.url.startsWith("__comix__");
-  const src =
-    findResult.status === "found" && !blankDetected
-      ? isOnisaga
-        ? `/api/onisaga/reader?path=${encodeURIComponent(findResult.url)}`
-        : `/api/comix/reader?path=${encodeURIComponent(findResult.url.replace("__comix__", ""))}`
-      : null;
+  const src = findResult.status === "found"
+    ? `/api/mangafire/reader?path=${encodeURIComponent(findResult.url)}`
+    : null;
 
   function goBack() {
     try { iframeRef.current?.contentWindow?.history.go(-1); } catch { /* cross-origin */ }
@@ -179,28 +144,9 @@ function ReaderModal({
 
   function refresh() {
     if (iframeRef.current && src) {
-      setBlankDetected(false);
       setIframeLoading(true);
       iframeRef.current.src = src;
     }
-  }
-
-  function handleIframeLoad() {
-    setIframeLoading(false);
-    if (isOnisaga) return;
-    const iframe = iframeRef.current;
-    if (!iframe) return;
-    const timer = setTimeout(() => {
-      try {
-        const doc = iframe.contentDocument ?? iframe.contentWindow?.document;
-        if (!doc) return;
-        const appRoot = doc.getElementById("app-root");
-        if (appRoot && appRoot.childElementCount === 0) {
-          setBlankDetected(true);
-        }
-      } catch { /* cross-origin */ }
-    }, 3000);
-    return () => clearTimeout(timer);
   }
 
   useEffect(() => {
@@ -213,8 +159,10 @@ function ReaderModal({
     };
   }, [onClose]);
 
-  const isLoading = findResult.status === "searching" || (findResult.status === "found" && !blankDetected && iframeLoading);
-  const showFallback = findResult.status === "not_found" || blankDetected;
+  const isLoading = findResult.status === "searching" || (findResult.status === "found" && iframeLoading);
+  const externalUrl = findResult.status === "found"
+    ? `https://mangafire.to${findResult.url}`
+    : `https://mangafire.to/filter?keyword=${encodeURIComponent(title)}`;
 
   return (
     <motion.div
@@ -249,8 +197,8 @@ function ReaderModal({
               </button>
             </>
           )}
-          <a href={`https://comix.to/browse?search=${searchQuery}`} target="_blank" rel="noopener noreferrer"
-            className="p-1.5 rounded hover:bg-white/[0.07] transition-colors text-white/20 hover:text-white/60" title="Open on comix.to">
+          <a href={externalUrl} target="_blank" rel="noopener noreferrer"
+            className="p-1.5 rounded hover:bg-white/[0.07] transition-colors text-white/20 hover:text-white/60" title="Open on mangafire.to">
             <ExternalLink className="w-3.5 h-3.5" />
           </a>
           <div className="w-px h-4 bg-white/10 mx-1" />
@@ -267,46 +215,27 @@ function ReaderModal({
             <div className="flex flex-col items-center gap-3">
               <div className="w-7 h-7 border border-white/20 border-t-white/60 rounded-full animate-spin" />
               <p className="text-[10px] font-mono text-white/20 uppercase tracking-widest">
-                {findResult.status === "searching" ? "Searching…" : "Loading reader…"}
+                {findResult.status === "searching" ? "Searching mangafire…" : "Loading reader…"}
               </p>
             </div>
           </div>
         )}
 
-        {showFallback && (
-          <div className="absolute inset-0 bg-[#0a0a0a] flex flex-col items-center justify-center gap-6 px-6 overflow-y-auto">
+        {findResult.status === "not_found" && (
+          <div className="absolute inset-0 bg-[#0a0a0a] flex flex-col items-center justify-center gap-6 px-6">
             <div className="flex flex-col items-center gap-3 text-center max-w-sm">
               <BookOpen className="w-10 h-10 text-white/10" />
               <p className="text-white/50 font-serif text-lg leading-snug">{title}</p>
               <p className="text-[11px] font-mono text-white/25 uppercase tracking-widest leading-relaxed">
-                {blankDetected
-                  ? "Reader couldn't load — open directly in a new tab below."
-                  : "Not indexed yet — read it from one of these sources."}
+                Not found on MangaFire
               </p>
             </div>
-
-            <div className="flex flex-col items-center gap-2 w-full max-w-xs">
-              {(externalLinks ?? [])
-                .filter(l => l.type === "STREAMING" && READER_SITES[l.site])
-                .filter((l, i, arr) => arr.findIndex(x => x.site === l.site) === i)
-                .map(l => (
-                  <a key={l.url} href={l.url} target="_blank" rel="noopener noreferrer"
-                    className="w-full flex items-center justify-center gap-2 px-5 py-2.5 bg-white text-black text-[11px] font-mono uppercase tracking-widest hover:bg-white/90 transition-colors">
-                    <ExternalLink className="w-3.5 h-3.5 shrink-0" />
-                    Read on {READER_SITES[l.site]}
-                  </a>
-                ))}
-              <a href={`https://comick.dev/comic/${toComickSlug(title)}`} target="_blank" rel="noopener noreferrer"
-                className="w-full flex items-center justify-center gap-2 px-5 py-2.5 border border-white/15 text-white/60 text-[11px] font-mono uppercase tracking-widest hover:border-white/30 hover:text-white/80 transition-colors">
-                <ExternalLink className="w-3.5 h-3.5 shrink-0" />
-                Read on comick.dev
-              </a>
-              <a href={`https://comix.to/browse?search=${searchQuery}`} target="_blank" rel="noopener noreferrer"
-                className="w-full flex items-center justify-center gap-2 px-5 py-2.5 border border-white/8 text-white/30 text-[11px] font-mono uppercase tracking-widest hover:border-white/20 hover:text-white/50 transition-colors">
-                <ExternalLink className="w-3.5 h-3.5 shrink-0" />
-                Search on comix.to
-              </a>
-            </div>
+            <a href={`https://mangafire.to/filter?keyword=${encodeURIComponent(title)}`}
+              target="_blank" rel="noopener noreferrer"
+              className="flex items-center gap-2 px-5 py-2.5 border border-white/15 text-white/60 text-[11px] font-mono uppercase tracking-widest hover:border-white/30 hover:text-white/80 transition-colors">
+              <ExternalLink className="w-3.5 h-3.5 shrink-0" />
+              Search on MangaFire
+            </a>
           </div>
         )}
 
@@ -317,7 +246,7 @@ function ReaderModal({
             className="w-full h-full border-0"
             title="Manga Reader"
             allow="fullscreen"
-            onLoad={handleIframeLoad}
+            onLoad={() => setIframeLoading(false)}
           />
         )}
       </div>
@@ -600,7 +529,7 @@ export default function MangaDetail() {
                 </div>
               )}
 
-              <p className="text-[9px] font-mono text-white/20">Powered by onisaga.com</p>
+              <p className="text-[9px] font-mono text-white/20">Powered by MangaFire</p>
             </div>
           </div>
 
