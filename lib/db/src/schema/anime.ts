@@ -103,6 +103,19 @@ export const reviewReplyTable = pgTable("review_reply", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+export const episodeVoteCategoryEnum = pgEnum("episode_vote_category", ["skip", "timepass", "go_for_it", "perfection"]);
+
+export const episodeVoteTable = pgTable("episode_vote", {
+  id: serial("id").primaryKey(),
+  animeId: text("anime_id").notNull(),
+  episode: integer("episode").notNull(),
+  category: episodeVoteCategoryEnum("category").notNull(),
+  voterKey: text("voter_key").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (t) => [unique().on(t.animeId, t.episode, t.voterKey)]);
+
+export type EpisodeVote = typeof episodeVoteTable.$inferSelect;
+
 export const insertAnimeSchema = createInsertSchema(animeTable).omit({ id: true, createdAt: true });
 export const insertEpisodeSchema = createInsertSchema(episodeTable).omit({ id: true, createdAt: true });
 export const insertCommentSchema = createInsertSchema(commentTable).omit({ id: true, createdAt: true });

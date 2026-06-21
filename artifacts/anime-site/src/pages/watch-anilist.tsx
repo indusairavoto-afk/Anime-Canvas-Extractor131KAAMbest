@@ -230,7 +230,7 @@ export default function WatchAniList() {
   const prevNextAiringEpRef = useRef<number | null>(null);
   const [countdownSecs, setCountdownSecs] = useState<number | null>(null);
   const [liveViewers, setLiveViewers] = useState<number>(0);
-  const [voteCounts, setVoteCounts] = useState({ skip: 0, okay: 0, watch: 0, masterpiece: 0 });
+  const [voteCounts, setVoteCounts] = useState({ skip: 0, timepass: 0, go_for_it: 0, perfection: 0 });
   const [myVote, setMyVote] = useState<string | null>(null);
   const [voteSubmitting, setVoteSubmitting] = useState(false);
 
@@ -1336,7 +1336,7 @@ export default function WatchAniList() {
   // Fetch episode vote counts + restore my saved vote
   useEffect(() => {
     if (!animeId || !currentEp) return;
-    setVoteCounts({ skip: 0, okay: 0, watch: 0, masterpiece: 0 });
+    setVoteCounts({ skip: 0, timepass: 0, go_for_it: 0, perfection: 0 });
     const stored = localStorage.getItem(`na_vote_${animeId}_${currentEp}`);
     setMyVote(stored);
     fetch(`/api/votes/${animeId}/${currentEp}`)
@@ -1435,18 +1435,34 @@ export default function WatchAniList() {
   const castVote = async (cat: string) => {
     if (voteSubmitting) return;
     setVoteSubmitting(true);
+    // Optimistic update
+    const prev = myVote;
+    setMyVote(cat);
+    setVoteCounts(c => {
+      const next = { ...c };
+      if (prev && prev in next) next[prev as keyof typeof next] = Math.max(0, next[prev as keyof typeof next] - 1);
+      next[cat as keyof typeof next] = (next[cat as keyof typeof next] ?? 0) + 1;
+      return next;
+    });
     try {
+      let voterKey = localStorage.getItem("na_voter_key");
+      if (!voterKey) { voterKey = crypto.randomUUID(); localStorage.setItem("na_voter_key", voterKey); }
       const res = await fetch(`/api/votes/${animeId}/${currentEp}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ category: cat, previousVote: myVote }),
+        body: JSON.stringify({ category: cat, voterKey }),
       });
       if (res.ok) {
         const data = await res.json() as typeof voteCounts;
         setVoteCounts(data);
-        setMyVote(cat);
         localStorage.setItem(`na_vote_${animeId}_${currentEp}`, cat);
+      } else {
+        // rollback
+        setMyVote(prev);
+        fetch(`/api/votes/${animeId}/${currentEp}`).then(r => r.ok ? r.json() : null).then(d => { if (d) setVoteCounts(d as typeof voteCounts); }).catch(() => {});
       }
+    } catch {
+      setMyVote(prev);
     } finally {
       setVoteSubmitting(false);
     }
@@ -2436,109 +2452,115 @@ export default function WatchAniList() {
                 ))}
               </div>
 
-              {/* ── EPISODE METER ── */}
+              {/* ── NEXA METER (Moctale-style) ── */}
               {(() => {
                 const CATS = [
-                  { key: "skip",        label: "Skip it",     color: "#ef4444", glow: "rgba(239,68,68,0.35)" },
-                  { key: "okay",        label: "It's okay",   color: "#f59e0b", glow: "rgba(245,158,11,0.35)" },
-                  { key: "watch",       label: "Watch it",    color: "#14b8a6", glow: "rgba(20,184,166,0.35)" },
-                  { key: "masterpiece", label: "Masterpiece", color: "#a855f7", glow: "rgba(168,85,247,0.35)" },
+                  { key: "skip",       label: "Skip",       color: "#ef4444", glow: "rgba(239,68,68,0.4)" },
+                  { key: "timepass",   label: "Timepass",   color: "#f59e0b", glow: "rgba(245,158,11,0.4)" },
+                  { key: "go_for_it",  label: "Go for it",  color: "#22c55e", glow: "rgba(34,197,94,0.4)" },
+                  { key: "perfection", label: "Perfection", color: "#a855f7", glow: "rgba(168,85,247,0.4)" },
                 ] as const;
 
-                const total = voteCounts.skip + voteCounts.okay + voteCounts.watch + voteCounts.masterpiece;
-                const shares = CATS.map(c => total > 0 ? voteCounts[c.key] / total : 0);
-                const positiveScore = total > 0
-                  ? Math.round(((voteCounts.watch + voteCounts.masterpiece) / total) * 100)
-                  : 0;
+                const total = voteCounts.skip + voteCounts.timepass + voteCounts.go_for_it + voteCounts.perfection;
+                const shares = CATS.map(c => total > 0 ? voteCounts[c.key as keyof typeof voteCounts] / total : 0);
 
-                // SVG arc: half-circle, pathLength=100 so shares map directly
-                // path M 15 105 A 90 90 0 0 1 205 105  (cx=110 cy=105 r=90)
-                const arcPath = "M 15 105 A 90 90 0 0 1 205 105";
+                // Dominant category (highest share) drives the center color
+                const domIdx = shares.reduce((best, s, i) => s > shares[best] ? i : best, 0);
+                const domScore = total > 0 ? Math.round(shares[domIdx] * 100) : 0;
+                const domCat = CATS[domIdx];
 
+                // SVG half-circle arc: cx=110 cy=108 r=88
+                const R = 88;
+                const arcPath = `M ${110 - R} 108 A ${R} ${R} 0 0 1 ${110 + R} 108`;
+                const STROKE = 16;
                 let cumOffset = 0;
-                const STROKE = 15;
 
                 return (
                   <div className="mt-8 pt-8 border-t border-white/[0.06]">
-                    <div className="flex items-center justify-between mb-6">
+                    {/* Header */}
+                    <div className="flex items-center justify-between mb-5">
                       <div>
-                        <p className="text-[10px] font-mono uppercase tracking-widest text-white/30 mb-0.5">Episode Meter</p>
+                        <p className="text-[10px] font-mono uppercase tracking-widest text-white/30 mb-0.5">Nexa Meter</p>
                         <h4 className="text-sm font-semibold text-white">
                           Episode {currentEp}
                           {getEpTitle(currentEp) !== `Episode ${currentEp}` && (
-                            <span className="text-white/35 font-normal"> — {getEpTitle(currentEp)}</span>
+                            <span className="text-white/35 font-normal ml-1">— {getEpTitle(currentEp)}</span>
                           )}
                         </h4>
                       </div>
                       {total > 0 && (
-                        <span className="text-[10px] font-mono text-white/25 tabular-nums">{total} vote{total !== 1 ? "s" : ""}</span>
+                        <span className="text-[10px] font-mono text-white/20 tabular-nums">{total} vote{total !== 1 ? "s" : ""}</span>
                       )}
                     </div>
 
                     {/* Arc gauge */}
                     <div className="flex flex-col items-center">
-                      <div className="relative w-full max-w-[260px]">
-                        <svg viewBox="0 0 220 115" className="w-full overflow-visible">
+                      <div className="relative w-full max-w-[300px]">
+                        <svg viewBox="0 0 220 120" className="w-full overflow-visible">
                           <defs>
                             {CATS.map(c => (
-                              <filter key={c.key} id={`glow-${c.key}`} x="-20%" y="-20%" width="140%" height="140%">
-                                <feGaussianBlur stdDeviation="3" result="blur" />
+                              <filter key={c.key} id={`nm-glow-${c.key}`} x="-30%" y="-30%" width="160%" height="160%">
+                                <feGaussianBlur stdDeviation="4" result="blur" />
                                 <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
                               </filter>
                             ))}
                           </defs>
 
                           {/* Track */}
-                          <path
-                            d={arcPath}
-                            fill="none"
-                            stroke="rgba(255,255,255,0.06)"
-                            strokeWidth={STROKE}
-                            strokeLinecap="butt"
-                            pathLength="100"
-                          />
+                          <path d={arcPath} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth={STROKE} strokeLinecap="round" pathLength="100" />
 
                           {/* Colored segments */}
                           {CATS.map((cat, i) => {
                             const share = shares[i] * 100;
                             const offset = cumOffset;
                             cumOffset += share;
-                            if (share < 0.5) return null;
+                            if (share < 0.3) return null;
+                            const isActive = myVote === cat.key;
                             return (
                               <path
                                 key={cat.key}
                                 d={arcPath}
                                 fill="none"
                                 stroke={cat.color}
-                                strokeWidth={STROKE}
+                                strokeWidth={isActive ? STROKE + 2 : STROKE}
                                 strokeLinecap="butt"
                                 pathLength="100"
-                                strokeDasharray={`${share - 0.4} ${100 - share + 0.4}`}
+                                strokeDasharray={`${share - 0.5} ${100 - share + 0.5}`}
                                 strokeDashoffset={-offset}
-                                filter={myVote === cat.key ? `url(#glow-${cat.key})` : undefined}
-                                style={{ transition: "stroke-dasharray 0.6s ease" }}
+                                filter={isActive ? `url(#nm-glow-${cat.key})` : undefined}
+                                style={{ transition: "stroke-dasharray 0.5s cubic-bezier(0.4,0,0.2,1)" }}
                               />
                             );
                           })}
 
-                          {/* Center score */}
-                          <text x="110" y="74" textAnchor="middle" fill="white" fontSize="26" fontWeight="700" fontFamily="monospace">
-                            {total > 0 ? `${positiveScore}%` : "—"}
-                          </text>
-                          <text x="110" y="90" textAnchor="middle" fill="rgba(255,255,255,0.3)" fontSize="9" fontFamily="monospace" letterSpacing="1">
-                            {total > 0 ? `${total} VOTE${total !== 1 ? "S" : ""}` : "NO VOTES YET"}
-                          </text>
+                          {/* Center dominant % */}
+                          {total > 0 ? (
+                            <>
+                              <text x="110" y="82" textAnchor="middle" fontSize="28" fontWeight="700" fill={domCat.color} fontFamily="system-ui,sans-serif" style={{ transition: "fill 0.4s" }}>
+                                {domScore}%
+                              </text>
+                              <text x="110" y="97" textAnchor="middle" fontSize="8.5" fill="rgba(255,255,255,0.28)" fontFamily="monospace" letterSpacing="0.5">
+                                {total} Vote{total !== 1 ? "s" : ""}
+                              </text>
+                            </>
+                          ) : (
+                            <text x="110" y="88" textAnchor="middle" fontSize="11" fill="rgba(255,255,255,0.2)" fontFamily="monospace" letterSpacing="1">
+                              RATE THIS EPISODE
+                            </text>
+                          )}
                         </svg>
                       </div>
 
-                      {/* Legend */}
-                      <div className="flex flex-wrap justify-center gap-x-5 gap-y-1.5 mt-1 mb-5">
+                      {/* Legend row */}
+                      <div className="flex flex-wrap justify-center gap-x-4 gap-y-1.5 mt-1 mb-5">
                         {CATS.map((cat, i) => (
                           <div key={cat.key} className="flex items-center gap-1.5">
                             <span className="w-2 h-2 rounded-full shrink-0" style={{ background: cat.color }} />
-                            <span className="text-[10px] font-mono text-white/45">{cat.label}</span>
+                            <span className="text-[10px] font-mono" style={{ color: myVote === cat.key ? cat.color : "rgba(255,255,255,0.4)" }}>
+                              {cat.label}
+                            </span>
                             {total > 0 && (
-                              <span className="text-[10px] font-mono tabular-nums" style={{ color: cat.color }}>
+                              <span className="text-[10px] font-mono tabular-nums" style={{ color: cat.color, opacity: 0.8 }}>
                                 {Math.round(shares[i] * 100)}%
                               </span>
                             )}
@@ -2547,7 +2569,7 @@ export default function WatchAniList() {
                       </div>
 
                       {/* Vote buttons */}
-                      <div className="grid grid-cols-4 gap-2 w-full max-w-sm">
+                      <div className="grid grid-cols-4 gap-2 w-full max-w-xs">
                         {CATS.map(cat => {
                           const isMe = myVote === cat.key;
                           return (
@@ -2555,21 +2577,14 @@ export default function WatchAniList() {
                               key={cat.key}
                               onClick={() => castVote(cat.key)}
                               disabled={voteSubmitting}
-                              className={`relative flex flex-col items-center gap-1 py-2.5 px-1 border transition-all duration-200 text-center ${
-                                isMe
-                                  ? "border-opacity-100 bg-white/5"
-                                  : "border-white/10 hover:border-white/25 hover:bg-white/[0.03]"
-                              }`}
-                              style={isMe ? { borderColor: cat.color, boxShadow: `0 0 12px ${cat.glow}` } : {}}
+                              className="relative flex flex-col items-center gap-1.5 py-3 px-1 rounded border transition-all duration-200 text-center active:scale-95"
+                              style={isMe
+                                ? { borderColor: cat.color, background: `${cat.color}14`, boxShadow: `0 0 16px ${cat.glow}` }
+                                : { borderColor: "rgba(255,255,255,0.09)", background: "transparent" }
+                              }
                             >
-                              <span
-                                className="w-2.5 h-2.5 rounded-full"
-                                style={{ background: isMe ? cat.color : "rgba(255,255,255,0.15)" }}
-                              />
-                              <span
-                                className="text-[9px] font-mono uppercase tracking-wider leading-tight"
-                                style={{ color: isMe ? cat.color : "rgba(255,255,255,0.4)" }}
-                              >
+                              <span className="w-3 h-3 rounded-full transition-all duration-200" style={{ background: isMe ? cat.color : "rgba(255,255,255,0.15)", boxShadow: isMe ? `0 0 8px ${cat.glow}` : "none" }} />
+                              <span className="text-[9px] font-mono uppercase tracking-wide leading-tight transition-colors duration-200" style={{ color: isMe ? cat.color : "rgba(255,255,255,0.35)" }}>
                                 {cat.label}
                               </span>
                             </button>
@@ -2578,8 +2593,8 @@ export default function WatchAniList() {
                       </div>
 
                       {myVote && (
-                        <p className="text-[9px] font-mono text-white/20 mt-3 uppercase tracking-widest">
-                          Your vote · tap to change
+                        <p className="text-[9px] font-mono text-white/20 mt-3 tracking-widest uppercase">
+                          your vote · tap to change
                         </p>
                       )}
                     </div>
