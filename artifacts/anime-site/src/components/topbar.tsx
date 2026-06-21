@@ -193,9 +193,7 @@ export function Topbar() {
         style={{ background: headerBg, transition: "background 0.35s ease" }}
       >
         <Link href="/" className="flex-shrink-0 flex items-center">
-          <span className="font-serif text-xl tracking-tight text-white uppercase leading-none">
-            N<span className="text-white/40">A</span>
-          </span>
+          <img src="/nexa-logo.png" alt="Nexa Anime" className="h-9 w-[160px] object-contain" />
         </Link>
 
         <button
