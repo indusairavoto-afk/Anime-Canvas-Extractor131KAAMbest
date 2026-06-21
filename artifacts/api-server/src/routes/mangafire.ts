@@ -20,9 +20,71 @@ function makeSlug(s: string): string {
 }
 
 /**
+ * MangaFire slug pattern: take the normal slug and double the last character
+ * of the final word.  e.g. "chainsaw man" → "chainsaw-mann", "one piece" → "one-piecee".
+ * The full slug is "{doubled-title}.{3-6-char-id}".
+ */
+function makeDoubledSlug(s: string): string {
+  const base = makeSlug(s);          // e.g. "chainsaw-man"
+  if (!base) return base;
+  const last = base[base.length - 1]; // e.g. "n"
+  return base + last;                  // e.g. "chainsaw-mann"
+}
+
+/**
+ * Search one sitemap XML for a slug whose title part starts with `doubledSlug`.
+ * Returns the first matching full slug (e.g. "chainsaw-mann.0w5k") or null.
+ */
+async function searchSitemap(idx: number, doubledSlug: string): Promise<string | null> {
+  try {
+    const resp = await fetch(`${ORIGIN}/sitemap-list-${idx}.xml`, {
+      headers: { ...HEADERS, Accept: "application/xml, text/xml, */*" },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!resp.ok) return null;
+    const text = await resp.text();
+    // URLs look like: https://mangafire.to/manga/chainsaw-mann.0w5k
+    const re = /mangafire\.to\/manga\/([\w.-]+)/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text)) !== null) {
+      const slug = m[1];
+      // title part is everything before the last dot segment (the ID)
+      const dotIdx = slug.lastIndexOf(".");
+      const titlePart = dotIdx > 0 ? slug.slice(0, dotIdx) : slug;
+      if (titlePart === doubledSlug || titlePart.startsWith(doubledSlug)) {
+        return slug;
+      }
+    }
+  } catch { /* timeout / network error */ }
+  return null;
+}
+
+/**
+ * Search all sitemaps in parallel (total 54 files), race to first hit.
+ */
+async function searchAllSitemaps(doubledSlug: string): Promise<string | null> {
+  const TOTAL = 54;
+  // Search in batches of 10 to avoid too many simultaneous connections
+  const BATCH = 10;
+  for (let start = 1; start <= TOTAL; start += BATCH) {
+    const indices = Array.from(
+      { length: Math.min(BATCH, TOTAL - start + 1) },
+      (_, i) => start + i
+    );
+    const results = await Promise.all(indices.map(i => searchSitemap(i, doubledSlug)));
+    const found = results.find(r => r !== null);
+    if (found) return found;
+  }
+  return null;
+}
+
+/**
  * GET /api/mangafire/find?title=<title>
  *
- * Searches mangafire.to for the manga and returns its slug.
+ * MangaFire's search is client-side JS only — the AJAX endpoint requires a
+ * Cloudflare-gated session token.  Instead we derive the slug using the
+ * documented pattern (double last char of last word) and confirm it against
+ * the sitemap XMLs.
  */
 router.get("/mangafire/find", async (req, res) => {
   const title = typeof req.query.title === "string" ? req.query.title.trim() : "";
@@ -31,55 +93,21 @@ router.get("/mangafire/find", async (req, res) => {
     return;
   }
 
+  // Build candidate doubled slugs from various title normalizations
   const queries = [
     title,
     title.replace(/^(the|a|an)\s+/i, ""),
     title.split(/[:\-–]/)[0].trim(),
   ].filter(Boolean);
 
-  for (const q of [...new Set(queries)]) {
-    try {
-      const searchUrl = `${ORIGIN}/filter?keyword=${encodeURIComponent(q)}&type[]=manga&type[]=one_shot&type[]=manhwa&type[]=manhua&type[]=doujinshi`;
-      const resp = await fetch(searchUrl, {
-        headers: { ...HEADERS, Accept: "text/html,application/xhtml+xml" },
-        signal: AbortSignal.timeout(10000),
-      });
-      if (!resp.ok) continue;
-      const html = await resp.text();
+  const doubled = [...new Set(queries.map(makeDoubledSlug))];
 
-      // Extract manga slugs from the listing page
-      // mangafire URLs look like: href="/manga/one-piece.dkw"
-      const slugRe = /href="\/manga\/([\w.-]+)"/g;
-      let m: RegExpExecArray | null;
-      const candidates: string[] = [];
-      while ((m = slugRe.exec(html)) !== null) {
-        candidates.push(m[1]);
-      }
-
-      if (candidates.length === 0) continue;
-
-      // Pick the candidate whose title-part best matches the query slug
-      const qSlug = makeSlug(q);
-      const scored = candidates.map((slug) => {
-        const titlePart = slug.includes(".") ? slug.split(".")[0] : slug;
-        // Exact match or starts-with
-        const score =
-          titlePart === qSlug ? 2 : titlePart.startsWith(qSlug) ? 1 : 0;
-        return { slug, score };
-      });
-      scored.sort((a, b) => b.score - a.score);
-      const best = scored[0];
-      if (best && best.score > 0) {
-        res.json({ found: true, slug: best.slug, url: `/manga/${best.slug}` });
-        return;
-      }
-      // If nothing scored, take first result anyway (search is contextual)
-      if (candidates[0]) {
-        res.json({ found: true, slug: candidates[0], url: `/manga/${candidates[0]}` });
-        return;
-      }
-    } catch {
-      // try next query
+  // Search all sitemaps in parallel for each candidate
+  for (const d of doubled) {
+    const slug = await searchAllSitemaps(d);
+    if (slug) {
+      res.json({ found: true, slug, url: `/manga/${slug}` });
+      return;
     }
   }
 
