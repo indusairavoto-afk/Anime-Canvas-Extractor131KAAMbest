@@ -3,7 +3,7 @@ import { Link, useParams, useLocation } from "wouter";
 import HlsPlayer, { getEpisodeProgressPct } from "@/components/HlsPlayer";
 import {
   ArrowLeft, Search, Grid3X3, List, Play, Pause, SkipForward, SkipBack,
-  RotateCcw, RotateCw, Scissors, Bookmark, BookmarkCheck, ChevronDown,
+  RotateCcw, RotateCw, Scissors, Bookmark, BookmarkCheck, ChevronDown, Maximize2, Minimize2,
   MessageSquare, ThumbsUp, ThumbsDown, CornerDownRight, Eye,
   Volume2, VolumeX, Maximize, Minimize,
 } from "lucide-react";
@@ -211,6 +211,7 @@ export default function WatchAniList() {
   const [videoState, setVideoState] = useState({ paused: true, time: 0, duration: 0, buffered: 0, volume: 1, muted: false });
   const [showControls, setShowControls] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [theaterMode, setTheaterMode] = useState(false);
   const controlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const playerContainerRef = useRef<HTMLDivElement>(null);
   const bridgeLiveRef = useRef(false);
@@ -1461,7 +1462,7 @@ export default function WatchAniList() {
       <div className="flex flex-col xl:flex-row gap-0">
 
         {/* ── LEFT: Anime info panel ── */}
-        <div className="hidden xl:flex flex-col w-56 shrink-0 border-r border-white/5 p-4 gap-4">
+        <div className={`${theaterMode ? "hidden" : "hidden xl:flex"} flex-col w-56 shrink-0 border-r border-white/5 p-4 gap-4`}>
           <Link href={`/anime/al/${animeId}`}>
             <img
               src={cover}
@@ -1953,6 +1954,15 @@ export default function WatchAniList() {
           {/* Player control bar — desktop only */}
           <div className="hidden md:flex items-center justify-between px-4 py-2.5 border-b border-white/5">
             <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => setTheaterMode(t => !t)}
+                className="p-1.5 hover:bg-white/10 rounded transition-colors"
+                title={theaterMode ? "Exit theater mode" : "Theater mode"}
+              >
+                {theaterMode
+                  ? <Minimize2 className="w-4 h-4 text-white/60 hover:text-white" />
+                  : <Maximize2 className="w-4 h-4 text-white/50 hover:text-white" />}
+              </button>
               {currentEp > 1 && (
                 <Link href={`/watch/al/${animeId}/${currentEp - 1}`}>
                   <button className="p-1.5 hover:bg-white/10 rounded transition-colors" title="Previous episode">
@@ -2567,7 +2577,7 @@ export default function WatchAniList() {
         </div>
 
         {/* ── RIGHT: Episode list — desktop only ── */}
-        <div className="hidden xl:flex flex-col xl:w-80 shrink-0 border-l border-white/5">
+        <div className={`${theaterMode ? "hidden" : "hidden xl:flex"} flex-col xl:w-80 shrink-0 border-l border-white/5`}>
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
             <div className="flex items-center gap-2 flex-wrap">
