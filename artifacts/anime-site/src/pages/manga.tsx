@@ -2,7 +2,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect, useCallback } from "react";
 import { Link } from "wouter";
 import { Search, X, Star, Loader2, ChevronDown, BookOpen, Bookmark, BookmarkCheck } from "lucide-react";
-import { useMangaList } from "@/hooks/useMangaList";
+import { useMangaList, type ReadStatus } from "@/hooks/useMangaList";
 
 const GENRES = [
   "Action","Adventure","Comedy","Drama","Fantasy","Horror",
@@ -174,7 +174,7 @@ function MangaCardSkeleton() {
 }
 
 export default function MangaPage() {
-  const { toggle, isInList } = useMangaList();
+  const { toggle, isInList, getStatus } = useMangaList();
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [genre, setGenre] = useState("");

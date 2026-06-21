@@ -1,8 +1,20 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { Link, useParams } from "wouter";
-import { ArrowLeft, Star, BookOpen, X, ExternalLink, ChevronLeft, RefreshCw, Home, Bookmark, BookmarkCheck } from "lucide-react";
-import { useMangaList } from "@/hooks/useMangaList";
+import { ArrowLeft, Star, BookOpen, X, ExternalLink, ChevronLeft, RefreshCw, Home, ChevronDown, Check } from "lucide-react";
+import { useMangaList, type ReadStatus } from "@/hooks/useMangaList";
 import { useState, useEffect, useRef } from "react";
+
+const READ_STATUSES: { value: ReadStatus; label: string; dot: string }[] = [
+  { value: "reading",      label: "Reading",      dot: "bg-green-400" },
+  { value: "plan_to_read", label: "Plan to Read", dot: "bg-blue-400" },
+  { value: "completed",    label: "Completed",    dot: "bg-purple-400" },
+];
+
+const STATUS_PICKER_CONFIG: Record<ReadStatus, { label: string; active: string }> = {
+  reading:      { label: "Reading",      active: "border-green-400/50 text-green-400 bg-green-400/10" },
+  plan_to_read: { label: "Plan to Read", active: "border-blue-400/50 text-blue-400 bg-blue-400/10" },
+  completed:    { label: "Completed",    active: "border-purple-400/50 text-purple-400 bg-purple-400/10" },
+};
 
 const STATUS_LABEL: Record<string, string> = {
   FINISHED:         "Completed",
@@ -197,7 +209,8 @@ export default function MangaDetail() {
   const { id } = useParams<{ id: string }>();
   const [manga, setManga] = useState<AniManga | null>(null);
   const [loading, setLoading] = useState(true);
-  const { toggle: toggleList, isInList } = useMangaList();
+  const { isInList, getStatus, setStatus, remove: removeFromList } = useMangaList();
+  const [statusOpen, setStatusOpen] = useState(false);
   const [descExpanded, setDescExpanded] = useState(false);
   const [readerOpen, setReaderOpen] = useState(false);
 
@@ -345,20 +358,68 @@ export default function MangaDetail() {
                   <BookOpen className="w-4 h-4" />
                   Read Now
                 </button>
-                <button
-                  onClick={() => manga && toggleList(manga.id)}
-                  className={`flex items-center gap-2 px-4 py-2.5 border text-sm font-mono uppercase tracking-widest transition-colors ${
-                    manga && isInList(manga.id)
-                      ? "border-white bg-white text-black"
-                      : "border-white/20 text-white/50 hover:border-white/50 hover:text-white/80"
-                  }`}
-                  title={manga && isInList(manga.id) ? "Remove from My List" : "Save to My List"}
-                >
-                  {manga && isInList(manga.id)
-                    ? <><BookmarkCheck className="w-4 h-4" /> Saved</>
-                    : <><Bookmark className="w-4 h-4" /> Save</>
-                  }
-                </button>
+
+                {/* Status picker */}
+                {manga && (
+                  <div className="relative">
+                    <button
+                      onClick={() => setStatusOpen((v) => !v)}
+                      className={`flex items-center gap-2 px-4 py-2.5 border text-sm font-mono uppercase tracking-widest transition-colors ${
+                        isInList(manga.id)
+                          ? STATUS_PICKER_CONFIG[getStatus(manga.id)!].active
+                          : "border-white/20 text-white/50 hover:border-white/40 hover:text-white/80"
+                      }`}
+                    >
+                      {isInList(manga.id) ? (
+                        <>
+                          <Check className="w-3.5 h-3.5" />
+                          {STATUS_PICKER_CONFIG[getStatus(manga.id)!].label}
+                        </>
+                      ) : "Add to List"}
+                      <ChevronDown className={`w-3.5 h-3.5 transition-transform ${statusOpen ? "rotate-180" : ""}`} />
+                    </button>
+
+                    <AnimatePresence>
+                      {statusOpen && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 6 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: 6 }}
+                          transition={{ duration: 0.12 }}
+                          className="absolute left-0 top-full mt-1 z-30 bg-zinc-900 border border-white/10 shadow-2xl min-w-[160px] overflow-hidden"
+                        >
+                          {READ_STATUSES.map(({ value, label, dot }) => {
+                            const active = isInList(manga.id) && getStatus(manga.id) === value;
+                            return (
+                              <button
+                                key={value}
+                                onClick={() => { setStatus(manga.id, value); setStatusOpen(false); }}
+                                className={`w-full flex items-center gap-2.5 px-4 py-2.5 text-left text-[11px] font-mono uppercase tracking-widest transition-colors ${
+                                  active ? "bg-white/[0.08] text-white" : "text-white/50 hover:bg-white/[0.05] hover:text-white/80"
+                                }`}
+                              >
+                                <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dot}`} />
+                                {label}
+                                {active && <Check className="w-3 h-3 ml-auto" />}
+                              </button>
+                            );
+                          })}
+                          {isInList(manga.id) && (
+                            <>
+                              <div className="mx-3 border-t border-white/[0.06]" />
+                              <button
+                                onClick={() => { removeFromList(manga.id); setStatusOpen(false); }}
+                                className="w-full flex items-center gap-2.5 px-4 py-2.5 text-left text-[11px] font-mono uppercase tracking-widest text-red-400/60 hover:text-red-400 hover:bg-white/[0.04] transition-colors"
+                              >
+                                Remove from list
+                              </button>
+                            </>
+                          )}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                )}
               </div>
               <p className="text-[9px] font-mono text-white/20">Powered by comix.to</p>
             </div>
