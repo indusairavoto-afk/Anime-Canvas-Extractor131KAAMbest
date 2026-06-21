@@ -20,6 +20,7 @@ import usersRouter from "./users";
 import repliesRouter from "./replies";
 import verifyRouter from "./verify";
 import translateRouter from "./translate";
+import mangadexRouter from "./mangadex";
 
 const router: IRouter = Router();
 
@@ -44,5 +45,6 @@ router.use(usersRouter);
 router.use(repliesRouter);
 router.use(verifyRouter);
 router.use(translateRouter);
+router.use(mangadexRouter);
 
 export default router;
