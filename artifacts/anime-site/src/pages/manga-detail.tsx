@@ -1,6 +1,6 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { Link, useParams } from "wouter";
-import { ArrowLeft, Star, BookOpen, X, ExternalLink, ChevronLeft, RefreshCw, Home, ChevronDown, Check } from "lucide-react";
+import { ArrowLeft, Star, BookOpen, X, ExternalLink, ChevronLeft, RefreshCw, Home, ChevronDown, Check, Minus, Plus } from "lucide-react";
 import { useMangaList, type ReadStatus } from "@/hooks/useMangaList";
 import { useState, useEffect, useRef } from "react";
 
@@ -209,8 +209,9 @@ export default function MangaDetail() {
   const { id } = useParams<{ id: string }>();
   const [manga, setManga] = useState<AniManga | null>(null);
   const [loading, setLoading] = useState(true);
-  const { isInList, getStatus, setStatus, remove: removeFromList } = useMangaList();
+  const { isInList, getStatus, setStatus, getChapter, setChapter, remove: removeFromList } = useMangaList();
   const [statusOpen, setStatusOpen] = useState(false);
+  const [chapterInput, setChapterInput] = useState<string | null>(null);
   const [descExpanded, setDescExpanded] = useState(false);
   const [readerOpen, setReaderOpen] = useState(false);
 
@@ -421,6 +422,64 @@ export default function MangaDetail() {
                   </div>
                 )}
               </div>
+
+              {/* Chapter tracker — shown when manga is in list */}
+              {manga && isInList(manga.id) && (
+                <div className="flex items-center gap-2 mt-3 mb-1">
+                  <span className="text-[10px] font-mono text-white/30 uppercase tracking-widest">Chapter</span>
+                  <div className="flex items-center border border-white/15 overflow-hidden">
+                    <button
+                      onClick={() => manga && setChapter(manga.id, getChapter(manga.id) - 1)}
+                      className="px-2.5 py-1.5 text-white/40 hover:text-white hover:bg-white/[0.06] transition-colors"
+                    >
+                      <Minus className="w-3 h-3" />
+                    </button>
+                    <input
+                      type="number"
+                      min={0}
+                      max={manga.chapters ?? 99999}
+                      value={chapterInput ?? getChapter(manga.id)}
+                      onChange={(e) => setChapterInput(e.target.value)}
+                      onBlur={() => {
+                        if (chapterInput !== null) {
+                          const n = parseInt(chapterInput, 10);
+                          if (!isNaN(n)) setChapter(manga.id, n);
+                          setChapterInput(null);
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                      }}
+                      className="w-12 bg-transparent text-center text-sm font-mono text-white py-1.5 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    />
+                    <button
+                      onClick={() => manga && setChapter(manga.id, getChapter(manga.id) + 1)}
+                      className="px-2.5 py-1.5 text-white/40 hover:text-white hover:bg-white/[0.06] transition-colors"
+                    >
+                      <Plus className="w-3 h-3" />
+                    </button>
+                  </div>
+                  {manga.chapters && (
+                    <span className="text-[10px] font-mono text-white/25">
+                      / {manga.chapters}
+                      {getChapter(manga.id) > 0 && (
+                        <span className="ml-1.5 text-white/40">
+                          ({Math.round((getChapter(manga.id) / manga.chapters) * 100)}%)
+                        </span>
+                      )}
+                    </span>
+                  )}
+                </div>
+              )}
+              {manga && isInList(manga.id) && manga.chapters && getChapter(manga.id) > 0 && (
+                <div className="w-full h-0.5 bg-white/[0.06] mt-1 mb-2 max-w-xs">
+                  <div
+                    className="h-full bg-white/40 transition-all duration-500"
+                    style={{ width: `${Math.min(100, Math.round((getChapter(manga.id) / manga.chapters) * 100))}%` }}
+                  />
+                </div>
+              )}
+
               <p className="text-[9px] font-mono text-white/20">Powered by comix.to</p>
             </div>
           </div>

@@ -1,7 +1,7 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { Link } from "wouter";
-import { BookmarkX, Play, Star, CheckCircle2, Clock, BookOpen, Tv, Check } from "lucide-react";
-import { useState, useEffect } from "react";
+import { BookmarkX, Play, Star, CheckCircle2, Clock, BookOpen, Tv, Check, Minus, Plus } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
 import { useWatchlist } from "@/hooks/useWatchlist";
 import { useMangaList, type ReadStatus } from "@/hooks/useMangaList";
 import { useWatchProgress } from "@/hooks/useWatchProgress";
@@ -114,16 +114,22 @@ query ($id: Int!) {
 function MangaReadCard({
   mangaId,
   readStatus,
+  chapter,
   onRemove,
   onStatusChange,
+  onChapterChange,
 }: {
   mangaId: number;
   readStatus: ReadStatus;
+  chapter: number;
   onRemove: () => void;
   onStatusChange: (s: ReadStatus) => void;
+  onChapterChange: (n: number) => void;
 }) {
-  const [manga, setManga]       = useState<MangaInfo | null>(null);
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [manga, setManga]         = useState<MangaInfo | null>(null);
+  const [menuOpen, setMenuOpen]   = useState(false);
+  const [inputVal, setInputVal]   = useState<string | null>(null);
+  const inputRef                  = useRef<HTMLInputElement>(null);
   const cfg = READ_STATUSES.find((s) => s.value === readStatus)!;
 
   useEffect(() => {
@@ -141,9 +147,19 @@ function MangaReadCard({
 
   if (!manga) return <div className="aspect-[2/3] bg-white/[0.03] animate-pulse border border-white/5" />;
 
-  const title = manga.title.english ?? manga.title.romaji;
-  const cover = manga.coverImage?.extraLarge ?? manga.coverImage?.large ?? "";
-  const score = manga.averageScore ? (manga.averageScore / 10).toFixed(1) : null;
+  const title    = manga.title.english ?? manga.title.romaji;
+  const cover    = manga.coverImage?.extraLarge ?? manga.coverImage?.large ?? "";
+  const score    = manga.averageScore ? (manga.averageScore / 10).toFixed(1) : null;
+  const total    = manga.chapters ?? null;
+  const progress = total && chapter > 0 ? Math.min(100, Math.round((chapter / total) * 100)) : 0;
+
+  const commitInput = () => {
+    if (inputVal !== null) {
+      const n = parseInt(inputVal, 10);
+      if (!isNaN(n)) onChapterChange(Math.max(0, n));
+      setInputVal(null);
+    }
+  };
 
   return (
     <motion.div variants={fadeUp} className="group relative flex flex-col">
@@ -151,6 +167,13 @@ function MangaReadCard({
         <div className="relative aspect-[2/3] overflow-hidden border border-white/5 group-hover:border-white/20 transition-all cursor-pointer">
           {cover && <img src={cover} alt={title} className="w-full h-full object-cover transition-all duration-500 group-hover:scale-105" />}
           <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent" />
+
+          {/* Progress bar */}
+          {progress > 0 && (
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-white/10">
+              <div className="h-full bg-white/60 transition-all duration-500" style={{ width: `${progress}%` }} />
+            </div>
+          )}
 
           {/* Status dot */}
           <div className="absolute top-2 left-2 flex items-center gap-1 px-1.5 py-0.5 bg-black/60 backdrop-blur-sm border border-white/10">
@@ -174,15 +197,51 @@ function MangaReadCard({
             <h3 className="text-white font-serif text-sm leading-snug line-clamp-2">{title}</h3>
             <div className="flex items-center gap-2 mt-1 text-[9px] font-mono text-white/50 uppercase tracking-widest">
               {score && <span className="flex items-center gap-1"><Star className="w-2.5 h-2.5" />{score}</span>}
-              {score && manga.chapters && <span className="w-0.5 h-0.5 rounded-full bg-white/30" />}
-              {manga.chapters && <span>{manga.chapters} ch</span>}
+              {score && <span className="w-0.5 h-0.5 rounded-full bg-white/30" />}
+              {chapter > 0
+                ? <span>Ch. {chapter}{total ? ` / ${total}` : ""}</span>
+                : total
+                  ? <span>{total} ch total</span>
+                  : null}
             </div>
           </div>
         </div>
       </Link>
 
+      {/* Chapter stepper */}
+      <div className="flex items-stretch border border-white/10 mt-1.5 overflow-hidden">
+        <button
+          onClick={() => onChapterChange(Math.max(0, chapter - 1))}
+          className="px-2.5 py-2 text-white/30 hover:text-white hover:bg-white/[0.05] transition-colors flex-shrink-0"
+        >
+          <Minus className="w-3 h-3" />
+        </button>
+
+        <div className="flex-1 flex items-center justify-center gap-1 px-1 border-x border-white/[0.07]">
+          <span className="text-white/25 text-[9px] font-mono">CH</span>
+          <input
+            ref={inputRef}
+            type="number"
+            min={0}
+            value={inputVal ?? chapter}
+            onChange={(e) => setInputVal(e.target.value)}
+            onBlur={commitInput}
+            onKeyDown={(e) => { if (e.key === "Enter") inputRef.current?.blur(); }}
+            className="w-10 bg-transparent text-center text-[11px] font-mono text-white py-1.5 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+          />
+          {total && <span className="text-white/20 text-[9px] font-mono">/{total}</span>}
+        </div>
+
+        <button
+          onClick={() => onChapterChange(chapter + 1)}
+          className="px-2.5 py-2 text-white/30 hover:text-white hover:bg-white/[0.05] transition-colors flex-shrink-0"
+        >
+          <Plus className="w-3 h-3" />
+        </button>
+      </div>
+
       {/* Status changer */}
-      <div className="relative mt-1.5">
+      <div className="relative mt-1">
         <button
           onClick={() => setMenuOpen((v) => !v)}
           className="w-full flex items-center gap-2 border border-white/10 px-3 py-2 hover:border-white/25 hover:bg-white/[0.03] transition-all"
@@ -229,7 +288,7 @@ type Tab = "anime" | "manga";
 
 export default function Watchlist() {
   const { ids: animeIds, toggle: toggleAnime } = useWatchlist();
-  const { entries, remove: removeManga, setStatus, byStatus } = useMangaList();
+  const { entries, remove: removeManga, setStatus, setChapter, byStatus } = useMangaList();
   const [tab, setTab]         = useState<Tab>("anime");
   const [statusFilter, setStatusFilter] = useState<ReadStatus | "all">("all");
 
@@ -350,8 +409,10 @@ export default function Watchlist() {
                               key={entry.id}
                               mangaId={entry.id}
                               readStatus={entry.status}
+                              chapter={entry.chapter}
                               onRemove={() => removeManga(entry.id)}
                               onStatusChange={(s) => setStatus(entry.id, s)}
+                              onChapterChange={(n) => setChapter(entry.id, n)}
                             />
                           ))}
                         </motion.div>
