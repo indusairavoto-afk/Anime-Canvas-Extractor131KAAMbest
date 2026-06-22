@@ -156,6 +156,22 @@ export const watchHistoryTable = pgTable("watch_history", {
   watchedAt: timestamp("watched_at").notNull().defaultNow(),
 }, (t) => [unique().on(t.userId, t.episodeId)]);
 
+export const streamReportTable = pgTable("stream_report", {
+  id: serial("id").primaryKey(),
+  animeId: integer("anime_id").notNull(),
+  animeTitle: text("anime_title").notNull(),
+  episode: integer("episode").notNull(),
+  server: text("server").notNull(),
+  lang: text("lang").notNull().default("SUB"),
+  gogoSlug: text("gogo_slug"),
+  anizoneSlug: text("anizone_slug"),
+  kotoSlug: text("koto_slug"),
+  miruroUrl: text("miruro_url"),
+  reportedAt: timestamp("reported_at").notNull().defaultNow(),
+});
+
+export type StreamReport = typeof streamReportTable.$inferSelect;
+
 export const insertAnimeSchema = createInsertSchema(animeTable).omit({ id: true, createdAt: true });
 export const insertEpisodeSchema = createInsertSchema(episodeTable).omit({ id: true, createdAt: true });
 export const insertCommentSchema = createInsertSchema(commentTable).omit({ id: true, createdAt: true });

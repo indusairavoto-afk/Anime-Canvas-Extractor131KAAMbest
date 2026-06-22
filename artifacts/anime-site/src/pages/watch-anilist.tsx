@@ -4,7 +4,7 @@ import HlsPlayer, { getEpisodeProgressPct } from "@/components/HlsPlayer";
 import {
   ArrowLeft, Search, Grid3X3, List, Play, Pause, SkipForward, SkipBack,
   RotateCcw, RotateCw, Scissors, Bookmark, BookmarkCheck, ChevronDown, Maximize2, Minimize2,
-  MessageSquare, Eye,
+  MessageSquare, Eye, Flag, CheckCircle2,
   Volume2, VolumeX, Maximize, Minimize,
 } from "lucide-react";
 import { useWatchlist } from "@/hooks/useWatchlist";
@@ -163,6 +163,7 @@ export default function WatchAniList() {
   const [epSearch, setEpSearch] = useState("");
   const [epGridView, setEpGridView] = useState(false);
   const [iframeLoaded, setIframeLoaded] = useState(false);
+  const [reportSent, setReportSent] = useState(false);
   const epListRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [cdnUrl, setCdnUrl] = useState<string | null>(null);
@@ -784,6 +785,29 @@ export default function WatchAniList() {
    * and penalises results that contain a different season number.
    * Returns null if no result is a confident enough match.
    */
+
+  function reportBrokenStream() {
+    if (reportSent) return;
+    setReportSent(true);
+    const payload = {
+      animeId,
+      animeTitle: title ?? "Unknown",
+      episode: currentEp,
+      server,
+      lang,
+      gogoSlug: gogoSlug || undefined,
+      anizoneSlug: anizoneSlug || undefined,
+      kotoSlug: kotoSlug || undefined,
+      miruroUrl: miruroIframeUrl || undefined,
+    };
+    fetch(apiUrl("/api/report-stream"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).catch(() => {});
+    setTimeout(() => setReportSent(false), 4000);
+  }
+
   function bestAutoSlug(
     results: { slug: string; title: string }[],
     query: string,
@@ -2010,6 +2034,22 @@ export default function WatchAniList() {
           <div className="hidden md:flex items-center gap-3 px-4 py-2 bg-white/[0.03] border-b border-white/5 text-[10px] text-white/30">
             <MessageSquare className="w-3 h-3 shrink-0" />
             <span>If the episode is not working, please try a different server below.</span>
+            <button
+              onClick={reportBrokenStream}
+              disabled={reportSent}
+              className={`flex items-center gap-1 ml-2 px-2 py-0.5 rounded border transition-all shrink-0 ${
+                reportSent
+                  ? "border-green-500/40 text-green-400/70 cursor-default"
+                  : "border-white/10 text-white/25 hover:border-red-400/40 hover:text-red-400/70 cursor-pointer"
+              }`}
+              title="Report this stream as broken"
+            >
+              {reportSent ? (
+                <><CheckCircle2 className="w-3 h-3" /><span>Reported</span></>
+              ) : (
+                <><Flag className="w-3 h-3" /><span>Flag broken</span></>
+              )}
+            </button>
             <div className="ml-auto shrink-0">
               {verifyResult === null && sourcePageTitle && (
                 <span className="text-white/20 font-mono flex items-center gap-1">
