@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { watchlistTable, mangaListTable, userTable, mangaReadStatusEnum } from "@workspace/db/schema";
-import { eq, and } from "drizzle-orm";
+import { watchlistTable, mangaListTable, watchHistoryTable, userTable, mangaReadStatusEnum } from "@workspace/db/schema";
+import { eq, and, desc } from "drizzle-orm";
 
 const router = Router();
 
@@ -131,6 +131,68 @@ router.delete("/mangalist/:mangaId", async (req, res) => {
       and(eq(mangaListTable.userId, userId), eq(mangaListTable.mangaId, Number(req.params.mangaId)))
     );
     res.json({ ok: true });
+  } catch (err) {
+    req.log.error(err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/* ─── Watch history ─────────────────────────────────────────────────────── */
+
+router.get("/history", async (req, res) => {
+  try {
+    const username = req.query.username as string;
+    if (!username) { res.status(400).json({ error: "username required" }); return; }
+    const userId = await resolveUserId(username);
+    if (!userId) { res.status(404).json({ error: "User not found" }); return; }
+    const rows = await db.select()
+      .from(watchHistoryTable)
+      .where(eq(watchHistoryTable.userId, userId))
+      .orderBy(desc(watchHistoryTable.watchedAt))
+      .limit(50);
+    res.json(rows.map(r => ({
+      id: r.id,
+      animeId: r.animeId,
+      episodeId: r.episodeId,
+      episodeNumber: r.episodeNumber,
+      animeTitle: r.animeTitle,
+      coverImage: r.coverImage,
+      watchedAt: r.watchedAt.toISOString(),
+    })));
+  } catch (err) {
+    req.log.error(err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/history", async (req, res) => {
+  try {
+    const { username, animeId, episodeId, episodeNumber, animeTitle, coverImage } = req.body;
+    if (!username || animeId === undefined || episodeId === undefined) {
+      res.status(400).json({ error: "username, animeId and episodeId required" });
+      return;
+    }
+    const userId = await resolveUserId(username);
+    if (!userId) { res.status(404).json({ error: "User not found" }); return; }
+    await db.insert(watchHistoryTable)
+      .values({
+        userId,
+        animeId: Number(animeId),
+        episodeId: Number(episodeId),
+        episodeNumber: episodeNumber != null ? Number(episodeNumber) : null,
+        animeTitle: animeTitle ?? null,
+        coverImage: coverImage ?? null,
+      })
+      .onConflictDoUpdate({
+        target: [watchHistoryTable.userId, watchHistoryTable.episodeId],
+        set: {
+          watchedAt: new Date(),
+          animeTitle: animeTitle ?? null,
+          coverImage: coverImage ?? null,
+          episodeNumber: episodeNumber != null ? Number(episodeNumber) : null,
+        },
+      });
+    res.status(201).json({ ok: true });
   } catch (err) {
     req.log.error(err);
     res.status(500).json({ error: "Internal server error" });

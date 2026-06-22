@@ -145,6 +145,17 @@ export const mangaListTable = pgTable("manga_list", {
   addedAt: timestamp("added_at").notNull().defaultNow(),
 }, (t) => [unique().on(t.userId, t.mangaId)]);
 
+export const watchHistoryTable = pgTable("watch_history", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => userTable.id, { onDelete: "cascade" }),
+  animeId: integer("anime_id").notNull(),
+  episodeId: integer("episode_id").notNull(),
+  episodeNumber: integer("episode_number"),
+  animeTitle: text("anime_title"),
+  coverImage: text("cover_image"),
+  watchedAt: timestamp("watched_at").notNull().defaultNow(),
+}, (t) => [unique().on(t.userId, t.episodeId)]);
+
 export const insertAnimeSchema = createInsertSchema(animeTable).omit({ id: true, createdAt: true });
 export const insertEpisodeSchema = createInsertSchema(episodeTable).omit({ id: true, createdAt: true });
 export const insertCommentSchema = createInsertSchema(commentTable).omit({ id: true, createdAt: true });

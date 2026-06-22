@@ -307,10 +307,10 @@ export default function WatchAniList() {
 
   useEffect(() => {
     if (!anime || !currentEp || !animeId) return;
-    markWatched(currentEp, animeId);
     const t = anime.title.english || anime.title.romaji || "";
     const c = anime.coverImage?.extraLarge || anime.coverImage?.large || "";
     const b = anime.bannerImage || c;
+    markWatched(currentEp, animeId, { animeTitle: t, coverImage: c, episodeNumber: currentEp });
     markProgress({
       animeId,
       episodeNumber: currentEp,

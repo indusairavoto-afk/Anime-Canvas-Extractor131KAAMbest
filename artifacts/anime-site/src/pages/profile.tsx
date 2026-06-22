@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { apiUrl } from "@/lib/api";
 import { useParams, Link, useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
-import { Calendar, Users, Edit3, LogOut, ThumbsUp, X, Check, Loader2 } from "lucide-react";
+import { Calendar, Users, Edit3, LogOut, ThumbsUp, X, Check, Loader2, Clock, Play, Tv } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 
 interface UserProfile {
@@ -14,6 +14,16 @@ interface UserProfile {
   avatarUrl: string;
   createdAt: string;
   reviewCount: number;
+}
+
+interface HistoryEntry {
+  id: number;
+  animeId: number;
+  episodeId: number;
+  episodeNumber: number | null;
+  animeTitle: string | null;
+  coverImage: string | null;
+  watchedAt: string;
 }
 
 interface ReviewItem {
@@ -55,6 +65,7 @@ function joinedWhen(iso: string) {
 }
 
 type RatingFilter = "all" | "skip" | "timepass" | "go_for_it" | "perfection";
+type ProfileTab = "reviews" | "history";
 
 export default function ProfilePage() {
   const { username } = useParams<{ username: string }>();
@@ -63,11 +74,14 @@ export default function ProfilePage() {
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [reviews, setReviews] = useState<ReviewItem[]>([]);
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [profileLoading, setProfileLoading] = useState(true);
   const [reviewsLoading, setReviewsLoading] = useState(true);
+  const [historyLoading, setHistoryLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [ratingFilter, setRatingFilter] = useState<RatingFilter>("all");
   const [revealedIds, setRevealedIds] = useState<Set<number>>(new Set());
+  const [activeTab, setActiveTab] = useState<ProfileTab>("reviews");
 
   // Edit modal
   const [editOpen, setEditOpen] = useState(false);
@@ -94,6 +108,12 @@ export default function ProfilePage() {
       .then(r => r.ok ? r.json() : [])
       .then(setReviews)
       .finally(() => setReviewsLoading(false));
+
+    setHistoryLoading(true);
+    fetch(apiUrl(`/api/history?username=${username}`))
+      .then(r => r.ok ? r.json() : [])
+      .then(setHistory)
+      .finally(() => setHistoryLoading(false));
   }, [username]);
 
   function openEdit() {
@@ -182,8 +202,8 @@ export default function ProfilePage() {
                   <p className="text-[10px] text-white/35 uppercase tracking-widest font-mono mt-0.5">Reviews</p>
                 </div>
                 <div className="text-center">
-                  <p className="text-xl font-bold text-white">0</p>
-                  <p className="text-[10px] text-white/35 uppercase tracking-widest font-mono mt-0.5">Collections</p>
+                  <p className="text-xl font-bold text-white">{historyLoading ? "—" : history.length}</p>
+                  <p className="text-[10px] text-white/35 uppercase tracking-widest font-mono mt-0.5">Watched</p>
                 </div>
               </div>
 
@@ -229,15 +249,92 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          {/* ── Right: Reviews ── */}
+          {/* ── Right: Content ── */}
           <div className="flex-1 min-w-0">
             {/* Tab bar */}
             <div className="flex border-b border-white/8 mb-5">
-              <button className="flex items-center gap-2 pb-3 px-1 text-sm font-semibold text-white border-b-2 border-white -mb-px mr-6">
+              <button
+                onClick={() => setActiveTab("reviews")}
+                className={`flex items-center gap-2 pb-3 px-1 text-sm font-semibold border-b-2 -mb-px mr-6 transition-colors ${activeTab === "reviews" ? "text-white border-white" : "text-white/40 border-transparent hover:text-white/70"}`}
+              >
                 <Edit3 className="w-3.5 h-3.5" /> Reviews
+              </button>
+              <button
+                onClick={() => setActiveTab("history")}
+                className={`flex items-center gap-2 pb-3 px-1 text-sm font-semibold border-b-2 -mb-px transition-colors ${activeTab === "history" ? "text-white border-white" : "text-white/40 border-transparent hover:text-white/70"}`}
+              >
+                <Clock className="w-3.5 h-3.5" /> History
+                {history.length > 0 && (
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${activeTab === "history" ? "bg-white text-black" : "bg-white/10 text-white/40"}`}>
+                    {history.length}
+                  </span>
+                )}
               </button>
             </div>
 
+            {/* ── History tab ── */}
+            <AnimatePresence mode="wait">
+            {activeTab === "history" && (
+              <motion.div key="history" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}>
+                {historyLoading ? (
+                  <div className="space-y-3">
+                    {[...Array(4)].map((_, i) => (
+                      <div key={i} className="bg-zinc-900 rounded-xl h-20 animate-pulse" />
+                    ))}
+                  </div>
+                ) : history.length === 0 ? (
+                  <div className="bg-zinc-900 rounded-xl p-12 text-center">
+                    <Tv className="w-8 h-8 text-white/20 mx-auto mb-3" />
+                    <p className="text-white/25 text-sm">No watch history yet.</p>
+                    <p className="text-white/15 text-xs mt-1">Episodes watched for 10+ seconds appear here.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {history.map((entry) => (
+                      <motion.div
+                        key={entry.id}
+                        initial={{ opacity: 0, y: 4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="flex items-center gap-3 bg-zinc-900 rounded-xl p-3 hover:bg-zinc-800 transition-colors group"
+                      >
+                        {/* Cover */}
+                        <div className="w-12 h-16 rounded-lg overflow-hidden flex-shrink-0 bg-zinc-800">
+                          {entry.coverImage
+                            ? <img src={entry.coverImage} alt={entry.animeTitle ?? ""} className="w-full h-full object-cover" />
+                            : <div className="w-full h-full flex items-center justify-center text-white/20"><Tv className="w-5 h-5" /></div>
+                          }
+                        </div>
+                        {/* Info */}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-white truncate">
+                            {entry.animeTitle ?? `Anime #${entry.animeId}`}
+                          </p>
+                          <p className="text-xs text-white/40 mt-0.5">
+                            {entry.episodeNumber != null ? `Episode ${entry.episodeNumber}` : `Episode ID ${entry.episodeId}`}
+                          </p>
+                          <p className="text-[10px] text-white/25 mt-1 flex items-center gap-1">
+                            <Clock className="w-2.5 h-2.5" />
+                            {timeAgo(entry.watchedAt)}
+                          </p>
+                        </div>
+                        {/* Play button */}
+                        <Link href={`/watch/${entry.episodeId}`}>
+                          <div className="w-8 h-8 rounded-full border border-white/10 flex items-center justify-center text-white/30 group-hover:text-white group-hover:border-white/30 transition-colors flex-shrink-0">
+                            <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
+                          </div>
+                        </Link>
+                      </motion.div>
+                    ))}
+                  </div>
+                )}
+              </motion.div>
+            )}
+            </AnimatePresence>
+
+            {/* ── Reviews tab ── */}
+            <AnimatePresence mode="wait">
+            {activeTab === "reviews" && (
+            <motion.div key="reviews" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}>
             {/* Rating filter pills */}
             <div className="flex flex-wrap gap-2 mb-5">
               {(["all", "skip", "timepass", "go_for_it", "perfection"] as RatingFilter[]).map(f => {
@@ -339,6 +436,9 @@ export default function ProfilePage() {
                 })}
               </div>
             )}
+            </motion.div>
+            )}
+            </AnimatePresence>
           </div>
         </div>
       </div>

@@ -50,10 +50,14 @@ export default function Watch() {
   useEffect(() => {
     if (!episode?.animeId) return;
     const timer = setTimeout(() => {
-      markWatched(episodeId, episode.animeId);
+      markWatched(episodeId, episode.animeId, {
+        animeTitle: anime?.title,
+        coverImage: anime?.coverImage,
+        episodeNumber: episode?.episodeNumber,
+      });
     }, 10_000);
     return () => clearTimeout(timer);
-  }, [episodeId, episode?.animeId, markWatched]);
+  }, [episodeId, episode?.animeId, anime?.title, anime?.coverImage, episode?.episodeNumber, markWatched]);
 
   // Reset season filter when anime changes
   useEffect(() => { setSeasonFilter(null); }, [episode?.animeId]);
