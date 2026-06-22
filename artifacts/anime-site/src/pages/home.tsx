@@ -1,3 +1,4 @@
+import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Link } from "wouter";
 import { Play, Star, Clock, ChevronRight, TrendingUp, ChevronLeft, X, History, CalendarClock, Info } from "lucide-react";
@@ -336,14 +337,12 @@ function HeroSlide({ anime }: { anime: AniMedia }) {
   );
 }
 
-/* ── Mobile hero: Miruro-inspired full-width banner + info card ── */
-function MobileHeroCard({ anime, direction }: { anime: AniMedia; direction: number }) {
+/* ── Mobile hero: full-bleed image bg with overlaid info ── */
+function MobileHeroCard({ anime, direction, dots }: { anime: AniMedia; direction: number; dots: React.ReactNode }) {
   const title = anime.title.english || anime.title.romaji;
   const score = anime.averageScore ? Math.round(anime.averageScore) : null;
-  const banner = anime.bannerImage || anime.coverImage?.extraLarge || anime.coverImage?.large || "";
-  const cover = anime.coverImage?.extraLarge || anime.coverImage?.large || "";
+  const bg = anime.bannerImage || anime.coverImage?.extraLarge || anime.coverImage?.large || "";
 
-  // Airing countdown label: "EP 12 · 5D 21H"
   let airingLabel: string | null = null;
   let currentEp: number | null = null;
   if (anime.nextAiringEpisode) {
@@ -356,9 +355,7 @@ function MobileHeroCard({ anime, direction }: { anime: AniMedia; direction: numb
 
   const episodeDisplay = currentEp !== null && anime.episodes
     ? `${currentEp} / ${anime.episodes}`
-    : anime.episodes
-    ? `${anime.episodes} EPs`
-    : null;
+    : anime.episodes ? `${anime.episodes} EPs` : null;
 
   return (
     <AnimatePresence mode="wait" custom={direction}>
@@ -369,54 +366,64 @@ function MobileHeroCard({ anime, direction }: { anime: AniMedia; direction: numb
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         transition={{ duration: 0.4 }}
-        className="absolute inset-0 flex flex-col"
+        className="absolute inset-0 overflow-hidden"
       >
-        {/* ── Banner image ── */}
-        <div className="relative flex-shrink-0 overflow-hidden" style={{ height: 240 }}>
-          <img
-            src={banner || cover}
-            alt={title}
-            className="w-full h-full object-cover"
-          />
-          {/* Subtle bottom fade into info section */}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent" />
-          {/* Top-left: next airing badge */}
-          {airingLabel && (
-            <div className="absolute top-14 left-3 flex items-center gap-1.5 bg-black/55 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10">
-              <Clock className="w-3 h-3 text-white/70 flex-shrink-0" />
+        {/* Full-bleed background image — same image fills everything */}
+        <img
+          src={bg}
+          alt=""
+          className="absolute inset-0 w-full h-full object-cover object-top"
+        />
+        {/* Multi-stop gradient: transparent on top → opaque at bottom */}
+        <div
+          className="absolute inset-0"
+          style={{
+            background: "linear-gradient(to bottom, rgba(0,0,0,0.08) 0%, rgba(0,0,0,0.15) 30%, rgba(0,0,0,0.65) 55%, rgba(0,0,0,0.93) 72%, rgba(0,0,0,0.98) 100%)",
+          }}
+        />
+
+        {/* Top badges — just below the navbar */}
+        <div className="absolute left-3 right-3 flex items-center justify-between" style={{ top: 64 }}>
+          {airingLabel ? (
+            <div className="flex items-center gap-1.5 bg-black/50 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10">
+              <Clock className="w-3 h-3 text-white/65 flex-shrink-0" />
               <span className="text-[11px] font-semibold text-white tracking-wide">{airingLabel}</span>
             </div>
-          )}
-          {/* Top-right: episode count */}
+          ) : <span />}
           {episodeDisplay && (
-            <div className="absolute top-14 right-3 bg-black/55 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10">
+            <div className="bg-black/50 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10">
               <span className="text-[11px] font-semibold text-white tracking-wide">{episodeDisplay}</span>
             </div>
           )}
         </div>
 
-        {/* ── Info section ── */}
-        <div className="flex-1 bg-black px-4 pt-4 pb-2 flex flex-col gap-3 min-h-0">
+        {/* Slide dots — mid-card */}
+        <div className="absolute left-4 flex items-center gap-1.5" style={{ top: "48%" }}>
+          {dots}
+        </div>
+
+        {/* Info — pinned to bottom */}
+        <div className="absolute bottom-0 left-0 right-0 px-4 pb-5 flex flex-col gap-3">
           {/* Metadata badges */}
           <div className="flex items-center gap-1.5 flex-wrap">
             {anime.format && (
-              <span className="text-[11px] font-semibold text-white/75 px-2.5 py-1 rounded-full border border-white/15 bg-white/5">
+              <span className="text-[11px] font-semibold text-white/80 px-2.5 py-1 rounded-full border border-white/20 bg-white/[0.08]">
                 {anime.format}
               </span>
             )}
             {anime.episodes && (
-              <span className="flex items-center gap-1 text-[11px] font-semibold text-white/75 px-2.5 py-1 rounded-full border border-white/15 bg-white/5">
-                <span className="text-white/40 text-[10px]">CC</span> {anime.episodes}
+              <span className="flex items-center gap-1 text-[11px] font-semibold text-white/80 px-2.5 py-1 rounded-full border border-white/20 bg-white/[0.08]">
+                <span className="text-white/45 text-[10px]">CC</span> {anime.episodes}
               </span>
             )}
             {score && (
-              <span className="flex items-center gap-1 text-[11px] font-semibold text-white/75 px-2.5 py-1 rounded-full border border-white/15 bg-white/5">
-                <Star className="w-3 h-3 fill-white/50 text-white/50" /> {score}
+              <span className="flex items-center gap-1 text-[11px] font-semibold text-white/80 px-2.5 py-1 rounded-full border border-white/20 bg-white/[0.08]">
+                <Star className="w-3 h-3 fill-white/55 text-white/55" /> {score}
               </span>
             )}
             {anime.duration && (
-              <span className="flex items-center gap-1 text-[11px] font-semibold text-white/75 px-2.5 py-1 rounded-full border border-white/15 bg-white/5">
-                <Clock className="w-3 h-3 text-white/40" /> {anime.duration} mins
+              <span className="flex items-center gap-1 text-[11px] font-semibold text-white/80 px-2.5 py-1 rounded-full border border-white/20 bg-white/[0.08]">
+                <Clock className="w-3 h-3 text-white/45" /> {anime.duration} mins
               </span>
             )}
           </div>
@@ -434,14 +441,14 @@ function MobileHeroCard({ anime, direction }: { anime: AniMedia; direction: numb
             {title}
           </h1>
 
-          {/* Genre pills */}
+          {/* Genre + studio pills */}
           {anime.genres.length > 0 && (
             <div className="flex flex-wrap gap-2">
-              <span className="text-[12px] text-white/55 px-3 py-1 rounded-full border border-white/12 bg-white/[0.04]">
+              <span className="text-[12px] text-white/60 px-3 py-1 rounded-full border border-white/15 bg-black/30">
                 {anime.genres.slice(0, 3).join(" · ")}
               </span>
               {anime.studios?.nodes?.[0]?.name && (
-                <span className="text-[12px] text-white/55 px-3 py-1 rounded-full border border-white/12 bg-white/[0.04]">
+                <span className="text-[12px] text-white/60 px-3 py-1 rounded-full border border-white/15 bg-black/30">
                   {anime.studios.nodes[0].name}
                 </span>
               )}
@@ -449,9 +456,9 @@ function MobileHeroCard({ anime, direction }: { anime: AniMedia; direction: numb
           )}
 
           {/* CTA buttons */}
-          <div className="flex gap-3 mt-auto pt-1">
+          <div className="flex gap-3">
             <Link href={`/anime/al/${anime.id}`} className="flex-1">
-              <button className="w-full flex items-center justify-center gap-2 bg-white/10 text-white py-2.5 rounded-full text-[13px] font-bold border border-white/20 active:bg-white/20 transition-colors">
+              <button className="w-full flex items-center justify-center gap-2 bg-white/12 text-white py-2.5 rounded-full text-[13px] font-bold border border-white/25 active:bg-white/20 transition-colors backdrop-blur-sm">
                 <Info className="w-4 h-4" /> DETAILS
               </button>
             </Link>
@@ -828,21 +835,23 @@ export default function Home() {
         >
           {/* ── MOBILE hero ── */}
           <div className="sm:hidden relative" style={{ height: 490 }}>
-            {currentAnime && <MobileHeroCard anime={currentAnime} direction={direction} />}
-            {/* Dots — overlaid at bottom of the banner image (240px from top) */}
-            <div className="absolute left-4 z-20 flex items-center gap-1.5" style={{ top: 214 }}>
-              {slides.map((_, i) => (
-                <button
-                  key={i}
-                  onClick={() => goTo(i)}
-                  aria-label={`Slide ${i + 1}`}
-                  className="relative h-1 transition-all duration-300 focus:outline-none"
-                  style={{ width: i === slide ? 20 : 6 }}
-                >
-                  <span className={`absolute inset-0 transition-all duration-300 ${i === slide ? "bg-white" : "bg-white/30"}`} />
-                </button>
-              ))}
-            </div>
+            {currentAnime && (
+              <MobileHeroCard
+                anime={currentAnime}
+                direction={direction}
+                dots={slides.map((_, i) => (
+                  <button
+                    key={i}
+                    onClick={() => goTo(i)}
+                    aria-label={`Slide ${i + 1}`}
+                    className="relative h-1 transition-all duration-300 focus:outline-none"
+                    style={{ width: i === slide ? 20 : 6 }}
+                  >
+                    <span className={`absolute inset-0 transition-all duration-300 ${i === slide ? "bg-white" : "bg-white/25"}`} />
+                  </button>
+                ))}
+              />
+            )}
           </div>
 
           {/* ── DESKTOP hero ── */}

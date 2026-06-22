@@ -123,33 +123,52 @@ export function Sidebar() {
         </AnimatePresence>
       </div>
 
-      {/* ── MOBILE: bottom tab bar ── */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-black/95 backdrop-blur-xl border-t border-white/[0.08] flex items-stretch">
-        {NAV_ITEMS.map(({ icon: Icon, label, href }) => {
-          const active = isActive(href);
-          const showBadge = href === "/watchlist" && ids.length > 0;
-          const showCommunityBadge = href === "/community";
-          return (
-            <Link key={href} href={href} className="flex-1">
-              <div className={`relative flex flex-col items-center justify-center gap-1 py-2.5 transition-all ${active ? "text-white" : "text-white/35"}`}>
-                <div className="relative">
-                  <Icon className="w-5 h-5" strokeWidth={active ? 2 : 1.5} />
-                  {showBadge && (
-                    <span className="absolute -top-1.5 -right-1.5 bg-white text-black text-[7px] font-bold w-3.5 h-3.5 rounded-full flex items-center justify-center leading-none">
-                      {ids.length > 9 ? "9+" : ids.length}
+      {/* ── MOBILE: bottom tab bar — 5 primary items ── */}
+      {(() => {
+        const MOBILE_NAV = [
+          { icon: Home, label: "Home", href: "/" },
+          { icon: Search, label: "Browse", href: "/browse" },
+          { icon: Trophy, label: "Rankings", href: "/ranking" },
+          { icon: BookOpen, label: "Manga", href: "/manga" },
+          { icon: Bookmark, label: "My List", href: "/watchlist" },
+        ];
+        return (
+          <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 flex items-stretch" style={{ background: "rgba(8,8,8,0.92)", backdropFilter: "blur(20px)", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+            {MOBILE_NAV.map(({ icon: Icon, label, href }) => {
+              const active = isActive(href);
+              const showBadge = href === "/watchlist" && ids.length > 0;
+              return (
+                <Link key={href} href={href} className="flex-1">
+                  <div className="relative flex flex-col items-center justify-center pt-2.5 pb-3 gap-1.5">
+                    {/* Active pill background */}
+                    {active && (
+                      <motion.div
+                        layoutId="mobile-nav-active"
+                        className="absolute inset-x-2 inset-y-1 rounded-xl bg-white/[0.08]"
+                        transition={{ type: "spring", stiffness: 380, damping: 34 }}
+                      />
+                    )}
+                    <div className="relative z-10">
+                      <Icon
+                        className={`w-5 h-5 transition-colors ${active ? "text-white" : "text-white/30"}`}
+                        strokeWidth={active ? 2 : 1.5}
+                      />
+                      {showBadge && (
+                        <span className="absolute -top-1.5 -right-1.5 bg-white text-black text-[7px] font-bold w-3.5 h-3.5 rounded-full flex items-center justify-center leading-none">
+                          {ids.length > 9 ? "9+" : ids.length}
+                        </span>
+                      )}
+                    </div>
+                    <span className={`text-[9px] font-medium uppercase tracking-widest leading-none z-10 transition-colors ${active ? "text-white" : "text-white/28"}`}>
+                      {label}
                     </span>
-                  )}
-                  {showCommunityBadge && (
-                    <span className="absolute -top-1.5 -right-1.5 bg-white text-black text-[7px] font-bold w-3.5 h-3.5 rounded-full flex items-center justify-center leading-none">54</span>
-                  )}
-                </div>
-                <span className="text-[9px] font-mono uppercase tracking-widest leading-none">{label}</span>
-                {active && <div className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-white" />}
-              </div>
-            </Link>
-          );
-        })}
-      </nav>
+                  </div>
+                </Link>
+              );
+            })}
+          </nav>
+        );
+      })()}
     </>
   );
 }
