@@ -163,8 +163,19 @@ function slugVariants(slug: string): string[] {
   // ": " → "-" already done by title normalisation, but try collapsing hyphens differently
   add(slug.replace(/--+/g, "-"));
 
-  // Common GoGo year suffix
+  // Strip GoGo year suffix variants
   add(slug.replace(/-\d{4}(-\d+)?$/, ""));
+
+  // Add year suffix variants — GoGo often appends the airing year (e.g. "-2026")
+  // Try current year ±1 so new seasonals are found without manual slug editing.
+  const currentYear = new Date().getFullYear();
+  for (const y of [currentYear, currentYear - 1, currentYear + 1]) {
+    // Only add if slug doesn't already end with this year
+    if (!slug.endsWith(`-${y}`)) add(`${slug}-${y}`);
+    // Also try stripped-base + year (e.g. stripped season suffix then year)
+    const base = slug.replace(/-(?:season|part|cour)-\d+$/i, "").replace(/-\d{4}$/, "");
+    if (base !== slug && !base.endsWith(`-${y}`)) add(`${base}-${y}`);
+  }
 
   return out;
 }
@@ -242,20 +253,16 @@ async function probeCdnUrl(slug: string, ep: string): Promise<ProbedResult | nul
     const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
     const pageTitle = titleMatch?.[1]?.trim().replace(/\s+/g, " ") ?? null;
 
-    // Try ALL CDN server URLs found on the page, stopping at the first working one.
-    // GoGo often has multiple server buttons — if the primary CDN (megaplay.buzz) is
-    // DMCA'd (410 "We're Sorry"), the secondary/tertiary servers may still work.
+    // Extract the first CDN URL from the page and unwrap the streaming.php
+    // redirect to get the direct megaplay.buzz player URL.
+    // Note: megaplay.buzz always returns 200 HTML even for removed videos (the
+    // "We're Sorry / 410" error is JS-rendered), so we can't validate server-side.
+    // The frontend auto-switch handles broken streams instead.
     const cdnUrls = extractAllCdnUrls(html);
-    for (const streamingUrl of cdnUrls) {
-      const innerUrl = await extractInnerPlayerUrl(streamingUrl);
-      const finalUrl = innerUrl ?? decodeHtmlEntities(streamingUrl);
-      if (await isCdnWorking(finalUrl)) {
-        return { cdnUrl: finalUrl, slug, pageTitle };
-      }
-    }
+    if (cdnUrls.length === 0) return null;
 
-    // All CDN servers on this page are broken
-    return null;
+    const innerUrl = await extractInnerPlayerUrl(cdnUrls[0]);
+    return { cdnUrl: innerUrl ?? decodeHtmlEntities(cdnUrls[0]), slug, pageTitle };
   } catch {
     return null;
   }

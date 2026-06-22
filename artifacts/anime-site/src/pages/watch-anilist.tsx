@@ -1146,21 +1146,21 @@ export default function WatchAniList() {
   }, []);
 
   // Auto-detect GoGo stream errors: if the postMessage bridge never responds
-  // within 3.5 seconds of the iframe loading, the player is likely showing an error
+  // within 2.5 seconds of the iframe loading, the player is likely showing an error
   // page (e.g. 410 copyright removal) — automatically show our themed overlay.
-  // Working streams fire postMessage within 1–2 s, so 3.5 s is a safe buffer.
+  // Working streams fire postMessage within 1–2 s, so 2.5 s is a safe buffer.
   useEffect(() => {
     if (server !== "GOGO" || !iframeLoaded || gogoStreamError || cdnNotFound || cdnLoading) return;
     const timer = setTimeout(() => {
       if (!bridgeLiveRef.current) {
         setGogoStreamError(true);
       }
-    }, 3500);
+    }, 2500);
     return () => clearTimeout(timer);
   }, [server, iframeLoaded, gogoStreamError, cdnNotFound, cdnLoading]);
 
-  // Auto-switch: when GoGo stream error is detected, automatically switch to the
-  // best available working server (KOTO → ANIZONE → MIRURO) after a short delay.
+  // Auto-switch: when GoGo stream error is detected, immediately switch to the
+  // best available working server (KOTO → ANIZONE → MIRURO).
   useEffect(() => {
     if (!gogoStreamError || server !== "GOGO") return;
     const fallbackOrder = ["KOTO", "ANIZONE", "MIRURO"] as const;
@@ -1174,7 +1174,7 @@ export default function WatchAniList() {
       setIframeLoaded(false);
       bridgeLiveRef.current = false;
       setAutoSwitchMsg(null);
-    }, 2000);
+    }, 600);
     return () => { clearTimeout(timer); setAutoSwitchMsg(null); };
   }, [gogoStreamError, server, serverHealth]); // eslint-disable-line react-hooks/exhaustive-deps
 
