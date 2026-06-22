@@ -17,10 +17,10 @@ interface ReviewRow {
 }
 
 const CATS = [
-  { key: "skip"        as VoteCategory, label: "Skip",       color: "#6b7280", accent: "#9ca3af" },
-  { key: "timepass"    as VoteCategory, label: "Timepass",   color: "#d97706", accent: "#fbbf24" },
-  { key: "go_for_it"   as VoteCategory, label: "Go For It",  color: "#059669", accent: "#34d399" },
-  { key: "perfection"  as VoteCategory, label: "Perfection", color: "#7c3aed", accent: "#a78bfa" },
+  { key: "skip"       as VoteCategory, label: "Skip",       zone: "SKIP",       fill: "#dc2626", glow: "#ef4444", text: "#fca5a5" },
+  { key: "timepass"   as VoteCategory, label: "Timepass",   zone: "TIMEPASS",   fill: "#ea580c", glow: "#f97316", text: "#fdba74" },
+  { key: "go_for_it"  as VoteCategory, label: "Go For It",  zone: "GO FOR IT",  fill: "#ca8a04", glow: "#eab308", text: "#fde047" },
+  { key: "perfection" as VoteCategory, label: "Perfection", zone: "PERFECTION", fill: "#16a34a", glow: "#22c55e", text: "#86efac" },
 ] as const;
 
 const CAT_MAP = Object.fromEntries(CATS.map(c => [c.key, c])) as Record<VoteCategory, typeof CATS[number]>;
@@ -32,8 +32,7 @@ function timeAgo(iso: string) {
   if (m < 60) return `${m}m ago`;
   const h = Math.floor(m / 60);
   if (h < 24) return `${h}h ago`;
-  const d = Math.floor(h / 24);
-  return `${d}d ago`;
+  return `${Math.floor(h / 24)}d ago`;
 }
 
 interface Props {
@@ -41,6 +40,188 @@ interface Props {
   episode: number;
   episodeTitle: string;
   onPostReview?: (text: string, category: VoteCategory, spoiler: boolean) => void;
+}
+
+/* ── Gauge SVG ─────────────────────────────────────────────────────────── */
+const CX = 120, CY = 112, R_OUT = 100, R_IN = 68;
+const GAP = 2.2; // degrees of gap between segments
+
+function polar(r: number, deg: number) {
+  const rad = (deg * Math.PI) / 180;
+  return { x: CX + r * Math.cos(rad), y: CY - r * Math.sin(rad) };
+}
+
+function segmentPath(startDeg: number, endDeg: number) {
+  const s1 = polar(R_OUT, startDeg - GAP / 2);
+  const e1 = polar(R_OUT, endDeg + GAP / 2);
+  const s2 = polar(R_IN,  endDeg + GAP / 2);
+  const e2 = polar(R_IN,  startDeg - GAP / 2);
+  const large = (startDeg - endDeg) > 180 ? 1 : 0;
+  return [
+    `M ${s1.x} ${s1.y}`,
+    `A ${R_OUT} ${R_OUT} 0 ${large} 0 ${e1.x} ${e1.y}`,
+    `L ${s2.x} ${s2.y}`,
+    `A ${R_IN} ${R_IN} 0 ${large} 1 ${e2.x} ${e2.y}`,
+    "Z",
+  ].join(" ");
+}
+
+// Segments: gauge spans from 180° (left/Skip) to 0° (right/Perfection)
+// Each of 4 cats = 45°
+const SEGMENTS = CATS.map((cat, i) => ({
+  ...cat,
+  path: segmentPath(180 - i * 45, 180 - (i + 1) * 45),
+  // Center angle for label placement
+  labelDeg: 180 - i * 45 - 22.5,
+}));
+
+function GaugeMeter({ counts, total, myVote }: { counts: VoteCounts; total: number; myVote: VoteCategory | null }) {
+  const weightedPos = total > 0
+    ? CATS.reduce((sum, cat, i) => sum + (i / (CATS.length - 1)) * counts[cat.key], 0) / total
+    : -1; // -1 = no votes yet
+
+  // Needle rotation: -90° = points left (pos=0), 0° = points up (pos=0.5), +90° = points right (pos=1)
+  const needleRot = weightedPos >= 0 ? weightedPos * 180 - 90 : -90;
+
+  const activeCat = myVote ? CAT_MAP[myVote] : null;
+  const domIdx    = total > 0 ? CATS.reduce((best, _, i) => counts[CATS[i].key] > counts[CATS[best].key] ? i : best, 0) : -1;
+  const domCat    = domIdx >= 0 ? CATS[domIdx] : null;
+  const domPct    = domCat && total > 0 ? Math.round((counts[domCat.key] / total) * 100) : 0;
+
+  return (
+    <svg viewBox="0 0 240 140" className="w-full max-w-[280px]" style={{ overflow: "visible" }}>
+      <defs>
+        {SEGMENTS.map(seg => (
+          <filter key={`glow-${seg.key}`} id={`glow-${seg.key}`} x="-30%" y="-30%" width="160%" height="160%">
+            <feGaussianBlur stdDeviation="4" result="blur" />
+            <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+          </filter>
+        ))}
+      </defs>
+
+      {/* Segment arcs */}
+      {SEGMENTS.map((seg) => {
+        const isActive = myVote === seg.key;
+        const isDom    = domCat?.key === seg.key && total > 0;
+        return (
+          <path
+            key={seg.key}
+            d={seg.path}
+            fill={seg.fill}
+            opacity={isActive ? 1 : isDom ? 0.65 : total > 0 ? 0.25 : 0.18}
+            filter={isActive ? `url(#glow-${seg.key})` : undefined}
+            style={{ transition: "opacity 0.4s ease, filter 0.4s ease" }}
+          />
+        );
+      })}
+
+      {/* Zone labels along the arc */}
+      {SEGMENTS.map((seg) => {
+        const lp = polar(R_OUT + 13, seg.labelDeg);
+        const isActive = myVote === seg.key;
+        return (
+          <text
+            key={`lbl-${seg.key}`}
+            x={lp.x}
+            y={lp.y}
+            textAnchor="middle"
+            dominantBaseline="middle"
+            fontSize="6.5"
+            fontFamily="monospace"
+            fontWeight="700"
+            letterSpacing="0.8"
+            fill={isActive ? seg.text : "rgba(255,255,255,0.28)"}
+            style={{
+              textTransform: "uppercase",
+              transition: "fill 0.4s ease",
+              transform: `rotate(${-(seg.labelDeg - 90)}deg)`,
+              transformOrigin: `${lp.x}px ${lp.y}px`,
+            }}
+          >
+            {seg.zone}
+          </text>
+        );
+      })}
+
+      {/* Center text */}
+      <text
+        x={CX} y={CY - 16}
+        textAnchor="middle"
+        fontSize={total > 0 ? "28" : "11"}
+        fontWeight="800"
+        fontFamily="system-ui,sans-serif"
+        fill={activeCat?.text ?? (domCat?.text ?? "rgba(255,255,255,0.2)")}
+        style={{ transition: "fill 0.4s ease" }}
+      >
+        {total > 0 ? `${domPct}%` : "NEXA"}
+      </text>
+      {total > 0 && (
+        <>
+          <text x={CX} y={CY - 2} textAnchor="middle" fontSize="7" fontFamily="monospace"
+            fill={activeCat?.text ?? (domCat?.text ?? "rgba(255,255,255,0.3)")}
+            fontWeight="600" style={{ transition: "fill 0.4s ease" }}>
+            {domCat?.zone ?? ""}
+          </text>
+          <text x={CX} y={CY + 8} textAnchor="middle" fontSize="5.5" fontFamily="monospace"
+            fill="rgba(255,255,255,0.2)" letterSpacing="0.5">
+            {total.toLocaleString()} VOTES
+          </text>
+        </>
+      )}
+      {total === 0 && (
+        <text x={CX} y={CY - 2} textAnchor="middle" fontSize="6" fontFamily="monospace"
+          fill="rgba(255,255,255,0.15)" letterSpacing="1">
+          METER
+        </text>
+      )}
+
+      {/* Needle */}
+      <g
+        style={{
+          transform: `rotate(${needleRot}deg)`,
+          transformOrigin: `${CX}px ${CY}px`,
+          transition: "transform 0.7s cubic-bezier(0.34,1.56,0.64,1)",
+        }}
+      >
+        {/* Needle shadow/glow */}
+        <line
+          x1={CX} y1={CY + 8}
+          x2={CX} y2={CY - 84}
+          stroke={activeCat?.glow ?? "rgba(255,255,255,0.15)"}
+          strokeWidth="3"
+          strokeLinecap="round"
+          opacity="0.25"
+          style={{ transition: "stroke 0.4s ease" }}
+        />
+        {/* Needle body */}
+        <line
+          x1={CX} y1={CY + 8}
+          x2={CX} y2={CY - 84}
+          stroke={activeCat?.text ?? "rgba(255,255,255,0.7)"}
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          style={{ transition: "stroke 0.4s ease" }}
+        />
+        {/* Needle tip triangle */}
+        <polygon
+          points={`${CX},${CY - 85} ${CX - 2.5},${CY - 76} ${CX + 2.5},${CY - 76}`}
+          fill={activeCat?.text ?? "rgba(255,255,255,0.8)"}
+          style={{ transition: "fill 0.4s ease" }}
+        />
+      </g>
+
+      {/* Center hub */}
+      <circle cx={CX} cy={CY} r="8" fill="#111" stroke="rgba(255,255,255,0.12)" strokeWidth="1.5" />
+      <circle cx={CX} cy={CY} r="3.5"
+        fill={activeCat?.glow ?? "rgba(255,255,255,0.3)"}
+        style={{ transition: "fill 0.4s ease" }}
+      />
+
+      {/* Baseline */}
+      <line x1={CX - R_OUT - 4} y1={CY} x2={CX + R_OUT + 4} y2={CY}
+        stroke="rgba(255,255,255,0.05)" strokeWidth="1" />
+    </svg>
+  );
 }
 
 export function EpisodeRatingMeter({ animeId, episode, episodeTitle, onPostReview }: Props) {
@@ -74,20 +255,12 @@ export function EpisodeRatingMeter({ animeId, episode, episodeTitle, onPostRevie
   }, [animeId, episode, fetchReviews]);
 
   const total = CATS.reduce((s, c) => s + counts[c.key], 0);
-  const shares = CATS.map(c => total > 0 ? counts[c.key] / total : 0);
-  const domIdx = shares.reduce((best, s, i) => s > shares[best] ? i : best, 0);
-  const domScore = total > 0 ? Math.round(shares[domIdx] * 100) : 0;
-  const domCat = total > 0 ? CATS[domIdx] : null;
   const activeCat = myVote ? CAT_MAP[myVote] : null;
-
-  const R = 72, CX = 92, CY = 86, STROKE = 8;
-  const arcPath = `M ${CX - R} ${CY} A ${R} ${R} 0 0 1 ${CX + R} ${CY}`;
 
   const castVote = async (cat: VoteCategory) => {
     if (submitting) return;
     const isToggleOff = myVote === cat;
     setSubmitting(true);
-
     if (isToggleOff) {
       setMyVote(null);
       setCounts(c => ({ ...c, [cat]: Math.max(0, c[cat] - 1) }));
@@ -95,7 +268,6 @@ export function EpisodeRatingMeter({ animeId, episode, episodeTitle, onPostRevie
       setSubmitting(false);
       return;
     }
-
     const prev = myVote;
     setMyVote(cat);
     setCounts(c => {
@@ -104,7 +276,6 @@ export function EpisodeRatingMeter({ animeId, episode, episodeTitle, onPostRevie
       next[cat] = (next[cat] ?? 0) + 1;
       return next;
     });
-
     try {
       let voterKey = localStorage.getItem("na_voter_key");
       if (!voterKey) { voterKey = crypto.randomUUID(); localStorage.setItem("na_voter_key", voterKey); }
@@ -157,15 +328,13 @@ export function EpisodeRatingMeter({ animeId, episode, episodeTitle, onPostRevie
     if (likedIds.has(id)) return;
     setLikedIds(prev => new Set(prev).add(id));
     setReviews(prev => prev.map(r => r.id === id ? { ...r, likes: r.likes + 1 } : r));
-    try {
-      await fetch(apiUrl(`/api/reviews/${id}/like`), { method: "POST" });
-    } catch {}
+    try { await fetch(apiUrl(`/api/reviews/${id}/like`), { method: "POST" }); } catch {}
   };
 
   return (
     <div className="py-8 border-t border-white/[0.05]">
 
-      {/* Label */}
+      {/* Header */}
       <p className="text-[9px] font-mono uppercase tracking-[0.25em] text-white/20 mb-6">
         Nexa Meter — Episode {episode}
         {episodeTitle && episodeTitle !== `Episode ${episode}` && (
@@ -173,97 +342,77 @@ export function EpisodeRatingMeter({ animeId, episode, episodeTitle, onPostRevie
         )}
       </p>
 
-      <div className="flex gap-8 items-start">
-        {/* Arc */}
-        <div className="shrink-0">
-          <svg viewBox="0 0 184 96" width="160" height="84" className="overflow-visible">
-            <path d={arcPath} fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth={STROKE} strokeLinecap="round" pathLength="100" />
-            {(() => {
-              const els: React.ReactNode[] = [];
-              let off = 0;
-              CATS.forEach((cat, i) => {
-                const share = shares[i] * 100;
-                const segOff = off;
-                off += share;
-                if (share < 0.5) return;
-                const isActive = myVote === cat.key;
-                els.push(
-                  <path
-                    key={cat.key}
-                    d={arcPath}
-                    fill="none"
-                    stroke={cat.accent}
-                    strokeWidth={isActive ? STROKE + 2 : STROKE - 1}
-                    strokeLinecap="butt"
-                    pathLength="100"
-                    strokeDasharray={`${Math.max(share - 0.5, 0)} ${100 - Math.max(share - 0.5, 0)}`}
-                    strokeDashoffset={-segOff}
-                    opacity={isActive ? 1 : 0.45}
-                    style={{ transition: "stroke-dasharray 0.5s cubic-bezier(0.4,0,0.2,1), opacity 0.2s, stroke-width 0.2s" }}
-                  />
-                );
-              });
-              return els;
-            })()}
-            {total > 0 ? (
-              <>
-                <text x={CX} y={CY - 20} textAnchor="middle" fontSize="26" fontWeight="700"
-                  fill={domCat?.accent ?? "#fff"} fontFamily="system-ui,sans-serif"
-                  style={{ transition: "fill 0.4s" }}>
-                  {domScore}%
-                </text>
-                <text x={CX} y={CY - 7} textAnchor="middle" fontSize="7"
-                  fill="rgba(255,255,255,0.2)" fontFamily="monospace" letterSpacing="1">
-                  {total.toLocaleString()} votes
-                </text>
-              </>
-            ) : (
-              <text x={CX} y={CY - 12} textAnchor="middle" fontSize="7.5"
-                fill="rgba(255,255,255,0.15)" fontFamily="monospace" letterSpacing="1.5">
-                RATE EPISODE
-              </text>
-            )}
-          </svg>
+      {/* Gauge + breakdown */}
+      <div className="flex flex-col sm:flex-row gap-6 items-center sm:items-start">
+
+        {/* Gauge meter */}
+        <div className="shrink-0 w-full sm:w-[220px] flex flex-col items-center">
+          <GaugeMeter counts={counts} total={total} myVote={myVote} />
+
+          {/* Title below gauge */}
+          <p className="text-[8px] font-mono uppercase tracking-[0.3em] text-white/15 mt-1">
+            Nexa Rating Meter
+          </p>
         </div>
 
-        {/* Breakdown bars */}
-        <div className="flex-1 min-w-0 pt-1 space-y-2">
-          {CATS.map((cat, i) => {
-            const pct = total > 0 ? Math.round(shares[i] * 100) : 0;
-            const isMe = myVote === cat.key;
+        {/* Vote chips + breakdown bars */}
+        <div className="flex-1 min-w-0 w-full space-y-3 pt-1">
+          {CATS.map((cat) => {
+            const pct   = total > 0 ? Math.round((counts[cat.key] / total) * 100) : 0;
+            const isMe  = myVote === cat.key;
             return (
-              <div key={cat.key} className="flex items-center gap-2">
-                <span className="w-14 text-[9px] font-mono uppercase tracking-wide shrink-0 text-right"
-                  style={{ color: isMe ? cat.accent : "rgba(255,255,255,0.2)" }}>
-                  {cat.label}
-                </span>
-                <div className="flex-1 h-[3px] bg-white/[0.05] rounded-full overflow-hidden">
-                  <motion.div className="h-full rounded-full"
-                    style={{ background: cat.accent, opacity: isMe ? 1 : 0.4 }}
-                    initial={{ width: 0 }}
-                    animate={{ width: `${pct}%` }}
-                    transition={{ duration: 0.5, ease: [0.4, 0, 0.2, 1] }} />
+              <div key={cat.key} className="group">
+                <div className="flex items-center gap-2 mb-1">
+                  <span
+                    className="w-16 text-[9px] font-mono uppercase tracking-wide shrink-0 text-right transition-colors duration-200"
+                    style={{ color: isMe ? cat.text : "rgba(255,255,255,0.2)" }}
+                  >
+                    {cat.label}
+                  </span>
+                  <div className="flex-1 h-[3px] bg-white/[0.05] rounded-full overflow-hidden">
+                    <motion.div
+                      className="h-full rounded-full"
+                      style={{ background: cat.glow, opacity: isMe ? 1 : 0.35 }}
+                      initial={{ width: 0 }}
+                      animate={{ width: `${pct}%` }}
+                      transition={{ duration: 0.5, ease: [0.4, 0, 0.2, 1] }}
+                    />
+                  </div>
+                  <span
+                    className="w-7 text-[9px] font-mono tabular-nums text-right shrink-0 transition-colors duration-200"
+                    style={{ color: isMe ? cat.text : "rgba(255,255,255,0.18)" }}
+                  >
+                    {pct > 0 ? `${pct}%` : "—"}
+                  </span>
+                  <span
+                    className="text-[8px] font-mono text-right shrink-0 transition-colors duration-200"
+                    style={{ color: isMe ? cat.text : "rgba(255,255,255,0.1)", minWidth: 28 }}
+                  >
+                    {counts[cat.key] > 0 ? counts[cat.key] : ""}
+                  </span>
                 </div>
-                <span className="w-7 text-[9px] font-mono tabular-nums text-right shrink-0"
-                  style={{ color: isMe ? cat.accent : "rgba(255,255,255,0.18)" }}>
-                  {pct > 0 ? `${pct}%` : "—"}
-                </span>
               </div>
             );
           })}
+
+          {total > 0 && (
+            <p className="text-[8px] font-mono text-white/15 pt-1">
+              {total.toLocaleString()} total vote{total !== 1 ? "s" : ""}
+            </p>
+          )}
         </div>
       </div>
 
-      {/* Review Input Box */}
+      {/* Vote + Review section */}
       <div className="mt-6 border-t border-white/[0.05] pt-5 space-y-3">
         {reviewPosted ? (
           <div className="flex items-center gap-2 py-2.5 px-3 border border-white/[0.06] bg-white/[0.02]" style={{ borderRadius: "2px" }}>
-            <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: activeCat?.accent }} />
+            <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: activeCat?.glow }} />
             <span className="text-[10px] font-mono text-white/30 tracking-wide">Review posted · thanks!</span>
           </div>
         ) : (
           <>
-            {/* Vote chips inside box */}
+            {/* Vote chips */}
             <div className="flex gap-1.5 flex-wrap">
               {CATS.map(cat => {
                 const isMe = myVote === cat.key;
@@ -276,9 +425,10 @@ export function EpisodeRatingMeter({ animeId, episode, episodeTitle, onPostRevie
                     className="px-3.5 py-1.5 text-[11px] font-medium transition-all duration-150 cursor-pointer select-none"
                     style={{
                       borderRadius: "999px",
-                      border: `1px solid ${isMe ? cat.accent + "70" : "rgba(255,255,255,0.07)"}`,
-                      background: isMe ? cat.color + "22" : "rgba(255,255,255,0.03)",
-                      color: isMe ? cat.accent : "rgba(255,255,255,0.35)",
+                      border: `1px solid ${isMe ? cat.glow + "70" : "rgba(255,255,255,0.07)"}`,
+                      background: isMe ? cat.fill + "28" : "rgba(255,255,255,0.03)",
+                      color: isMe ? cat.text : "rgba(255,255,255,0.35)",
+                      boxShadow: isMe ? `0 0 12px ${cat.glow}30` : "none",
                     }}
                   >
                     {cat.label}
@@ -298,7 +448,7 @@ export function EpisodeRatingMeter({ animeId, episode, episodeTitle, onPostRevie
                 maxLength={1000}
                 className="w-full bg-transparent border border-white/[0.07] px-3 py-2.5 text-xs text-white/80 placeholder-white/15 focus:outline-none focus:border-white/20 resize-none transition-colors"
                 style={{
-                  borderColor: reviewText.trim() ? (activeCat?.color ?? "") + "45" : undefined,
+                  borderColor: reviewText.trim() ? (activeCat?.fill ?? "") + "45" : undefined,
                   borderRadius: "2px",
                 }}
               />
@@ -330,9 +480,9 @@ export function EpisodeRatingMeter({ animeId, episode, episodeTitle, onPostRevie
                 className="px-5 py-1.5 text-[10px] font-medium transition-all duration-200 disabled:opacity-25 disabled:cursor-not-allowed"
                 style={{
                   borderRadius: "999px",
-                  border: `1px solid ${myVote && reviewText.trim() ? (activeCat?.accent ?? "#fff") + "60" : "rgba(255,255,255,0.08)"}`,
-                  color: myVote && reviewText.trim() ? activeCat?.accent : "rgba(255,255,255,0.2)",
-                  background: myVote && reviewText.trim() ? (activeCat?.color ?? "") + "18" : "transparent",
+                  border: `1px solid ${myVote && reviewText.trim() ? (activeCat?.glow ?? "#fff") + "60" : "rgba(255,255,255,0.08)"}`,
+                  color: myVote && reviewText.trim() ? activeCat?.text : "rgba(255,255,255,0.2)",
+                  background: myVote && reviewText.trim() ? (activeCat?.fill ?? "") + "18" : "transparent",
                 }}
               >
                 Post
@@ -355,9 +505,9 @@ export function EpisodeRatingMeter({ animeId, episode, episodeTitle, onPostRevie
             </p>
 
             {reviews.map(review => {
-              const cat = CAT_MAP[review.rating];
+              const cat      = CAT_MAP[review.rating];
               const revealed = revealedIds.has(review.id);
-              const liked = likedIds.has(review.id);
+              const liked    = likedIds.has(review.id);
               return (
                 <motion.div
                   key={review.id}
@@ -365,21 +515,19 @@ export function EpisodeRatingMeter({ animeId, episode, episodeTitle, onPostRevie
                   animate={{ opacity: 1, y: 0 }}
                   className="flex gap-3"
                 >
-                  {/* Avatar */}
                   <div className="w-6 h-6 shrink-0 rounded-full overflow-hidden bg-white/[0.06] mt-0.5">
                     <img src={review.avatarUrl} alt="" className="w-full h-full" />
                   </div>
 
                   <div className="flex-1 min-w-0">
-                    {/* Header */}
                     <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                       <span className="text-[10px] font-semibold text-white/60">{review.username}</span>
                       <span
                         className="text-[8px] font-mono uppercase tracking-wider px-1.5 py-0.5"
                         style={{
-                          color: cat.accent,
-                          background: cat.color + "18",
-                          border: `1px solid ${cat.accent}30`,
+                          color: cat.text,
+                          background: cat.fill + "20",
+                          border: `1px solid ${cat.glow}35`,
                           borderRadius: "3px",
                         }}
                       >
@@ -393,7 +541,6 @@ export function EpisodeRatingMeter({ animeId, episode, episodeTitle, onPostRevie
                       <span className="text-[9px] font-mono text-white/20 ml-auto">{timeAgo(review.createdAt)}</span>
                     </div>
 
-                    {/* Content */}
                     {review.spoiler && !revealed ? (
                       <button
                         onClick={() => setRevealedIds(prev => new Set(prev).add(review.id))}
@@ -412,11 +559,10 @@ export function EpisodeRatingMeter({ animeId, episode, episodeTitle, onPostRevie
                       <p className="text-sm text-white/70 leading-relaxed mb-2">{review.content}</p>
                     )}
 
-                    {/* Like */}
                     <button
                       onClick={() => handleLike(review.id)}
                       className="flex items-center gap-1 transition-colors"
-                      style={{ color: liked ? cat.accent : "rgba(255,255,255,0.2)" }}
+                      style={{ color: liked ? cat.text : "rgba(255,255,255,0.2)" }}
                     >
                       <svg width="10" height="10" viewBox="0 0 24 24" fill={liked ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2">
                         <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
