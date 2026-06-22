@@ -1,29 +1,56 @@
 ---
-name: megaplay.buzz bridge detection
-description: How to detect broken GoGo/megaplay.buzz streams and the bridgeLive state pattern
+name: megaplay.buzz stream detection
+description: How to reliably detect broken GoGo/megaplay.buzz streams — bridge approach doesn't work, use server-side HLS probe
 ---
 
-# megaplay.buzz "We're Sorry" detection
+# megaplay.buzz broken stream detection
 
-## The problem
-megaplay.buzz always returns HTTP 200 for player pages (`/stream/s-2/{episodeId}/{type}`) even when the video is gone (DMCA/410). The "We're Sorry / Error Code: 410" is rendered CLIENT-SIDE by JWPlayer after it fetches the video source URL and gets 410. Server-side fetch cannot detect this.
+## Root cause
+megaplay.buzz always returns HTTP 200 for player pages even when the video is DMCA'd/removed.
+The "We're Sorry / Error Code: 410" is rendered CLIENT-SIDE by JWPlayer after it fetches the video
+source URL and gets a 4xx back. Server-side HTML text matching (isCdnWorking) fails because those
+markers never appear in the initial HTML.
 
-**Why:** The HTML contains only JWPlayer initialization with `base_url: 'https://megaplay.buzz/'` — the actual video file URL is fetched dynamically by `client.js?v=3.0`.
+## Why the postMessage bridge approach does NOT work for GoGo
 
-## The fix: bridgeLive state pattern
-- `bridgeLiveRef` (ref) + `bridgeLive` (state) — both track whether the GoGo postMessage bridge has fired
-- Working streams fire postMessage within 1-2s
-- After 2.5s with no postMessage → `gogoStreamError = true` → auto-switch to KOTO→ANIZONE→MIRURO after 0.6s
-- The GoGo iframe has `opacity: bridgeLive ? 1 : 0` so users NEVER see the error page
-- Loading overlay stays visible until `bridgeLive || gogoStreamError`
-- Error overlay: `server === "GOGO" && gogoStreamError` (no `iframeLoaded` requirement)
+The GoGo iframe loads megaplay.buzz **directly** (no proxy, no bridge script injected):
+```ts
+// watch-anilist.tsx — GoGo iframe src:
+if (cdnUrl) return cdnUrl; // direct megaplay.buzz URL, NOT /api/proxy?url=...
+```
 
-## Reset locations
-Reset BOTH `bridgeLiveRef.current = false` AND `setBridgeLive(false)` everywhere:
-- Episode/server change effect cleanup
-- Race `tryWin` helper
-- Auto-switch timer callback
-- All manual server-switch button handlers (Retry GoGo, AniKoto, AniZone, Miruro, GOGO server tab)
+The VIDEO_CONTROL_BRIDGE script (proxy.ts) is only injected into pages fetched via
+`/api/proxy?url=...`. Since GoGo bypasses the proxy (proxying megaplay.buzz breaks JWPlayer
+due to CORS on XHR calls), `na_video_state` postMessages **never fire for GoGo**.
 
-## isCdnWorking is not reliable
-Removed from `probeCdnUrl` — megaplay.buzz always returns 200 HTML regardless of video availability.
+**Why:** The original memory note "megaplay.buzz must load directly in iframe (no proxy)" means
+bridgeLive/bridgeLiveRef can never become true for GoGo. Using it for visibility control broke
+working GoGo episodes (overlay never cleared, 2.5s timeout always fired → always auto-switched).
+
+## Correct fix: server-side HLS probe (probeStreamUrl in gogo.ts)
+
+1. Fetch the megaplay.buzz player page HTML from Node.js
+2. Extract the JWPlayer/Playerjs `file:` source URL from the inline script using regex: `/[,{(\s]file\s*:\s*["']([^"']{10,})["']/i`
+3. HEAD-probe that source URL
+   - 200/206 → stream is alive → `streamOk: true`
+   - 4xx → stream DMCA'd → `streamOk: false`
+   - Parse failure / timeout → `streamOk: true` (fail-safe)
+4. API returns `streamOk` alongside `cdnUrl` in both `/api/gogo/cdn-url` and `/api/gogo/resolve-slug`
+5. Frontend: if `streamOk === false` → `setGogoStreamError(true)` before iframe loads
+6. Auto-switch effect fires → "switching to X…" → switches to KOTO/ANIZONE/MIRURO
+
+**Result:** Users never see the "We're Sorry" error page.
+
+## Rendering for GoGo (correct state — no bridgeLive)
+- Loading overlay: `!iframeLoaded && !gogoStreamError`
+- Iframe opacity: `iframeLoaded` (same as CUSTOM)
+- "Stream broken?" button: `iframeLoaded && !gogoStreamError`
+- NO 2.5s bridge-timeout detection (removed — bridge never fires for GoGo)
+
+## What bridgeLive/bridgeLiveRef IS still used for
+- Tracking postMessage state for CUSTOM server (goes through proxy, bridge fires there)
+- Video control commands (na_cmd) — still work for CUSTOM
+- Not used for any GoGo rendering or detection
+
+## isCdnWorking: removed
+Replaced by probeStreamUrl — text matching failed because "We're Sorry" is always JS-rendered.

@@ -238,6 +238,55 @@ interface ProbedResult {
   cdnUrl: string;
   slug: string;
   pageTitle: string | null;
+  streamOk: boolean;
+}
+
+/**
+ * Fetch the megaplay.buzz player page, extract the JWPlayer/Playerjs HLS source
+ * URL from the inline script, then HEAD-probe that URL.
+ *
+ * megaplay.buzz always returns HTTP 200 for the player page — even for DMCA'd
+ * videos. The "We're Sorry / 410" error is rendered CLIENT-SIDE by JWPlayer after
+ * it fetches the video source and gets a 4xx back. So we replicate that probe here:
+ * extract the source URL from the JWPlayer setup script and check its status.
+ *
+ * Returns true  → stream is alive (200/206 on the source URL)
+ * Returns false → stream is broken (4xx on the source URL)
+ * Returns true  → on any parse/network failure (fail-safe: show the iframe anyway)
+ */
+async function probeStreamUrl(playerUrl: string): Promise<boolean> {
+  try {
+    const resp = await fetch(playerUrl, {
+      headers: { ...BROWSER_HEADERS, Referer: "https://gogoanimes.cv/" },
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!resp.ok) return false; // player page itself 404'd / 5xx
+
+    const html = await resp.text();
+
+    // Extract the video source URL embedded in the player setup script.
+    // Matches patterns used by JWPlayer and Playerjs:
+    //   file:"https://..."   file:'https://...'
+    //   sources:[{file:"..."}]
+    //   new Playerjs({file:"..."})
+    const SOURCE_RE = /[,{(\s]file\s*:\s*["']([^"']{10,})["']/i;
+    const match = html.match(SOURCE_RE);
+    if (!match?.[1]) return true; // can't extract URL — fail-safe, assume working
+
+    const sourceUrl = match[1].trim();
+    if (!sourceUrl.startsWith("http")) return true; // relative or malformed — skip
+
+    const probe = await fetch(sourceUrl, {
+      method: "HEAD",
+      headers: { ...BROWSER_HEADERS, Referer: playerUrl },
+      signal: AbortSignal.timeout(5000),
+    });
+
+    // 200, 206 (partial content for HLS), 302 redirects (follow automatically) → ok
+    return probe.ok || probe.status === 302;
+  } catch {
+    return true; // network timeout or any error → fail-safe
+  }
 }
 
 async function probeCdnUrl(slug: string, ep: string): Promise<ProbedResult | null> {
@@ -253,16 +302,18 @@ async function probeCdnUrl(slug: string, ep: string): Promise<ProbedResult | nul
     const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
     const pageTitle = titleMatch?.[1]?.trim().replace(/\s+/g, " ") ?? null;
 
-    // Extract the first CDN URL from the page and unwrap the streaming.php
-    // redirect to get the direct megaplay.buzz player URL.
-    // Note: megaplay.buzz always returns 200 HTML even for removed videos (the
-    // "We're Sorry / 410" error is JS-rendered), so we can't validate server-side.
-    // The frontend auto-switch handles broken streams instead.
+    // Extract CDN URL and resolve the inner player URL (megaplay.buzz).
     const cdnUrls = extractAllCdnUrls(html);
     if (cdnUrls.length === 0) return null;
 
     const innerUrl = await extractInnerPlayerUrl(cdnUrls[0]);
-    return { cdnUrl: innerUrl ?? decodeHtmlEntities(cdnUrls[0]), slug, pageTitle };
+    const cdnUrl = innerUrl ?? decodeHtmlEntities(cdnUrls[0]);
+
+    // Probe the HLS source URL from the player page — detects DMCA'd/410 streams
+    // before the frontend even loads the iframe, so users never see the error page.
+    const streamOk = await probeStreamUrl(cdnUrl);
+
+    return { cdnUrl, slug, pageTitle, streamOk };
   } catch {
     return null;
   }
@@ -330,6 +381,7 @@ router.get("/gogo/cdn-url", async (req, res) => {
         cdnUrl: result.cdnUrl,
         resolvedSlug: result.slug,
         pageTitle: result.pageTitle,
+        streamOk: result.streamOk,
         triedVariants: variants.indexOf(variant) + 1,
       });
     }
@@ -360,6 +412,7 @@ router.get("/gogo/resolve-slug", async (req, res) => {
         cdnUrl: result.cdnUrl,
         resolvedSlug: result.slug,
         pageTitle: result.pageTitle,
+        streamOk: result.streamOk,
         method: "variant",
         triedVariants: variants.indexOf(variant) + 1,
       });
@@ -394,6 +447,7 @@ router.get("/gogo/resolve-slug", async (req, res) => {
           cdnUrl: result.cdnUrl,
           resolvedSlug: result.slug,
           pageTitle: result.pageTitle,
+          streamOk: result.streamOk,
           method: "search",
           searchQuery,
           matchedTitle: candidate.title,

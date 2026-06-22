@@ -677,7 +677,7 @@ export default function WatchAniList() {
     let cancelled = false;
     fetch(apiUrl(`/api/gogo/cdn-url?slug=${encodeURIComponent(gogoSlug)}&ep=${currentEp}`), { cache: "no-store" })
       .then((r) => r.json())
-      .then((data: { cdnUrl?: string; resolvedSlug?: string; pageTitle?: string | null }) => {
+      .then((data: { cdnUrl?: string; resolvedSlug?: string; pageTitle?: string | null; streamOk?: boolean }) => {
         if (cancelled) return;
 
         // Save auto-resolved slug from variant probe
@@ -690,6 +690,9 @@ export default function WatchAniList() {
         if (data.cdnUrl) {
           setCdnUrl(data.cdnUrl);
           if (data.pageTitle) setSourcePageTitle(data.pageTitle);
+          // Server probed the HLS source URL — if it returned 4xx, skip the iframe
+          // and go straight to the server-switch overlay (user never sees error page)
+          if (data.streamOk === false) setGogoStreamError(true);
           return;
         }
 
@@ -697,7 +700,7 @@ export default function WatchAniList() {
         // No user interaction needed: the backend searches GoGo, scores results, and probes the best slug.
         return fetch(apiUrl(`/api/gogo/resolve-slug?title=${encodeURIComponent(title)}&ep=${currentEp}`), { cache: "no-store" })
           .then((r) => r.json())
-          .then((resolveData: { cdnUrl?: string; resolvedSlug?: string; pageTitle?: string | null }) => {
+          .then((resolveData: { cdnUrl?: string; resolvedSlug?: string; pageTitle?: string | null; streamOk?: boolean }) => {
             if (cancelled) return;
             if (resolveData.cdnUrl) {
               setCdnUrl(resolveData.cdnUrl);
@@ -708,6 +711,7 @@ export default function WatchAniList() {
                 setGogoSlugInput(resolveData.resolvedSlug);
                 localStorage.setItem(`na_gogo_${animeId}`, resolveData.resolvedSlug);
               }
+              if (resolveData.streamOk === false) setGogoStreamError(true);
             } else {
               setCdnNotFound(true);
             }
@@ -1134,8 +1138,14 @@ export default function WatchAniList() {
   useEffect(() => {
     const handler = (evt: MessageEvent) => {
       if (evt.data?.type !== "na_video_state") return;
-      bridgeLiveRef.current = true;
-      setBridgeLive(true);
+      // Only mark bridge alive when there's real content (duration>0 or time>0).
+      // JWPlayer inserts a <video> element even for 410/"We're Sorry" streams —
+      // the bridge fires immediately with duration=0. Real streams fire again
+      // after loadedmetadata with a positive duration.
+      if ((evt.data.duration ?? 0) > 0 || (evt.data.time ?? 0) > 0) {
+        bridgeLiveRef.current = true;
+        setBridgeLive(true);
+      }
       setVideoState({
         paused: evt.data.paused ?? true,
         time: evt.data.time ?? 0,
@@ -1149,19 +1159,11 @@ export default function WatchAniList() {
     return () => window.removeEventListener("message", handler);
   }, []);
 
-  // Auto-detect GoGo stream errors: if the postMessage bridge never responds
-  // within 2.5 seconds of the iframe loading, the player is likely showing an error
-  // page (e.g. 410 copyright removal) — automatically show our themed overlay.
-  // Working streams fire postMessage within 1–2 s, so 2.5 s is a safe buffer.
-  useEffect(() => {
-    if (server !== "GOGO" || !iframeLoaded || gogoStreamError || cdnNotFound || cdnLoading) return;
-    const timer = setTimeout(() => {
-      if (!bridgeLiveRef.current) {
-        setGogoStreamError(true);
-      }
-    }, 2500);
-    return () => clearTimeout(timer);
-  }, [server, iframeLoaded, gogoStreamError, cdnNotFound, cdnLoading]);
+  // GoGo stream health is now checked server-side in probeCdnUrl (probeStreamUrl).
+  // If the API returns streamOk=false, gogoStreamError is set immediately before
+  // the iframe loads — no need for a client-side postMessage bridge timeout here.
+  // (GoGo iframes load megaplay.buzz directly without a proxy, so the bridge
+  //  script is never injected and bridgeLiveRef never fires for GoGo.)
 
   // Auto-switch: when GoGo stream error is detected, immediately switch to the
   // best available working server (KOTO → ANIZONE → MIRURO).
@@ -1691,7 +1693,7 @@ export default function WatchAniList() {
                     return "about:blank";
                   })()}
                   className="w-full h-full"
-                  style={{ opacity: (server === "GOGO" ? bridgeLive : iframeLoaded) ? 1 : 0, transition: "opacity 0.5s ease" }}
+                  style={{ opacity: iframeLoaded ? 1 : 0, transition: "opacity 0.5s ease" }}
                   allowFullScreen
                   allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
                   referrerPolicy="no-referrer"
@@ -1845,8 +1847,8 @@ export default function WatchAniList() {
                   </div>
                 )}
 
-                {/* Floating "not working?" button — shown only after bridge confirms player is live */}
-                {server === "GOGO" && bridgeLive && !gogoStreamError && (
+                {/* Floating "not working?" button — shown after iframe is loaded and no error */}
+                {server === "GOGO" && iframeLoaded && !gogoStreamError && (
                   <button
                     onClick={() => setGogoStreamError(true)}
                     className="absolute bottom-3 right-3 z-10 text-[9px] font-mono uppercase tracking-widest text-white/30 hover:text-white/60 border border-white/10 hover:border-white/25 px-2.5 py-1.5 transition-colors bg-black/60"
@@ -1856,7 +1858,7 @@ export default function WatchAniList() {
                 )}
 
                 {/* iframe-based loading overlay (GOGO / CUSTOM only) */}
-                {((server === "GOGO" && !bridgeLive && !gogoStreamError) || (server === "CUSTOM" && !iframeLoaded)) && (
+                {(server === "GOGO" || server === "CUSTOM") && !iframeLoaded && !gogoStreamError && (
                   <div
                     className="absolute inset-0 z-10 flex flex-col items-center justify-center"
                     style={{ background: "rgba(0,0,0,0.92)" }}
