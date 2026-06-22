@@ -322,6 +322,14 @@ header,nav,footer,
   display:none!important;
 }
 html,body{margin:0!important;padding:0!important;overflow:hidden!important;background:#000!important}
+/* Hide download button in Vidstack player */
+media-download-button,
+.vds-download-button,
+[aria-label="Download"],
+[data-media-download-button],
+a[download]{
+  display:none!important;
+}
 </style>
 <script>
 ${env2Inline ? `// env2.js inlined synchronously to ensure window.env is set before module scripts\n${env2Inline}` : ""}
