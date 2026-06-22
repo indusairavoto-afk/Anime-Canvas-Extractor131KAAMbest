@@ -4,7 +4,7 @@ import HlsPlayer, { getEpisodeProgressPct } from "@/components/HlsPlayer";
 import {
   ArrowLeft, Search, Grid3X3, List, Play, Pause, SkipForward, SkipBack,
   RotateCcw, RotateCw, Scissors, Bookmark, BookmarkCheck, ChevronDown, Maximize2, Minimize2,
-  MessageSquare, ThumbsUp, ThumbsDown, CornerDownRight, Eye,
+  MessageSquare, Eye,
   Volume2, VolumeX, Maximize, Minimize,
 } from "lucide-react";
 import { useWatchlist } from "@/hooks/useWatchlist";
@@ -137,92 +137,6 @@ query ($id: Int!) {
   }
 }`;
 
-interface Comment {
-  id: string;
-  author: string;
-  text: string;
-  ts: number;
-  likes: number;
-  spoiler?: boolean;
-}
-
-function useLocalComments(key: string) {
-  const [comments, setComments] = useState<Comment[]>(() => {
-    try { return JSON.parse(localStorage.getItem(key) ?? "[]"); } catch { return []; }
-  });
-  const save = (next: Comment[]) => {
-    setComments(next);
-    localStorage.setItem(key, JSON.stringify(next));
-  };
-  return { comments, save };
-}
-
-function CommentRow({ comment: c, onLike }: { comment: Comment; onLike: () => void }) {
-  const [revealed, setRevealed] = useState(false);
-  const isSpoiler = !!c.spoiler;
-
-  return (
-    <div className="flex gap-3">
-      <div className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center shrink-0 text-[10px] font-mono text-white/50 uppercase">
-        {c.author[0]}
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-1">
-          <span className="text-xs font-semibold text-white">{c.author}</span>
-          {isSpoiler && (
-            <span className="text-[8px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded border border-purple-500/40 text-purple-400/80 bg-purple-500/10">
-              spoiler
-            </span>
-          )}
-          <span className="text-[9px] font-mono text-white/25">
-            {new Date(c.ts).toLocaleDateString()}
-          </span>
-        </div>
-
-        {isSpoiler && !revealed ? (
-          <button
-            onClick={() => setRevealed(true)}
-            className="relative w-full text-left group"
-          >
-            <p className="text-xs text-white/70 leading-relaxed select-none blur-sm pointer-events-none">
-              {c.text}
-            </p>
-            <div className="absolute inset-0 flex items-center justify-center">
-              <span className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest text-purple-400/80 bg-black/60 border border-purple-500/30 px-3 py-1.5 rounded-lg backdrop-blur-sm group-hover:bg-purple-500/10 transition-colors">
-                <span className="text-[11px]">⚠</span> Click to reveal spoiler
-              </span>
-            </div>
-          </button>
-        ) : (
-          <p className="text-xs text-white/70 leading-relaxed">{c.text}</p>
-        )}
-
-        <div className="flex items-center gap-3 mt-2">
-          <button
-            onClick={onLike}
-            className="flex items-center gap-1 text-[10px] text-white/30 hover:text-white transition-colors"
-          >
-            <ThumbsUp className="w-3 h-3" />
-            {c.likes > 0 && <span>{c.likes}</span>}
-          </button>
-          <button className="flex items-center gap-1 text-[10px] text-white/30 hover:text-white transition-colors">
-            <CornerDownRight className="w-3 h-3" />
-            Reply
-          </button>
-          {isSpoiler && revealed && (
-            <button
-              onClick={() => setRevealed(false)}
-              className="flex items-center gap-1 text-[10px] text-purple-400/50 hover:text-purple-400 transition-colors"
-            >
-              Hide spoiler
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export default function WatchAniList() {
   const params = useParams<{ animeId: string; episode: string }>();
   const animeId = parseInt(params.animeId ?? "0");
@@ -248,9 +162,6 @@ export default function WatchAniList() {
   const [gogoStreamError, setGogoStreamError] = useState(false);
   const [epSearch, setEpSearch] = useState("");
   const [epGridView, setEpGridView] = useState(false);
-  const [commentText, setCommentText] = useState("");
-  const [commentAuthor, setCommentAuthor] = useState(() => localStorage.getItem("na_username") ?? "");
-  const [commentSort, setCommentSort] = useState<"Best" | "Newest" | "Oldest">("Newest");
   const [iframeLoaded, setIframeLoaded] = useState(false);
   const epListRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -309,7 +220,6 @@ export default function WatchAniList() {
   const { markProgress } = useContinueWatching();
   const saved = isInList(animeId);
 
-  const { comments, save: saveComments } = useLocalComments(`na_comments_al_${animeId}`);
 
   useEffect(() => {
     if (!animeId) return;
@@ -1506,28 +1416,6 @@ export default function WatchAniList() {
         .filter(Boolean).join(".")
     : null;
 
-  const sortedComments = [...comments].sort((a, b) => {
-    if (commentSort === "Best") return b.likes - a.likes;
-    if (commentSort === "Oldest") return a.ts - b.ts;
-    return b.ts - a.ts;
-  });
-
-  const submitComment = () => {
-    if (!commentText.trim()) return;
-    const author = commentAuthor.trim() || "Anonymous";
-    localStorage.setItem("na_username", author);
-    setCommentAuthor(author);
-    saveComments([
-      ...comments,
-      { id: crypto.randomUUID(), author, text: commentText.trim(), ts: Date.now(), likes: 0 },
-    ]);
-    setCommentText("");
-  };
-
-  const likeComment = (id: string) => {
-    saveComments(comments.map((c) => c.id === id ? { ...c, likes: c.likes + 1 } : c));
-  };
-
   const castVote = async (cat: string) => {
     if (voteSubmitting) return;
     setVoteSubmitting(true);
@@ -2480,9 +2368,9 @@ export default function WatchAniList() {
             </div>
           </div>
 
-          {/* ── BELOW PLAYER: Comments + Related ── */}
+          {/* ── BELOW PLAYER: Rating Meter + Related ── */}
           <div className="flex flex-col lg:flex-row gap-0">
-            {/* Comments */}
+            {/* Rating Meter */}
             <div className="flex-1 min-w-0 px-4 sm:px-6 py-6 border-r border-white/5">
 
               {/* ── NEXA METER (Moctale-style) ── */}
@@ -2490,76 +2378,7 @@ export default function WatchAniList() {
                 animeId={String(animeId)}
                 episode={currentEp}
                 episodeTitle={getEpTitle(currentEp)}
-                onPostReview={(text, category, spoiler) => {
-                  const label = { skip: "Skip", timepass: "Timepass", go_for_it: "Go For It", perfection: "Perfection" }[category];
-                  const author = localStorage.getItem("na_username") || "Anonymous";
-                  saveComments([
-                    ...comments,
-                    {
-                      id: crypto.randomUUID(),
-                      author,
-                      text: `[${label}] ${text}`,
-                      ts: Date.now(),
-                      likes: 0,
-                      spoiler,
-                    },
-                  ]);
-                }}
               />
-
-              <div className="flex items-center gap-2 mb-5 mt-8">
-                <h3 className="text-base font-semibold text-white uppercase tracking-wide">Comments</h3>
-                <span className="text-[10px] font-mono bg-white/10 text-white/60 px-2 py-0.5">{comments.length}</span>
-                <div className="ml-auto flex gap-1">
-                  {(["Best", "Newest", "Oldest"] as const).map((s) => (
-                    <button
-                      key={s}
-                      onClick={() => setCommentSort(s)}
-                      className={`text-[10px] font-mono px-3 py-1 border transition-colors ${
-                        commentSort === s
-                          ? "border-white bg-white text-black"
-                          : "border-white/10 text-white/40 hover:text-white hover:border-white/30"
-                      }`}
-                    >
-                      {s}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Write comment */}
-              <div className="mb-6 space-y-2">
-                <input
-                  value={commentAuthor}
-                  onChange={(e) => setCommentAuthor(e.target.value)}
-                  placeholder="Your name (optional)"
-                  className="w-full bg-white/5 border border-white/10 px-3 py-2 text-xs text-white placeholder-white/20 focus:outline-none focus:border-white/30"
-                />
-                <textarea
-                  value={commentText}
-                  onChange={(e) => setCommentText(e.target.value)}
-                  onKeyDown={(e) => { if (e.ctrlKey && e.key === "Enter") submitComment(); }}
-                  placeholder="Write your comment..."
-                  rows={3}
-                  className="w-full bg-white/5 border border-white/10 px-3 py-2 text-xs text-white placeholder-white/20 focus:outline-none focus:border-white/30 resize-none"
-                />
-                <button
-                  onClick={submitComment}
-                  className="px-5 py-2 bg-white text-black text-xs font-mono uppercase tracking-widest hover:bg-white/90 transition-colors"
-                >
-                  Post
-                </button>
-              </div>
-
-              {/* Comment list */}
-              <div className="space-y-5">
-                {sortedComments.length === 0 && (
-                  <p className="text-white/20 text-xs font-mono">No comments yet. Be the first!</p>
-                )}
-                {sortedComments.map((c) => (
-                  <CommentRow key={c.id} comment={c} onLike={() => likeComment(c.id)} />
-                ))}
-              </div>
 
             </div>
 
