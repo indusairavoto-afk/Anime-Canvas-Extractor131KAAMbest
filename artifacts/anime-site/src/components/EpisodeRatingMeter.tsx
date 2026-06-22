@@ -16,7 +16,7 @@ interface Props {
   animeId: string;
   episode: number;
   episodeTitle: string;
-  onPostReview?: (text: string, category: VoteCategory) => void;
+  onPostReview?: (text: string, category: VoteCategory, spoiler: boolean) => void;
 }
 
 export function EpisodeRatingMeter({ animeId, episode, episodeTitle, onPostReview }: Props) {
@@ -26,6 +26,7 @@ export function EpisodeRatingMeter({ animeId, episode, episodeTitle, onPostRevie
   const [reviewText, setReviewText] = useState("");
   const [reviewPosted, setReviewPosted] = useState(false);
   const [reviewCharCount, setReviewCharCount] = useState(0);
+  const [isSpoiler, setIsSpoiler] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Load vote from localStorage + fetch counts
@@ -94,10 +95,11 @@ export function EpisodeRatingMeter({ animeId, episode, episodeTitle, onPostRevie
 
   const handlePostReview = () => {
     if (!myVote || !reviewText.trim() || reviewPosted) return;
-    onPostReview?.(reviewText.trim(), myVote);
+    onPostReview?.(reviewText.trim(), myVote, isSpoiler);
     localStorage.setItem(`na_review_posted_${animeId}_${episode}`, "1");
     setReviewPosted(true);
     setReviewText("");
+    setIsSpoiler(false);
   };
 
   let cumOffset = 0;
@@ -332,6 +334,34 @@ export function EpisodeRatingMeter({ animeId, episode, episodeTitle, onPostRevie
                     {reviewCharCount}/1000
                   </span>
                 </div>
+
+                {/* Spoiler toggle */}
+                <motion.button
+                  type="button"
+                  onClick={() => setIsSpoiler(v => !v)}
+                  whileTap={{ scale: 0.97 }}
+                  className="flex items-center gap-2.5 w-fit group"
+                >
+                  <div
+                    className="relative w-8 h-4 rounded-full transition-all duration-200 shrink-0"
+                    style={{
+                      background: isSpoiler ? "rgba(168,85,247,0.6)" : "rgba(255,255,255,0.08)",
+                      boxShadow: isSpoiler ? "0 0 10px rgba(168,85,247,0.4)" : "none",
+                    }}
+                  >
+                    <motion.span
+                      animate={{ x: isSpoiler ? 16 : 0 }}
+                      transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                      className="absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white"
+                    />
+                  </div>
+                  <span
+                    className="text-[10px] font-mono uppercase tracking-wider transition-colors duration-200"
+                    style={{ color: isSpoiler ? "rgba(168,85,247,0.9)" : "rgba(255,255,255,0.25)" }}
+                  >
+                    {isSpoiler ? "⚠ Spoiler" : "Mark as spoiler"}
+                  </span>
+                </motion.button>
 
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">

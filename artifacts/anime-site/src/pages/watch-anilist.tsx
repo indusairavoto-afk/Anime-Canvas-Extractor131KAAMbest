@@ -143,6 +143,7 @@ interface Comment {
   text: string;
   ts: number;
   likes: number;
+  spoiler?: boolean;
 }
 
 function useLocalComments(key: string) {
@@ -154,6 +155,72 @@ function useLocalComments(key: string) {
     localStorage.setItem(key, JSON.stringify(next));
   };
   return { comments, save };
+}
+
+function CommentRow({ comment: c, onLike }: { comment: Comment; onLike: () => void }) {
+  const [revealed, setRevealed] = useState(false);
+  const isSpoiler = !!c.spoiler;
+
+  return (
+    <div className="flex gap-3">
+      <div className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center shrink-0 text-[10px] font-mono text-white/50 uppercase">
+        {c.author[0]}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-xs font-semibold text-white">{c.author}</span>
+          {isSpoiler && (
+            <span className="text-[8px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded border border-purple-500/40 text-purple-400/80 bg-purple-500/10">
+              spoiler
+            </span>
+          )}
+          <span className="text-[9px] font-mono text-white/25">
+            {new Date(c.ts).toLocaleDateString()}
+          </span>
+        </div>
+
+        {isSpoiler && !revealed ? (
+          <button
+            onClick={() => setRevealed(true)}
+            className="relative w-full text-left group"
+          >
+            <p className="text-xs text-white/70 leading-relaxed select-none blur-sm pointer-events-none">
+              {c.text}
+            </p>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <span className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest text-purple-400/80 bg-black/60 border border-purple-500/30 px-3 py-1.5 rounded-lg backdrop-blur-sm group-hover:bg-purple-500/10 transition-colors">
+                <span className="text-[11px]">⚠</span> Click to reveal spoiler
+              </span>
+            </div>
+          </button>
+        ) : (
+          <p className="text-xs text-white/70 leading-relaxed">{c.text}</p>
+        )}
+
+        <div className="flex items-center gap-3 mt-2">
+          <button
+            onClick={onLike}
+            className="flex items-center gap-1 text-[10px] text-white/30 hover:text-white transition-colors"
+          >
+            <ThumbsUp className="w-3 h-3" />
+            {c.likes > 0 && <span>{c.likes}</span>}
+          </button>
+          <button className="flex items-center gap-1 text-[10px] text-white/30 hover:text-white transition-colors">
+            <CornerDownRight className="w-3 h-3" />
+            Reply
+          </button>
+          {isSpoiler && revealed && (
+            <button
+              onClick={() => setRevealed(false)}
+              className="flex items-center gap-1 text-[10px] text-purple-400/50 hover:text-purple-400 transition-colors"
+            >
+              Hide spoiler
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function WatchAniList() {
@@ -2423,7 +2490,7 @@ export default function WatchAniList() {
                 animeId={String(animeId)}
                 episode={currentEp}
                 episodeTitle={getEpTitle(currentEp)}
-                onPostReview={(text, category) => {
+                onPostReview={(text, category, spoiler) => {
                   const label = { skip: "Skip", timepass: "Timepass", go_for_it: "Go For It", perfection: "Perfection" }[category];
                   const author = localStorage.getItem("na_username") || "Anonymous";
                   saveComments([
@@ -2434,6 +2501,7 @@ export default function WatchAniList() {
                       text: `[${label}] ${text}`,
                       ts: Date.now(),
                       likes: 0,
+                      spoiler,
                     },
                   ]);
                 }}
@@ -2489,33 +2557,7 @@ export default function WatchAniList() {
                   <p className="text-white/20 text-xs font-mono">No comments yet. Be the first!</p>
                 )}
                 {sortedComments.map((c) => (
-                  <div key={c.id} className="flex gap-3">
-                    <div className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center shrink-0 text-[10px] font-mono text-white/50 uppercase">
-                      {c.author[0]}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-xs font-semibold text-white">{c.author}</span>
-                        <span className="text-[9px] font-mono text-white/25">
-                          {new Date(c.ts).toLocaleDateString()}
-                        </span>
-                      </div>
-                      <p className="text-xs text-white/70 leading-relaxed">{c.text}</p>
-                      <div className="flex items-center gap-3 mt-2">
-                        <button
-                          onClick={() => likeComment(c.id)}
-                          className="flex items-center gap-1 text-[10px] text-white/30 hover:text-white transition-colors"
-                        >
-                          <ThumbsUp className="w-3 h-3" />
-                          {c.likes > 0 && <span>{c.likes}</span>}
-                        </button>
-                        <button className="flex items-center gap-1 text-[10px] text-white/30 hover:text-white transition-colors">
-                          <CornerDownRight className="w-3 h-3" />
-                          Reply
-                        </button>
-                      </div>
-                    </div>
-                  </div>
+                  <CommentRow key={c.id} comment={c} onLike={() => likeComment(c.id)} />
                 ))}
               </div>
 
