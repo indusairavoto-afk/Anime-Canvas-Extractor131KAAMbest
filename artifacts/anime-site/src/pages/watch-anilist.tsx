@@ -197,7 +197,7 @@ export default function WatchAniList() {
   const [bridgeLive, setBridgeLive] = useState(false);
   const userPickedRef = useRef(false);
   const raceCache = useRef<{
-    gogo?: { cdnUrl: string; resolvedSlug?: string; pageTitle?: string | null } | null;
+    gogo?: { cdnUrl: string; resolvedSlug?: string; pageTitle?: string | null; streamOk?: boolean } | null;
     koto?: { url?: string; hlsUrl?: string | null } | null;
     anizone?: { hlsUrl?: string; subtitles?: { src: string; label: string; srclang: string; isDefault: boolean }[] } | null;
     miruro?: { iframeUrl?: string } | null;
@@ -518,23 +518,34 @@ export default function WatchAniList() {
         ? fetch(apiUrl(`/api/gogo/cdn-url?slug=${encodeURIComponent(gSlug)}&ep=${currentEp}`), { cache: "no-store" }).then(r => r.json())
         : Promise.resolve({});
       firstFetch
-        .then((data: { cdnUrl?: string; resolvedSlug?: string; pageTitle?: string | null }) => {
+        .then((data: { cdnUrl?: string; resolvedSlug?: string; pageTitle?: string | null; streamOk?: boolean }) => {
           if (cancelled) return;
           if (data.cdnUrl) {
-            raceCache.current.gogo = { cdnUrl: data.cdnUrl, resolvedSlug: data.resolvedSlug, pageTitle: data.pageTitle };
-            setServerHealth(h => ({ ...h, GOGO: "ok" }));
-            tryWin("GOGO");
+            raceCache.current.gogo = { cdnUrl: data.cdnUrl, resolvedSlug: data.resolvedSlug, pageTitle: data.pageTitle, streamOk: data.streamOk };
+            if (data.streamOk === false) {
+              // Stream is DMCA'd/broken — don't win the race; let other servers compete
+              setServerHealth(h => ({ ...h, GOGO: "fail" }));
+              setGogoStreamError(true);
+            } else {
+              setServerHealth(h => ({ ...h, GOGO: "ok" }));
+              tryWin("GOGO");
+            }
             return;
           }
           // Slug variants all failed — silently try resolve-slug (server searches GoGo by title)
           return fetch(apiUrl(`/api/gogo/resolve-slug?title=${encodeURIComponent(gogoTitle)}&ep=${currentEp}`), { cache: "no-store" })
             .then(r => r.json())
-            .then((resolveData: { cdnUrl?: string; resolvedSlug?: string; pageTitle?: string | null }) => {
+            .then((resolveData: { cdnUrl?: string; resolvedSlug?: string; pageTitle?: string | null; streamOk?: boolean }) => {
               if (cancelled) return;
               if (resolveData.cdnUrl) {
-                raceCache.current.gogo = { cdnUrl: resolveData.cdnUrl, resolvedSlug: resolveData.resolvedSlug, pageTitle: resolveData.pageTitle };
-                setServerHealth(h => ({ ...h, GOGO: "ok" }));
-                tryWin("GOGO");
+                raceCache.current.gogo = { cdnUrl: resolveData.cdnUrl, resolvedSlug: resolveData.resolvedSlug, pageTitle: resolveData.pageTitle, streamOk: resolveData.streamOk };
+                if (resolveData.streamOk === false) {
+                  setServerHealth(h => ({ ...h, GOGO: "fail" }));
+                  setGogoStreamError(true);
+                } else {
+                  setServerHealth(h => ({ ...h, GOGO: "ok" }));
+                  tryWin("GOGO");
+                }
               } else {
                 raceCache.current.gogo = null;
                 setServerHealth(h => ({ ...h, GOGO: "fail" }));
@@ -631,18 +642,24 @@ export default function WatchAniList() {
     const cached = raceCache.current.gogo;
     if (cached !== undefined) {
       if (cached?.cdnUrl) {
-        setCdnUrl(cached.cdnUrl);
-        setCdnLoading(false);
-        setCdnNotFound(false);
-        if ((cached as { pageTitle?: string | null }).pageTitle) {
-          setSourcePageTitle((cached as { pageTitle?: string | null }).pageTitle!);
-        }
+        if (cached.pageTitle) setSourcePageTitle(cached.pageTitle);
         if (cached.resolvedSlug && cached.resolvedSlug !== gogoSlug) {
           setGogoSlug(cached.resolvedSlug);
           setGogoSlugInput(cached.resolvedSlug);
           localStorage.setItem(`na_gogo_${animeId}`, cached.resolvedSlug);
         }
         raceCache.current.gogo = undefined;
+        if (cached.streamOk === false) {
+          // Broken stream detected in race — trigger auto-switch without loading the iframe
+          setCdnUrl(cached.cdnUrl);
+          setCdnLoading(false);
+          setCdnNotFound(false);
+          setGogoStreamError(true);
+        } else {
+          setCdnUrl(cached.cdnUrl);
+          setCdnLoading(false);
+          setCdnNotFound(false);
+        }
         return;
       }
       raceCache.current.gogo = undefined;
