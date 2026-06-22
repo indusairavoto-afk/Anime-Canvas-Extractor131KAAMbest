@@ -271,10 +271,23 @@ async function probeStreamUrl(playerUrl: string): Promise<boolean> {
     //   new Playerjs({file:"..."})
     const SOURCE_RE = /[,{(\s]file\s*:\s*["']([^"']{10,})["']/i;
     const match = html.match(SOURCE_RE);
-    if (!match?.[1]) return true; // can't extract URL — fail-safe, assume working
+    if (!match?.[1]) {
+      // Can't extract the source URL — fall back to scanning the player page HTML
+      // directly for known error markers before giving up with a fail-safe true.
+      const ERROR_MARKERS = ["We're Sorry", "we're sorry", "Error Code", "copyright violation",
+        "removed due to", "deleted by the owner", "file you are looking for"];
+      if (ERROR_MARKERS.some(m => html.includes(m))) return false;
+      return true; // no error markers — assume working
+    }
 
     const sourceUrl = match[1].trim();
-    if (!sourceUrl.startsWith("http")) return true; // relative or malformed — skip
+    if (!sourceUrl.startsWith("http")) {
+      // Relative / malformed URL — still check for error markers before assuming OK
+      const ERROR_MARKERS = ["We're Sorry", "we're sorry", "Error Code", "copyright violation",
+        "removed due to", "deleted by the owner", "file you are looking for"];
+      if (ERROR_MARKERS.some(m => html.includes(m))) return false;
+      return true;
+    }
 
     const probe = await fetch(sourceUrl, {
       method: "HEAD",

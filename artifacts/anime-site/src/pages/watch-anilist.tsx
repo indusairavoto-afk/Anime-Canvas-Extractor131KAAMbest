@@ -205,6 +205,8 @@ export default function WatchAniList() {
   }>({});
   const [autoDetecting, setAutoDetecting] = useState(false);
   const [autoSwitchMsg, setAutoSwitchMsg] = useState<string | null>(null);
+  const [gogoMaybeBroken, setGogoMaybeBroken] = useState(false);
+  const [gogoMaybeCountdown, setGogoMaybeCountdown] = useState<number | null>(null);
   const [serverHealth, setServerHealth] = useState<{ GOGO: "unknown" | "checking" | "ok" | "fail"; KOTO: "unknown" | "checking" | "ok" | "fail"; ANIZONE: "unknown" | "checking" | "ok" | "fail"; MIRURO: "unknown" | "checking" | "ok" | "fail" }>({ GOGO: "unknown", KOTO: "unknown", ANIZONE: "unknown", MIRURO: "unknown" });
   const [sourcePageTitle, setSourcePageTitle] = useState<string | null>(null);
   const [verifyResult, setVerifyResult] = useState<{ correct: boolean; confidence: "high" | "medium" | "low"; reason: string; extractedEpisode: number | null } | null>(null);
@@ -1191,6 +1193,58 @@ export default function WatchAniList() {
   // (GoGo iframes load megaplay.buzz directly without a proxy, so the bridge
   //  script is never injected and bridgeLiveRef never fires for GoGo.)
 
+  // Client-side GoGo broken-stream heuristic: megaplay.buzz 410 errors are
+  // JS-rendered inside the iframe — undetectable via postMessage or server probe.
+  // However, when a user clicks inside an iframe, window.blur fires in the parent.
+  // A working GoGo player shows a play button the user will click within ~10s.
+  // A broken stream shows an error page — the user won't click the player area.
+  // If window.blur never fires within 10s of the iframe loading, flag as broken.
+  useEffect(() => {
+    if (server !== "GOGO" || !iframeLoaded || gogoStreamError || !cdnUrl) {
+      setGogoMaybeBroken(false);
+      setGogoMaybeCountdown(null);
+      return;
+    }
+    setGogoMaybeBroken(false);
+    setGogoMaybeCountdown(null);
+    let interacted = false;
+    const onBlur = () => { interacted = true; };
+    window.addEventListener("blur", onBlur);
+    const timer = setTimeout(() => {
+      if (!interacted) setGogoMaybeBroken(true);
+    }, 10000);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener("blur", onBlur);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [server, iframeLoaded, gogoStreamError, cdnUrl, currentEp, lang]);
+
+  // Countdown tick when gogoMaybeBroken — auto-switch after 7s
+  useEffect(() => {
+    if (!gogoMaybeBroken || server !== "GOGO") { setGogoMaybeCountdown(null); return; }
+    setGogoMaybeCountdown(7);
+    const iv = setInterval(() => {
+      setGogoMaybeCountdown(prev => (prev !== null && prev > 1 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(iv);
+  }, [gogoMaybeBroken, server]);
+
+  // When countdown hits 0, switch to best available server
+  useEffect(() => {
+    if (gogoMaybeCountdown !== 0 || server !== "GOGO") return;
+    const fallbackOrder = ["KOTO", "ANIZONE", "MIRURO"] as const;
+    const nextServer = fallbackOrder.find(s => serverHealth[s] === "ok") ?? "KOTO";
+    setGogoMaybeBroken(false);
+    setGogoMaybeCountdown(null);
+    setGogoStreamError(false);
+    setIframeLoaded(false);
+    bridgeLiveRef.current = false;
+    setBridgeLive(false);
+    setServer(nextServer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gogoMaybeCountdown, server, serverHealth]);
+
   // Auto-switch: when GoGo stream error is detected, immediately switch to the
   // best available working server (KOTO → ANIZONE → MIRURO).
   useEffect(() => {
@@ -1799,6 +1853,55 @@ export default function WatchAniList() {
                       <p className="text-white/20 text-[11px] font-mono uppercase tracking-widest">
                         Episode {currentEp} · {lang}
                       </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* GoGo maybe-broken overlay — shown after 10s of no iframe interaction */}
+                {server === "GOGO" && gogoMaybeBroken && !gogoStreamError && (
+                  <div className="absolute inset-0 z-20 flex flex-col items-center justify-center" style={{ background: "rgba(0,0,0,0.94)" }}>
+                    {banner && <img src={banner} alt="" className="absolute inset-0 w-full h-full object-cover opacity-[0.06] scale-110 blur-xl" />}
+                    <div className="relative z-10 flex flex-col items-center gap-5 px-6 text-center max-w-sm">
+                      <div className="w-12 h-12 border border-orange-400/40 flex items-center justify-center rounded-sm">
+                        <span className="text-orange-400 text-xl font-bold">!</span>
+                      </div>
+                      <div className="space-y-2">
+                        <p className="text-white text-sm font-semibold tracking-wide">GoGo Stream Not Playing</p>
+                        <p className="text-white/35 text-[11px] font-mono leading-relaxed">
+                          No playback detected — this episode may<br />have been removed (copyright) from GoGo.
+                        </p>
+                        {gogoMaybeCountdown !== null && gogoMaybeCountdown > 0 && (
+                          <p className="text-orange-400/80 text-[11px] font-mono animate-pulse">
+                            Auto-switching in {gogoMaybeCountdown}s…
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-2 justify-center">
+                        <button
+                          onClick={() => { setGogoMaybeBroken(false); setGogoMaybeCountdown(null); }}
+                          className="text-[10px] font-mono px-3 py-2 border border-white/15 text-white/40 hover:border-white/40 hover:text-white/70 transition-colors uppercase tracking-widest"
+                        >
+                          Dismiss
+                        </button>
+                        <button
+                          onClick={() => { setServer("KOTO"); setGogoMaybeBroken(false); setGogoMaybeCountdown(null); setGogoStreamError(false); setIframeLoaded(false); bridgeLiveRef.current = false; setBridgeLive(false); }}
+                          className="flex items-center gap-1.5 text-[10px] font-mono font-bold px-3 py-2 border border-teal-400/70 text-teal-400 hover:bg-teal-400/10 transition-all uppercase tracking-widest"
+                        >
+                          <Play className="w-3 h-3 fill-current" /> AniKoto
+                        </button>
+                        <button
+                          onClick={() => { setServer("ANIZONE"); setGogoMaybeBroken(false); setGogoMaybeCountdown(null); setGogoStreamError(false); setIframeLoaded(false); bridgeLiveRef.current = false; setBridgeLive(false); }}
+                          className="flex items-center gap-1.5 text-[10px] font-mono font-bold px-3 py-2 border border-blue-400/70 text-blue-400 hover:bg-blue-400/10 transition-all uppercase tracking-widest"
+                        >
+                          <Play className="w-3 h-3 fill-current" /> AniZone
+                        </button>
+                        <button
+                          onClick={() => { setServer("MIRURO"); setGogoMaybeBroken(false); setGogoMaybeCountdown(null); setGogoStreamError(false); setIframeLoaded(false); bridgeLiveRef.current = false; setBridgeLive(false); }}
+                          className="flex items-center gap-1.5 text-[10px] font-mono font-bold px-3 py-2 border border-purple-400/70 text-purple-400 hover:bg-purple-400/10 transition-all uppercase tracking-widest"
+                        >
+                          <Play className="w-3 h-3 fill-current" /> Miruro
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )}
