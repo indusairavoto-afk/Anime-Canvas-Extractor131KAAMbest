@@ -519,71 +519,6 @@ export default function AnimeDetailAniList() {
           </div>
         )}
 
-        {/* Recommendations */}
-        {recs.length > 0 && (
-          <div className="mt-12 sm:mt-16">
-            <h2 className="font-serif text-2xl sm:text-3xl text-white mb-5 sm:mb-8">You Might Also Like</h2>
-            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2 sm:gap-4">
-              {recs.map((rec, i) => {
-                if (!rec) return null;
-                const recTitle = rec.title.english || rec.title.romaji;
-                const recCover = rec.coverImage?.large || "";
-                const recScore = rec.averageScore ? (rec.averageScore / 10).toFixed(1) : null;
-                return (
-                  <motion.div
-                    key={rec.id}
-                    initial={{ opacity: 0, y: 12 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: i * 0.06 }}
-                  >
-                    <Link href={`/anime/al/${rec.id}`}>
-                      <div className="group cursor-pointer">
-                        <div className="relative aspect-[2/3] overflow-hidden border border-white/5 mb-2">
-                          <img
-                            src={recCover}
-                            alt={recTitle}
-                            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-                            loading="lazy"
-                          />
-                          {recScore && (
-                            <div className="absolute top-1.5 right-1.5 flex items-center gap-0.5 bg-black/70 text-white text-[9px] font-mono px-1.5 py-0.5">
-                              <Star className="w-2.5 h-2.5" />{recScore}
-                            </div>
-                          )}
-                          <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                        </div>
-                        <p className="text-white/70 text-[11px] font-medium line-clamp-2 leading-snug group-hover:text-white transition-colors">
-                          {recTitle}
-                        </p>
-                      </div>
-                    </Link>
-                  </motion.div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* Streaming platforms */}
-        {(anime.externalLinks ?? []).filter(l => l.type === "STREAMING").length > 1 && (
-          <div className="mt-10 pt-8 border-t border-white/5">
-            <p className="text-[9px] font-mono text-white/25 uppercase tracking-[0.3em] mb-3">Available on</p>
-            <div className="flex flex-wrap gap-2">
-              {(anime.externalLinks ?? []).filter(l => l.type === "STREAMING").map((l) => (
-                <a
-                  key={l.site}
-                  href={l.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[10px] font-mono uppercase tracking-widest border border-white/10 text-white/40 hover:border-white/30 hover:text-white px-3 py-1.5 transition-colors"
-                >
-                  {l.site}
-                </a>
-              ))}
-            </div>
-          </div>
-        )}
-
         {/* Reviews Section */}
         <div className="mt-12 sm:mt-20">
 
@@ -867,6 +802,71 @@ export default function AnimeDetailAniList() {
             );
           })()}
         </div>
+
+        {/* Recommendations */}
+        {recs.length > 0 && (
+          <div className="mt-12 sm:mt-16">
+            <h2 className="font-serif text-2xl sm:text-3xl text-white mb-5 sm:mb-8">You Might Also Like</h2>
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2 sm:gap-4">
+              {recs.map((rec, i) => {
+                if (!rec) return null;
+                const recTitle = rec.title.english || rec.title.romaji;
+                const recCover = rec.coverImage?.large || "";
+                const recScore = rec.averageScore ? (rec.averageScore / 10).toFixed(1) : null;
+                return (
+                  <motion.div
+                    key={rec.id}
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: i * 0.06 }}
+                  >
+                    <Link href={`/anime/al/${rec.id}`}>
+                      <div className="group cursor-pointer">
+                        <div className="relative aspect-[2/3] overflow-hidden border border-white/5 mb-2">
+                          <img
+                            src={recCover}
+                            alt={recTitle}
+                            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                            loading="lazy"
+                          />
+                          {recScore && (
+                            <div className="absolute top-1.5 right-1.5 flex items-center gap-0.5 bg-black/70 text-white text-[9px] font-mono px-1.5 py-0.5">
+                              <Star className="w-2.5 h-2.5" />{recScore}
+                            </div>
+                          )}
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                        </div>
+                        <p className="text-white/70 text-[11px] font-medium line-clamp-2 leading-snug group-hover:text-white transition-colors">
+                          {recTitle}
+                        </p>
+                      </div>
+                    </Link>
+                  </motion.div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Streaming platforms */}
+        {(anime.externalLinks ?? []).filter(l => l.type === "STREAMING").length > 1 && (
+          <div className="mt-10 pt-8 border-t border-white/5">
+            <p className="text-[9px] font-mono text-white/25 uppercase tracking-[0.3em] mb-3">Available on</p>
+            <div className="flex flex-wrap gap-2">
+              {(anime.externalLinks ?? []).filter(l => l.type === "STREAMING").map((l) => (
+                <a
+                  key={l.site}
+                  href={l.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[10px] font-mono uppercase tracking-widest border border-white/10 text-white/40 hover:border-white/30 hover:text-white px-3 py-1.5 transition-colors"
+                >
+                  {l.site}
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
