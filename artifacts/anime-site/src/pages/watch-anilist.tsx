@@ -223,6 +223,7 @@ export default function WatchAniList() {
     miruro?: { iframeUrl?: string } | null;
   }>({});
   const [autoDetecting, setAutoDetecting] = useState(false);
+  const [autoSwitchMsg, setAutoSwitchMsg] = useState<string | null>(null);
   const [serverHealth, setServerHealth] = useState<{ GOGO: "unknown" | "checking" | "ok" | "fail"; KOTO: "unknown" | "checking" | "ok" | "fail"; ANIZONE: "unknown" | "checking" | "ok" | "fail"; MIRURO: "unknown" | "checking" | "ok" | "fail" }>({ GOGO: "unknown", KOTO: "unknown", ANIZONE: "unknown", MIRURO: "unknown" });
   const [sourcePageTitle, setSourcePageTitle] = useState<string | null>(null);
   const [verifyResult, setVerifyResult] = useState<{ correct: boolean; confidence: "high" | "medium" | "low"; reason: string; extractedEpisode: number | null } | null>(null);
@@ -1158,6 +1159,25 @@ export default function WatchAniList() {
     return () => clearTimeout(timer);
   }, [server, iframeLoaded, gogoStreamError, cdnNotFound, cdnLoading]);
 
+  // Auto-switch: when GoGo stream error is detected, automatically switch to the
+  // best available working server (KOTO → ANIZONE → MIRURO) after a short delay.
+  useEffect(() => {
+    if (!gogoStreamError || server !== "GOGO") return;
+    const fallbackOrder = ["KOTO", "ANIZONE", "MIRURO"] as const;
+    const nextServer = fallbackOrder.find(s => serverHealth[s] === "ok");
+    if (!nextServer) return; // no working alternative yet — let user pick manually
+    const label = nextServer === "KOTO" ? "AniKoto" : nextServer === "ANIZONE" ? "AniZone" : "Miruro";
+    setAutoSwitchMsg(`GoGo unavailable — switching to ${label}…`);
+    const timer = setTimeout(() => {
+      setServer(nextServer);
+      setGogoStreamError(false);
+      setIframeLoaded(false);
+      bridgeLiveRef.current = false;
+      setAutoSwitchMsg(null);
+    }, 2000);
+    return () => { clearTimeout(timer); setAutoSwitchMsg(null); };
+  }, [gogoStreamError, server, serverHealth]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Send a command to the CDN player iframe via postMessage
   const sendCmd = (cmd: Record<string, unknown>) => {
     iframeRef.current?.contentWindow?.postMessage(cmd, "*");
@@ -1782,9 +1802,13 @@ export default function WatchAniList() {
                       </div>
                       <div className="space-y-2">
                         <p className="text-white text-sm font-semibold tracking-wide">GoGo Stream Unavailable</p>
-                        <p className="text-white/35 text-[11px] font-mono leading-relaxed">
-                          This episode may have been removed from GoGo<br />(copyright) or the CDN link is broken.<br />Try another server below.
-                        </p>
+                        {autoSwitchMsg ? (
+                          <p className="text-teal-400 text-[11px] font-mono leading-relaxed animate-pulse">{autoSwitchMsg}</p>
+                        ) : (
+                          <p className="text-white/35 text-[11px] font-mono leading-relaxed">
+                            This episode may have been removed from GoGo<br />(copyright) or the CDN link is broken.<br />Try another server below.
+                          </p>
+                        )}
                       </div>
                       <div className="flex flex-wrap gap-2 justify-center">
                         <button
@@ -1794,13 +1818,19 @@ export default function WatchAniList() {
                           Retry GoGo
                         </button>
                         <button
-                          onClick={() => { setServer("KOTO"); setGogoStreamError(false); setIframeLoaded(false); bridgeLiveRef.current = false; }}
+                          onClick={() => { setServer("KOTO"); setGogoStreamError(false); setIframeLoaded(false); bridgeLiveRef.current = false; setAutoSwitchMsg(null); }}
                           className="flex items-center gap-1.5 text-[10px] font-mono font-bold px-3 py-2 border border-teal-400/70 text-teal-400 hover:bg-teal-400/10 transition-all uppercase tracking-widest"
                         >
                           <Play className="w-3 h-3 fill-current" /> AniKoto
                         </button>
                         <button
-                          onClick={() => { setServer("MIRURO"); setGogoStreamError(false); setIframeLoaded(false); bridgeLiveRef.current = false; }}
+                          onClick={() => { setServer("ANIZONE"); setGogoStreamError(false); setIframeLoaded(false); bridgeLiveRef.current = false; setAutoSwitchMsg(null); }}
+                          className="flex items-center gap-1.5 text-[10px] font-mono font-bold px-3 py-2 border border-blue-400/70 text-blue-400 hover:bg-blue-400/10 transition-all uppercase tracking-widest"
+                        >
+                          <Play className="w-3 h-3 fill-current" /> AniZone
+                        </button>
+                        <button
+                          onClick={() => { setServer("MIRURO"); setGogoStreamError(false); setIframeLoaded(false); bridgeLiveRef.current = false; setAutoSwitchMsg(null); }}
                           className="flex items-center gap-1.5 text-[10px] font-mono font-bold px-3 py-2 border border-purple-400/70 text-purple-400 hover:bg-purple-400/10 transition-all uppercase tracking-widest"
                         >
                           <Play className="w-3 h-3 fill-current" /> Miruro
