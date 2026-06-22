@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { apiUrl } from "@/lib/api";
 import { useParams, Link, useLocation } from "wouter";
 import { motion } from "framer-motion";
 import { Calendar, Users, Edit3, LogOut, ThumbsUp, MessageCircle } from "lucide-react";
@@ -74,14 +75,14 @@ export default function ProfilePage() {
     if (!username) return;
     setProfileLoading(true);
     setNotFound(false);
-    fetch(`/api/users/${username}`)
+    fetch(apiUrl(`/api/users/${username}`))
       .then(r => r.ok ? r.json() : Promise.reject(r.status))
       .then(data => setProfile(data))
       .catch(code => { if (code === 404) setNotFound(true); })
       .finally(() => setProfileLoading(false));
 
     setReviewsLoading(true);
-    fetch(`/api/users/${username}/reviews`)
+    fetch(apiUrl(`/api/users/${username}/reviews`))
       .then(r => r.ok ? r.json() : [])
       .then(setReviews)
       .finally(() => setReviewsLoading(false));

@@ -1,4 +1,5 @@
 import { motion, AnimatePresence } from "framer-motion";
+import { apiUrl } from "@/lib/api";
 import { Link, useParams } from "wouter";
 import {
   ArrowLeft, Star, Calendar, Tv, Bookmark, BookmarkCheck,
@@ -176,7 +177,7 @@ export default function AnimeDetailAniList() {
   const [replySubmitting, setReplySubmitting] = useState<Set<number>>(new Set());
 
   async function loadReplies(reviewId: number) {
-    const res = await fetch(`/api/reviews/${reviewId}/replies`);
+    const res = await fetch(apiUrl(`/api/reviews/${reviewId}/replies`));
     if (res.ok) {
       const data = await res.json();
       setRepliesData(prev => ({ ...prev, [reviewId]: data }));
@@ -197,7 +198,7 @@ export default function AnimeDetailAniList() {
     if (!content) return;
     setReplySubmitting(prev => new Set(prev).add(reviewId));
     const name = authUser?.username || username.trim() || "Guest";
-    const res = await fetch(`/api/reviews/${reviewId}/replies`, {
+    const res = await fetch(apiUrl(`/api/reviews/${reviewId}/replies`), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username: name, content }),

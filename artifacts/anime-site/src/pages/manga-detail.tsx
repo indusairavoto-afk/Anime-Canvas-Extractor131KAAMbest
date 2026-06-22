@@ -1,4 +1,5 @@
 import { motion, AnimatePresence } from "framer-motion";
+import { apiUrl } from "@/lib/api";
 import { Link, useParams } from "wouter";
 import { ArrowLeft, Star, BookOpen, X, ExternalLink, ChevronLeft, ChevronRight, ChevronDown, Check, Minus, Plus, Loader2 } from "lucide-react";
 import { useMangaList, type ReadStatus } from "@/hooks/useMangaList";
@@ -128,7 +129,7 @@ function ReaderModal({
     setChapters([]);
     setSelectedChapter(null);
 
-    fetch(`/api/atsu/find?title=${encodeURIComponent(title)}`)
+    fetch(apiUrl(`/api/atsu/find?title=${encodeURIComponent(title)}`))
       .then(r => r.json())
       .then((data: { found: boolean; mangaId?: string; chapters?: AtsuChapter[] }) => {
         if (cancelled) return;

@@ -13,3 +13,4 @@
 - [onisaga.com proxy](onisaga-proxy.md) — SSR Laravel+Livewire site; slug-based URLs (/manga/{slug}, /read/{slug}/{id}); no HID needed; /api/onisaga/find works for any title; primary manga reader replacing comix.to.
 - [MangaFire slug pattern + sitemap search](mangafire-slug.md) — MangaFire always doubles the last char of the slug (man→mann, piece→piecee); AJAX search is Cloudflare-gated; use sitemap-list-N.xml files (54 total) in parallel batches to find full slug.
 - [atsu.moe search API](atsu-search-api.md) — Typesense proxied at relative `/collections/manga/documents/search`, no auth; reader URL is `/read/{mangaId}/{chapterId}`; parse SSR `/manga/{id}` for chapters.
+- [Render single-server deployment](render-deployment.md) — Express serves built frontend static files; all /api/ fetch calls must use apiUrl(); render.yaml builds frontend then API server in one service.

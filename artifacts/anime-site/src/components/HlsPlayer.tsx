@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
+import { apiUrl } from "@/lib/api";
 import Hls, { type Level } from "hls.js";
 import {
   Play, Pause, Volume2, VolumeX, Maximize, Minimize,
@@ -134,7 +135,7 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
     setTranslating(true);
     setTranslateError(null);
     try {
-      const resp = await fetch("/api/translate-subtitle", {
+      const resp = await fetch(apiUrl("/api/translate-subtitle"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ vttUrl: sourceSrc, targetLang: lang, targetLangName: langName }),

@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
+import { apiUrl } from "@/lib/api";
 
 export interface AuthUser {
   id: number;
@@ -36,7 +37,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (emailOrUsername: string, password: string) => {
     try {
-      const res = await fetch("/api/auth/login", {
+      const res = await fetch(apiUrl("/api/auth/login"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ emailOrUsername, password }),
@@ -53,7 +54,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const register = useCallback(async (displayName: string, username: string, email: string, password: string) => {
     try {
-      const res = await fetch("/api/auth/register", {
+      const res = await fetch(apiUrl("/api/auth/register"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ displayName, username, email, password }),

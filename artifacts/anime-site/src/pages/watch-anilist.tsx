@@ -1331,7 +1331,7 @@ export default function WatchAniList() {
 
     const beat = async () => {
       try {
-        const res = await fetch("/api/viewers/heartbeat", {
+        const res = await fetch(apiUrl("/api/viewers/heartbeat"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ animeId, episode: currentEp, sessionId: sid }),
@@ -1367,7 +1367,7 @@ export default function WatchAniList() {
     setVoteCounts({ skip: 0, timepass: 0, go_for_it: 0, perfection: 0 });
     const stored = localStorage.getItem(`na_vote_${animeId}_${currentEp}`);
     setMyVote(stored);
-    fetch(`/api/votes/${animeId}/${currentEp}`)
+    fetch(apiUrl(`/api/votes/${animeId}/${currentEp}`))
       .then(r => r.ok ? r.json() : null)
       .then(data => { if (data) setVoteCounts(data as typeof voteCounts); })
       .catch(() => {});
@@ -1475,7 +1475,7 @@ export default function WatchAniList() {
     try {
       let voterKey = localStorage.getItem("na_voter_key");
       if (!voterKey) { voterKey = crypto.randomUUID(); localStorage.setItem("na_voter_key", voterKey); }
-      const res = await fetch(`/api/votes/${animeId}/${currentEp}`, {
+      const res = await fetch(apiUrl(`/api/votes/${animeId}/${currentEp}`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ category: cat, voterKey }),
@@ -1487,7 +1487,7 @@ export default function WatchAniList() {
       } else {
         // rollback
         setMyVote(prev);
-        fetch(`/api/votes/${animeId}/${currentEp}`).then(r => r.ok ? r.json() : null).then(d => { if (d) setVoteCounts(d as typeof voteCounts); }).catch(() => {});
+        fetch(apiUrl(`/api/votes/${animeId}/${currentEp}`)).then(r => r.ok ? r.json() : null).then(d => { if (d) setVoteCounts(d as typeof voteCounts); }).catch(() => {});
       }
     } catch {
       setMyVote(prev);
