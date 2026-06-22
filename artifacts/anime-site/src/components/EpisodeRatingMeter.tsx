@@ -409,7 +409,7 @@ export function EpisodeRatingMeter({ animeId, episode, episodeTitle, onPostRevie
                         </div>
                       </button>
                     ) : (
-                      <p className="text-[11px] text-white/50 leading-relaxed mb-2">{review.content}</p>
+                      <p className="text-sm text-white/70 leading-relaxed mb-2">{review.content}</p>
                     )}
 
                     {/* Like */}
