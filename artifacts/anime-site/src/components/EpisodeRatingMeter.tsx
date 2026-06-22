@@ -57,15 +57,9 @@ export function EpisodeRatingMeter({ animeId, episode, episodeTitle, onPostRevie
     setSubmitting(true);
 
     if (isToggleOff) {
-      // Deselect — optimistic
       setMyVote(null);
       setCounts(c => ({ ...c, [cat]: Math.max(0, c[cat] - 1) }));
       localStorage.removeItem(`na_vote_${animeId}_${episode}`);
-      // No server-side "unvote" endpoint, just refresh counts
-      fetch(apiUrl(`/api/votes/${animeId}/${episode}`))
-        .then(r => r.ok ? r.json() : null)
-        .then(d => { if (d) setCounts(d as VoteCounts); })
-        .catch(() => {});
       setSubmitting(false);
       return;
     }
