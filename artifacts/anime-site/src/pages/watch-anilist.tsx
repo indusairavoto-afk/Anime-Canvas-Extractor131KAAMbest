@@ -930,7 +930,14 @@ export default function WatchAniList() {
           }
           setAnizoneSearchResults(results);
           if (results.length > 0 && !currentSlug) {
-            const slug = bestAutoSlug(results, baseQ, seasonNum, seasonYear);
+            // If AniZone returns exactly 1 result, auto-select it unconditionally:
+            // AniZone uses Japanese titles internally, so an English query that
+            // matches exactly 1 entry is almost certainly the right anime — word-
+            // overlap scoring will always fail for Japanese-titled shows.
+            const slug =
+              results.length === 1
+                ? results[0].slug
+                : bestAutoSlug(results, baseQ, seasonNum, seasonYear);
             if (slug) {
               setAnizoneSlug(slug);
               setAnizoneSlugInput(slug);
