@@ -127,6 +127,24 @@ export const episodeVoteTable = pgTable("episode_vote", {
 
 export type EpisodeVote = typeof episodeVoteTable.$inferSelect;
 
+export const mangaReadStatusEnum = pgEnum("manga_read_status", ["reading", "plan_to_read", "completed"]);
+
+export const watchlistTable = pgTable("watchlist", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => userTable.id, { onDelete: "cascade" }),
+  animeId: integer("anime_id").notNull(),
+  addedAt: timestamp("added_at").notNull().defaultNow(),
+}, (t) => [unique().on(t.userId, t.animeId)]);
+
+export const mangaListTable = pgTable("manga_list", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => userTable.id, { onDelete: "cascade" }),
+  mangaId: integer("manga_id").notNull(),
+  status: mangaReadStatusEnum("status").notNull().default("plan_to_read"),
+  chapter: integer("chapter").notNull().default(0),
+  addedAt: timestamp("added_at").notNull().defaultNow(),
+}, (t) => [unique().on(t.userId, t.mangaId)]);
+
 export const insertAnimeSchema = createInsertSchema(animeTable).omit({ id: true, createdAt: true });
 export const insertEpisodeSchema = createInsertSchema(episodeTable).omit({ id: true, createdAt: true });
 export const insertCommentSchema = createInsertSchema(commentTable).omit({ id: true, createdAt: true });
