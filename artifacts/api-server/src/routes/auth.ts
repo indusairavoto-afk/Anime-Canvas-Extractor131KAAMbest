@@ -1,8 +1,9 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
+import crypto from "node:crypto";
 import { db } from "@workspace/db";
-import { userTable } from "@workspace/db/schema";
-import { eq, or } from "drizzle-orm";
+import { userTable, passwordResetTable } from "@workspace/db/schema";
+import { eq, or, and, gt, isNull } from "drizzle-orm";
 
 const router = Router();
 
@@ -50,6 +51,62 @@ router.post("/auth/register", async (req, res) => {
       avatarSeed: uname,
     }).returning();
     res.status(201).json(toPublicUser(row));
+  } catch (err) {
+    req.log.error(err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/auth/forgot-password", async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) { res.status(400).json({ error: "email is required" }); return; }
+
+    const [user] = await db.select().from(userTable)
+      .where(eq(userTable.email, email.trim().toLowerCase())).limit(1);
+
+    if (!user) {
+      res.status(404).json({ error: "No account found with that email" });
+      return;
+    }
+
+    const charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_!@#$%&";
+    const bytes = crypto.randomBytes(30);
+    const token = Array.from(bytes).map(b => charset[b % charset.length]).join("");
+
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    await db.insert(passwordResetTable).values({ userId: user.id, token, expiresAt });
+
+    res.json({ token, expiresAt: expiresAt.toISOString() });
+  } catch (err) {
+    req.log.error(err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/auth/reset-password", async (req, res) => {
+  try {
+    const { token, password } = req.body;
+    if (!token || !password) { res.status(400).json({ error: "token and password are required" }); return; }
+    if (password.length < 6) { res.status(400).json({ error: "Password must be at least 6 characters" }); return; }
+
+    const [reset] = await db.select().from(passwordResetTable)
+      .where(and(
+        eq(passwordResetTable.token, token),
+        isNull(passwordResetTable.usedAt),
+        gt(passwordResetTable.expiresAt, new Date()),
+      )).limit(1);
+
+    if (!reset) {
+      res.status(400).json({ error: "Reset link is invalid or has expired" });
+      return;
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+    await db.update(userTable).set({ passwordHash }).where(eq(userTable.id, reset.userId));
+    await db.update(passwordResetTable).set({ usedAt: new Date() }).where(eq(passwordResetTable.id, reset.id));
+
+    res.json({ ok: true });
   } catch (err) {
     req.log.error(err);
     res.status(500).json({ error: "Internal server error" });

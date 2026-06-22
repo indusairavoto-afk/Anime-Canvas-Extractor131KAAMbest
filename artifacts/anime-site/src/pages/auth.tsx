@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, Copy, Check, ArrowLeft } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
+import { apiUrl } from "@/lib/api";
 
 export default function AuthPage() {
   const [tab, setTab] = useState<"login" | "register">("login");
@@ -14,6 +15,42 @@ export default function AuthPage() {
   const [loginError, setLoginError] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
   const [showLoginPw, setShowLoginPw] = useState(false);
+
+  const [forgotStep, setForgotStep] = useState<"idle" | "form" | "done">("idle");
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotError, setForgotError] = useState("");
+  const [resetToken, setResetToken] = useState("");
+  const [copied, setCopied] = useState(false);
+
+  async function handleForgot(e: React.FormEvent) {
+    e.preventDefault();
+    setForgotError("");
+    setForgotLoading(true);
+    try {
+      const res = await fetch(apiUrl("/api/auth/forgot-password"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: forgotEmail.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setForgotError(data.error ?? "Request failed"); return; }
+      setResetToken(data.token);
+      setForgotStep("done");
+    } catch {
+      setForgotError("Network error — please try again");
+    } finally {
+      setForgotLoading(false);
+    }
+  }
+
+  function copyLink() {
+    const url = `${window.location.origin}/reset/${resetToken}`;
+    navigator.clipboard.writeText(url).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
 
   const [regDisplay, setRegDisplay] = useState("");
   const [regUsername, setRegUsername] = useState("");
@@ -69,7 +106,7 @@ export default function AuthPage() {
         </div>
 
         <AnimatePresence mode="wait">
-          {tab === "login" ? (
+          {tab === "login" && forgotStep === "idle" ? (
             <motion.form
               key="login"
               initial={{ opacity: 0, y: 8 }}
@@ -91,7 +128,16 @@ export default function AuthPage() {
                 />
               </div>
               <div>
-                <label className="block text-xs text-white/40 mb-1.5 uppercase tracking-widest font-mono">Password</label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs text-white/40 uppercase tracking-widest font-mono">Password</label>
+                  <button
+                    type="button"
+                    onClick={() => { setForgotStep("form"); setForgotEmail(""); setForgotError(""); }}
+                    className="text-[11px] text-white/30 hover:text-white/60 transition-colors font-mono"
+                  >
+                    Forgot password?
+                  </button>
+                </div>
                 <div className="relative">
                   <input
                     type={showLoginPw ? "text" : "password"}
@@ -121,6 +167,82 @@ export default function AuthPage() {
                 </button>
               </p>
             </motion.form>
+          ) : tab === "login" && forgotStep === "form" ? (
+            <motion.form
+              key="forgot-form"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.18 }}
+              onSubmit={handleForgot}
+              className="space-y-4"
+            >
+              <button
+                type="button"
+                onClick={() => setForgotStep("idle")}
+                className="flex items-center gap-1.5 text-xs text-white/30 hover:text-white/60 transition-colors font-mono uppercase tracking-widest mb-2"
+              >
+                <ArrowLeft className="w-3 h-3" /> Back to sign in
+              </button>
+              <div>
+                <label className="block text-xs text-white/40 mb-1.5 uppercase tracking-widest font-mono">Account Email</label>
+                <input
+                  type="email"
+                  value={forgotEmail}
+                  onChange={e => setForgotEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  required
+                  autoFocus
+                  className="w-full bg-zinc-900 border border-white/10 text-white text-sm px-4 py-3 rounded-xl placeholder:text-white/20 focus:outline-none focus:border-white/30 transition-colors"
+                />
+              </div>
+              {forgotError && <p className="text-red-400 text-sm">{forgotError}</p>}
+              <button
+                type="submit"
+                disabled={forgotLoading}
+                className="w-full bg-white text-black font-semibold py-3 rounded-xl text-sm hover:bg-white/90 transition-colors disabled:opacity-50"
+              >
+                {forgotLoading ? "Generating…" : "Generate Reset Link"}
+              </button>
+            </motion.form>
+          ) : tab === "login" && forgotStep === "done" ? (
+            <motion.div
+              key="forgot-done"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.18 }}
+              className="space-y-4"
+            >
+              <button
+                type="button"
+                onClick={() => setForgotStep("idle")}
+                className="flex items-center gap-1.5 text-xs text-white/30 hover:text-white/60 transition-colors font-mono uppercase tracking-widest"
+              >
+                <ArrowLeft className="w-3 h-3" /> Back to sign in
+              </button>
+              <div className="bg-zinc-900/60 border border-white/[0.08] rounded-xl p-4 space-y-3">
+                <p className="text-xs text-white/40 font-mono uppercase tracking-widest">Your reset passcode</p>
+                <p className="font-mono text-white/80 text-sm break-all leading-relaxed tracking-wider border border-white/10 bg-black/40 rounded-lg px-3 py-2">
+                  {resetToken}
+                </p>
+                <p className="text-[11px] text-white/30">This 30-character code is unique to your account. Use it to set a new password — valid for 24 hours.</p>
+              </div>
+              <button
+                type="button"
+                onClick={copyLink}
+                className="w-full flex items-center justify-center gap-2 border border-white/10 text-white/60 hover:text-white hover:border-white/30 font-medium py-3 rounded-xl text-sm transition-colors"
+              >
+                {copied ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
+                {copied ? "Copied!" : "Copy reset link"}
+              </button>
+              <a
+                href={`/reset/${resetToken}`}
+                className="block w-full text-center bg-white text-black font-semibold py-3 rounded-xl text-sm hover:bg-white/90 transition-colors"
+              >
+                Go to reset page →
+              </a>
+            </motion.div>
           ) : (
             <motion.form
               key="register"
