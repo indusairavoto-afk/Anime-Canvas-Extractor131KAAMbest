@@ -17,28 +17,55 @@ function normalizeUrl(url: string): string {
   return url;
 }
 
-function extractCdnUrl(html: string): string | null {
-  const m1 = html.match(/data-video=["']([^"']+)["']/);
-  if (m1?.[1]) {
-    const raw = m1[1];
-    if (raw.startsWith("http") || raw.startsWith("//")) return normalizeUrl(raw);
-    const decoded = raw
-      .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
-      .replace(/&quot;/g, '"').replace(/&#39;/g, "'");
-    const srcM = decoded.match(/src=["']([^"']+)["']/);
-    if (srcM?.[1]) return normalizeUrl(srcM[1]);
+/** Extract ALL candidate CDN/streaming URLs from a GoGo episode page. */
+function extractAllCdnUrls(html: string): string[] {
+  const urls: string[] = [];
+  const seen = new Set<string>();
+
+  const add = (raw: string) => {
+    raw = raw.trim();
+    if (!raw) return;
+    let url: string;
+    if (raw.startsWith("http") || raw.startsWith("//")) {
+      url = normalizeUrl(raw);
+    } else {
+      const decoded = decodeHtmlEntities(raw);
+      const srcM = decoded.match(/src=["']([^"']+)["']/);
+      url = normalizeUrl(srcM?.[1] ?? raw);
+    }
+    if (url && !seen.has(url)) { seen.add(url); urls.push(url); }
+  };
+
+  // All data-video attributes (server buttons on the GoGo page)
+  const dataVideoRe = /data-video=["']([^"']+)["']/g;
+  let m: RegExpExecArray | null;
+  while ((m = dataVideoRe.exec(html)) !== null) add(m[1]);
+
+  // Fallback patterns
+  const fm2 = html.match(/(?:var\s+link|link\s*=)\s*["']([^"']*streaming[^"']*)["']/i);
+  if (fm2?.[1]) add(fm2[1]);
+  const fm3 = html.match(/<iframe[^>]+src=["']([^"']*(?:streaming|embed|gogoplay|embtaku|vidstreaming|gogo-stream)[^"']*)["'][^>]*>/i);
+  if (fm3?.[1]) add(fm3[1]);
+  const fm4 = html.match(/<iframe[^>]+src=["']((?:https?:)?\/\/(?!(?:www\.)?gogoanimes)[^"']+)["'][^>]*>/i);
+  if (fm4?.[1]) add(fm4[1]);
+
+  return urls;
+}
+
+/** Check whether a CDN player URL is serving a working player (not a "We're Sorry" error page). */
+async function isCdnWorking(url: string): Promise<boolean> {
+  const ERROR_MARKERS = ["We're Sorry", "we're sorry", "Error Code", "copyright violation", "removed due to", "deleted by the owner", "file you are looking for"];
+  try {
+    const resp = await fetch(url, {
+      headers: { ...BROWSER_HEADERS, Referer: "https://gogoanimes.cv/" },
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!resp.ok) return false;
+    const text = await resp.text();
+    return !ERROR_MARKERS.some(m => text.includes(m));
+  } catch {
+    return false;
   }
-  const m2 = html.match(/(?:var\s+link|link\s*=)\s*["']([^"']*streaming[^"']*)["']/i);
-  if (m2?.[1]) return normalizeUrl(m2[1]);
-  const m3 = html.match(
-    /<iframe[^>]+src=["']([^"']*(?:streaming|embed|gogoplay|embtaku|vidstreaming|gogo-stream)[^"']*)["'][^>]*>/i,
-  );
-  if (m3?.[1]) return normalizeUrl(m3[1]);
-  const m4 = html.match(
-    /<iframe[^>]+src=["']((?:https?:)?\/\/(?!(?:www\.)?gogoanimes)[^"']+)["'][^>]*>/i,
-  );
-  if (m4?.[1]) return normalizeUrl(m4[1]);
-  return null;
 }
 
 function decodeHtmlEntities(s: string): string {
@@ -215,16 +242,20 @@ async function probeCdnUrl(slug: string, ep: string): Promise<ProbedResult | nul
     const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
     const pageTitle = titleMatch?.[1]?.trim().replace(/\s+/g, " ") ?? null;
 
-    const streamingUrl = extractCdnUrl(html);
-    if (!streamingUrl) return null;
+    // Try ALL CDN server URLs found on the page, stopping at the first working one.
+    // GoGo often has multiple server buttons — if the primary CDN (megaplay.buzz) is
+    // DMCA'd (410 "We're Sorry"), the secondary/tertiary servers may still work.
+    const cdnUrls = extractAllCdnUrls(html);
+    for (const streamingUrl of cdnUrls) {
+      const innerUrl = await extractInnerPlayerUrl(streamingUrl);
+      const finalUrl = innerUrl ?? decodeHtmlEntities(streamingUrl);
+      if (await isCdnWorking(finalUrl)) {
+        return { cdnUrl: finalUrl, slug, pageTitle };
+      }
+    }
 
-    // Extract the actual CDN player URL from inside streaming.php.
-    // Loading streaming.php directly embeds it in a double-nested iframe which prevents
-    // megaplay.buzz from rendering correctly (JW Player 102630 silent error → black screen).
-    // Loading megaplay.buzz directly shows either the working player OR the "We're Sorry"
-    // error page, giving users clear feedback to switch servers.
-    const innerUrl = await extractInnerPlayerUrl(streamingUrl);
-    return { cdnUrl: innerUrl ?? decodeHtmlEntities(streamingUrl), slug, pageTitle };
+    // All CDN servers on this page are broken
+    return null;
   } catch {
     return null;
   }
@@ -272,6 +303,8 @@ async function searchGogo(q: string, limit = 10): Promise<{ slug: string; title:
   }
 }
 
+const NO_CACHE = { "Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache" };
+
 /**
  * GET /api/gogo/cdn-url?slug=...&ep=...
  * Tries slug + auto-generated variants until one works.
@@ -280,13 +313,13 @@ async function searchGogo(q: string, limit = 10): Promise<{ slug: string; title:
 router.get("/gogo/cdn-url", async (req, res) => {
   const slug = req.query.slug as string | undefined;
   const ep = req.query.ep as string | undefined;
-  if (!slug || !ep) return res.status(400).json({ error: "slug and ep query params are required" });
+  if (!slug || !ep) return res.status(400).set(NO_CACHE).json({ error: "slug and ep query params are required" });
 
   const variants = slugVariants(slug);
   for (const variant of variants) {
     const result = await probeCdnUrl(variant, ep);
     if (result) {
-      return res.json({
+      return res.set(NO_CACHE).json({
         cdnUrl: result.cdnUrl,
         resolvedSlug: result.slug,
         pageTitle: result.pageTitle,
@@ -294,7 +327,7 @@ router.get("/gogo/cdn-url", async (req, res) => {
       });
     }
   }
-  return res.status(404).json({ error: "No working slug found after trying all variants", triedVariants: variants });
+  return res.status(404).set(NO_CACHE).json({ error: "No working slug found after trying all variants", triedVariants: variants });
 });
 
 /**
@@ -307,7 +340,7 @@ router.get("/gogo/cdn-url", async (req, res) => {
 router.get("/gogo/resolve-slug", async (req, res) => {
   const titleRaw = (req.query.title as string | undefined)?.trim();
   const ep = (req.query.ep as string | undefined)?.trim();
-  if (!titleRaw || !ep) return res.status(400).json({ error: "title and ep query params are required" });
+  if (!titleRaw || !ep) return res.status(400).set(NO_CACHE).json({ error: "title and ep query params are required" });
 
   // Step 1: derive and try slug variants
   const derived = titleToSlug(titleRaw);
@@ -316,7 +349,7 @@ router.get("/gogo/resolve-slug", async (req, res) => {
   for (const variant of variants) {
     const result = await probeCdnUrl(variant, ep);
     if (result) {
-      return res.json({
+      return res.set(NO_CACHE).json({
         cdnUrl: result.cdnUrl,
         resolvedSlug: result.slug,
         pageTitle: result.pageTitle,
@@ -350,7 +383,7 @@ router.get("/gogo/resolve-slug", async (req, res) => {
     for (const variant of candidateVariants) {
       const result = await probeCdnUrl(variant, ep);
       if (result) {
-        return res.json({
+        return res.set(NO_CACHE).json({
           cdnUrl: result.cdnUrl,
           resolvedSlug: result.slug,
           pageTitle: result.pageTitle,
@@ -363,7 +396,7 @@ router.get("/gogo/resolve-slug", async (req, res) => {
     }
   }
 
-  return res.status(404).json({
+  return res.status(404).set(NO_CACHE).json({
     error: "Could not find a working stream after searching",
     method: "search",
     searchResults: scored.slice(0, 5).map((r) => ({ slug: r.slug, title: r.title, score: r.score })),

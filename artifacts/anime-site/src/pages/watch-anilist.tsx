@@ -533,7 +533,7 @@ export default function WatchAniList() {
     schedule(preferred === "GOGO" ? 0 : HEAD_START, () => {
       const gogoTitle = title;
       const firstFetch = gSlug
-        ? fetch(apiUrl(`/api/gogo/cdn-url?slug=${encodeURIComponent(gSlug)}&ep=${currentEp}`)).then(r => r.json())
+        ? fetch(apiUrl(`/api/gogo/cdn-url?slug=${encodeURIComponent(gSlug)}&ep=${currentEp}`), { cache: "no-store" }).then(r => r.json())
         : Promise.resolve({});
       firstFetch
         .then((data: { cdnUrl?: string; resolvedSlug?: string; pageTitle?: string | null }) => {
@@ -545,7 +545,7 @@ export default function WatchAniList() {
             return;
           }
           // Slug variants all failed — silently try resolve-slug (server searches GoGo by title)
-          return fetch(apiUrl(`/api/gogo/resolve-slug?title=${encodeURIComponent(gogoTitle)}&ep=${currentEp}`))
+          return fetch(apiUrl(`/api/gogo/resolve-slug?title=${encodeURIComponent(gogoTitle)}&ep=${currentEp}`), { cache: "no-store" })
             .then(r => r.json())
             .then((resolveData: { cdnUrl?: string; resolvedSlug?: string; pageTitle?: string | null }) => {
               if (cancelled) return;
@@ -671,7 +671,7 @@ export default function WatchAniList() {
     setGogoSearchResults([]);
     setGogoSearchDone(false);
     let cancelled = false;
-    fetch(apiUrl(`/api/gogo/cdn-url?slug=${encodeURIComponent(gogoSlug)}&ep=${currentEp}`))
+    fetch(apiUrl(`/api/gogo/cdn-url?slug=${encodeURIComponent(gogoSlug)}&ep=${currentEp}`), { cache: "no-store" })
       .then((r) => r.json())
       .then((data: { cdnUrl?: string; resolvedSlug?: string; pageTitle?: string | null }) => {
         if (cancelled) return;
@@ -691,7 +691,7 @@ export default function WatchAniList() {
 
         // All slug variants exhausted — automatically resolve server-side via title search+scoring.
         // No user interaction needed: the backend searches GoGo, scores results, and probes the best slug.
-        return fetch(apiUrl(`/api/gogo/resolve-slug?title=${encodeURIComponent(title)}&ep=${currentEp}`))
+        return fetch(apiUrl(`/api/gogo/resolve-slug?title=${encodeURIComponent(title)}&ep=${currentEp}`), { cache: "no-store" })
           .then((r) => r.json())
           .then((resolveData: { cdnUrl?: string; resolvedSlug?: string; pageTitle?: string | null }) => {
             if (cancelled) return;
