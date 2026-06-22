@@ -1,6 +1,6 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { Link } from "wouter";
-import { Play, Star, Clock, ChevronRight, TrendingUp, ChevronLeft, X, History, CalendarClock } from "lucide-react";
+import { Play, Star, Clock, ChevronRight, TrendingUp, ChevronLeft, X, History, CalendarClock, Info } from "lucide-react";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { AnimeCardSkeleton } from "@/components/anime-card";
 import { useContinueWatching, type ContinueWatchingEntry } from "@/hooks/useContinueWatching";
@@ -22,8 +22,10 @@ interface AniMedia {
   seasonYear?: number | null;
   format?: string | null;
   episodes?: number | null;
+  duration?: number | null;
   season?: string | null;
   studios?: { nodes: { name: string }[] };
+  nextAiringEpisode?: { episode: number; timeUntilAiring: number } | null;
 }
 
 const HERO_QUERY = `{
@@ -45,7 +47,10 @@ const HERO_QUERY = `{
       status
       seasonYear
       format
+      episodes
+      duration
       studios(isMain: true) { nodes { name } }
+      nextAiringEpisode { episode timeUntilAiring }
     }
   }
 }`;
@@ -331,11 +336,30 @@ function HeroSlide({ anime }: { anime: AniMedia }) {
   );
 }
 
-/* ── Mobile hero: compact card with cover on right ── */
+/* ── Mobile hero: Miruro-inspired full-width banner + info card ── */
 function MobileHeroCard({ anime, direction }: { anime: AniMedia; direction: number }) {
   const title = anime.title.english || anime.title.romaji;
-  const score = anime.averageScore ? (anime.averageScore / 10).toFixed(1) : null;
+  const score = anime.averageScore ? Math.round(anime.averageScore) : null;
+  const banner = anime.bannerImage || anime.coverImage?.extraLarge || anime.coverImage?.large || "";
   const cover = anime.coverImage?.extraLarge || anime.coverImage?.large || "";
+
+  // Airing countdown label: "EP 12 · 5D 21H"
+  let airingLabel: string | null = null;
+  let currentEp: number | null = null;
+  if (anime.nextAiringEpisode) {
+    const { episode, timeUntilAiring } = anime.nextAiringEpisode;
+    currentEp = episode - 1;
+    const days = Math.floor(timeUntilAiring / 86400);
+    const hours = Math.floor((timeUntilAiring % 86400) / 3600);
+    airingLabel = `EP ${episode} · ${days > 0 ? `${days}D ` : ""}${hours}H`;
+  }
+
+  const episodeDisplay = currentEp !== null && anime.episodes
+    ? `${currentEp} / ${anime.episodes}`
+    : anime.episodes
+    ? `${anime.episodes} EPs`
+    : null;
+
   return (
     <AnimatePresence mode="wait" custom={direction}>
       <motion.div
@@ -345,65 +369,97 @@ function MobileHeroCard({ anime, direction }: { anime: AniMedia; direction: numb
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         transition={{ duration: 0.4 }}
-        className="absolute inset-0"
+        className="absolute inset-0 flex flex-col"
       >
-        {/* Blurred cover as full background */}
-        <img
-          src={cover}
-          alt=""
-          className="absolute inset-0 w-full h-full object-cover scale-110"
-          style={{ filter: "blur(18px) brightness(0.22) saturate(1.3)" }}
-        />
-        <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/40 to-transparent" />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent" />
+        {/* ── Banner image ── */}
+        <div className="relative flex-shrink-0 overflow-hidden" style={{ height: 240 }}>
+          <img
+            src={banner || cover}
+            alt={title}
+            className="w-full h-full object-cover"
+          />
+          {/* Subtle bottom fade into info section */}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent" />
+          {/* Top-left: next airing badge */}
+          {airingLabel && (
+            <div className="absolute top-14 left-3 flex items-center gap-1.5 bg-black/55 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10">
+              <Clock className="w-3 h-3 text-white/70 flex-shrink-0" />
+              <span className="text-[11px] font-semibold text-white tracking-wide">{airingLabel}</span>
+            </div>
+          )}
+          {/* Top-right: episode count */}
+          {episodeDisplay && (
+            <div className="absolute top-14 right-3 bg-black/55 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10">
+              <span className="text-[11px] font-semibold text-white tracking-wide">{episodeDisplay}</span>
+            </div>
+          )}
+        </div>
 
-        {/* Content */}
-        <div className="relative z-10 h-full flex items-center px-4 gap-4">
-          {/* Text left */}
-          <div className="flex-1 min-w-0 flex flex-col justify-center">
-            <div className="flex flex-wrap items-center gap-1.5 mb-2">
-              {score && (
-                <span className="flex items-center gap-0.5 text-[11px] font-bold text-yellow-400">
-                  <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" />{score}
-                </span>
-              )}
-              {anime.format && (
-                <span className="text-[9px] font-mono bg-white/15 text-white/80 px-1.5 py-0.5 uppercase tracking-wider">
-                  {anime.format}
-                </span>
-              )}
-              {anime.seasonYear && (
-                <span className="text-[9px] font-mono text-white/40 uppercase">{anime.seasonYear}</span>
-              )}
-              <span className="text-[8px] font-mono bg-white text-black px-1.5 py-0.5 uppercase tracking-wider font-bold">Trending</span>
-            </div>
-            <h1 className="font-serif text-xl leading-tight text-white mb-2.5 line-clamp-2">
-              {title}
-            </h1>
-            <div className="flex items-center gap-1.5 flex-wrap">
-              {anime.genres.slice(0, 2).map((g) => (
-                <span key={g} className="text-[9px] font-mono text-white/40 uppercase tracking-widest">{g}</span>
-              ))}
-            </div>
-            <div className="mt-3">
-              <Link href={`/anime/al/${anime.id}`}>
-                <button className="flex items-center gap-1.5 bg-white text-black px-4 py-2 text-[10px] font-bold uppercase tracking-widest hover:bg-white/90 transition-colors">
-                  <Play className="w-3 h-3 fill-black" /> Details
-                </button>
-              </Link>
-            </div>
+        {/* ── Info section ── */}
+        <div className="flex-1 bg-black px-4 pt-4 pb-2 flex flex-col gap-3 min-h-0">
+          {/* Metadata badges */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {anime.format && (
+              <span className="text-[11px] font-semibold text-white/75 px-2.5 py-1 rounded-full border border-white/15 bg-white/5">
+                {anime.format}
+              </span>
+            )}
+            {anime.episodes && (
+              <span className="flex items-center gap-1 text-[11px] font-semibold text-white/75 px-2.5 py-1 rounded-full border border-white/15 bg-white/5">
+                <span className="text-white/40 text-[10px]">CC</span> {anime.episodes}
+              </span>
+            )}
+            {score && (
+              <span className="flex items-center gap-1 text-[11px] font-semibold text-white/75 px-2.5 py-1 rounded-full border border-white/15 bg-white/5">
+                <Star className="w-3 h-3 fill-white/50 text-white/50" /> {score}
+              </span>
+            )}
+            {anime.duration && (
+              <span className="flex items-center gap-1 text-[11px] font-semibold text-white/75 px-2.5 py-1 rounded-full border border-white/15 bg-white/5">
+                <Clock className="w-3 h-3 text-white/40" /> {anime.duration} mins
+              </span>
+            )}
           </div>
 
-          {/* Cover portrait right */}
-          <div className="flex-shrink-0" style={{ width: 100 }}>
-            <div className="relative overflow-hidden shadow-2xl" style={{ aspectRatio: "2/3", borderRadius: 8 }}>
-              <img
-                src={cover}
-                alt={title}
-                className="w-full h-full object-cover"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
+          {/* Title — orange/amber gradient */}
+          <h1
+            className="font-bold text-[22px] leading-tight line-clamp-2"
+            style={{
+              background: "linear-gradient(135deg, #fb923c 0%, #f59e0b 60%, #fcd34d 100%)",
+              WebkitBackgroundClip: "text",
+              WebkitTextFillColor: "transparent",
+              backgroundClip: "text",
+            }}
+          >
+            {title}
+          </h1>
+
+          {/* Genre pills */}
+          {anime.genres.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              <span className="text-[12px] text-white/55 px-3 py-1 rounded-full border border-white/12 bg-white/[0.04]">
+                {anime.genres.slice(0, 3).join(" · ")}
+              </span>
+              {anime.studios?.nodes?.[0]?.name && (
+                <span className="text-[12px] text-white/55 px-3 py-1 rounded-full border border-white/12 bg-white/[0.04]">
+                  {anime.studios.nodes[0].name}
+                </span>
+              )}
             </div>
+          )}
+
+          {/* CTA buttons */}
+          <div className="flex gap-3 mt-auto pt-1">
+            <Link href={`/anime/al/${anime.id}`} className="flex-1">
+              <button className="w-full flex items-center justify-center gap-2 bg-white/10 text-white py-2.5 rounded-full text-[13px] font-bold border border-white/20 active:bg-white/20 transition-colors">
+                <Info className="w-4 h-4" /> DETAILS
+              </button>
+            </Link>
+            <Link href={`/watch/al/${anime.id}/${currentEp ?? 1}`} className="flex-1">
+              <button className="w-full flex items-center justify-center gap-2 bg-white text-black py-2.5 rounded-full text-[13px] font-bold active:bg-white/90 transition-colors">
+                <Play className="w-4 h-4 fill-black" /> WATCH NOW
+              </button>
+            </Link>
           </div>
         </div>
       </motion.div>
@@ -771,10 +827,10 @@ export default function Home() {
           onTouchEnd={handleTouchEnd}
         >
           {/* ── MOBILE hero ── */}
-          <div className="sm:hidden relative" style={{ height: 280 }}>
+          <div className="sm:hidden relative" style={{ height: 490 }}>
             {currentAnime && <MobileHeroCard anime={currentAnime} direction={direction} />}
-            {/* Dots bottom-left */}
-            <div className="absolute bottom-3 left-4 z-20 flex items-center gap-1.5">
+            {/* Dots — overlaid at bottom of the banner image (240px from top) */}
+            <div className="absolute left-4 z-20 flex items-center gap-1.5" style={{ top: 214 }}>
               {slides.map((_, i) => (
                 <button
                   key={i}
@@ -786,9 +842,6 @@ export default function Home() {
                   <span className={`absolute inset-0 transition-all duration-300 ${i === slide ? "bg-white" : "bg-white/30"}`} />
                 </button>
               ))}
-              <span className="ml-auto text-[9px] font-mono text-white/35 tracking-widest pr-1">
-                {String(slide + 1).padStart(2, "0")} / {String(slides.length).padStart(2, "0")}
-              </span>
             </div>
           </div>
 
