@@ -215,6 +215,7 @@ export default function WatchAniList() {
   const controlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const playerContainerRef = useRef<HTMLDivElement>(null);
   const bridgeLiveRef = useRef(false);
+  const [bridgeLive, setBridgeLive] = useState(false);
   const userPickedRef = useRef(false);
   const raceCache = useRef<{
     gogo?: { cdnUrl: string; resolvedSlug?: string; pageTitle?: string | null } | null;
@@ -349,6 +350,7 @@ export default function WatchAniList() {
     setCdnLoading(false);
     setGogoStreamError(false);
     bridgeLiveRef.current = false;
+    setBridgeLive(false);
     // Reset KOTO player state so stale errors don't persist across episodes/server switches
     setKotoPlayerUrl(null);
     setKotoHlsUrl(null);
@@ -516,6 +518,7 @@ export default function WatchAniList() {
       setServer(srv);
       setIframeLoaded(false);
       bridgeLiveRef.current = false;
+      setBridgeLive(false);
     };
 
     const gSlug = localStorage.getItem(`na_gogo_${animeId}`) || deriveGogoSlug(title);
@@ -1132,6 +1135,7 @@ export default function WatchAniList() {
     const handler = (evt: MessageEvent) => {
       if (evt.data?.type !== "na_video_state") return;
       bridgeLiveRef.current = true;
+      setBridgeLive(true);
       setVideoState({
         paused: evt.data.paused ?? true,
         time: evt.data.time ?? 0,
@@ -1173,6 +1177,7 @@ export default function WatchAniList() {
       setGogoStreamError(false);
       setIframeLoaded(false);
       bridgeLiveRef.current = false;
+      setBridgeLive(false);
       setAutoSwitchMsg(null);
     }, 600);
     return () => { clearTimeout(timer); setAutoSwitchMsg(null); };
@@ -1686,7 +1691,7 @@ export default function WatchAniList() {
                     return "about:blank";
                   })()}
                   className="w-full h-full"
-                  style={{ opacity: iframeLoaded ? 1 : 0, transition: "opacity 0.5s ease" }}
+                  style={{ opacity: (server === "GOGO" ? bridgeLive : iframeLoaded) ? 1 : 0, transition: "opacity 0.5s ease" }}
                   allowFullScreen
                   allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
                   referrerPolicy="no-referrer"
@@ -1793,7 +1798,7 @@ export default function WatchAniList() {
                 )}
 
                 {/* GoGo stream broken — custom themed error overlay */}
-                {server === "GOGO" && gogoStreamError && iframeLoaded && (
+                {server === "GOGO" && gogoStreamError && (
                   <div className="absolute inset-0 z-20 flex flex-col items-center justify-center" style={{ background: "rgba(0,0,0,0.97)" }}>
                     {banner && <img src={banner} alt="" className="absolute inset-0 w-full h-full object-cover opacity-[0.06] scale-110 blur-xl" />}
                     <div className="relative z-10 flex flex-col items-center gap-5 px-6 text-center max-w-sm">
@@ -1812,25 +1817,25 @@ export default function WatchAniList() {
                       </div>
                       <div className="flex flex-wrap gap-2 justify-center">
                         <button
-                          onClick={() => { setGogoStreamError(false); setIframeLoaded(false); setCdnNotFound(false); bridgeLiveRef.current = false; }}
+                          onClick={() => { setGogoStreamError(false); setIframeLoaded(false); setCdnNotFound(false); bridgeLiveRef.current = false; setBridgeLive(false); }}
                           className="text-[10px] font-mono px-3 py-2 border border-white/15 text-white/40 hover:border-white/40 hover:text-white/70 transition-colors uppercase tracking-widest"
                         >
                           Retry GoGo
                         </button>
                         <button
-                          onClick={() => { setServer("KOTO"); setGogoStreamError(false); setIframeLoaded(false); bridgeLiveRef.current = false; setAutoSwitchMsg(null); }}
+                          onClick={() => { setServer("KOTO"); setGogoStreamError(false); setIframeLoaded(false); bridgeLiveRef.current = false; setBridgeLive(false); setAutoSwitchMsg(null); }}
                           className="flex items-center gap-1.5 text-[10px] font-mono font-bold px-3 py-2 border border-teal-400/70 text-teal-400 hover:bg-teal-400/10 transition-all uppercase tracking-widest"
                         >
                           <Play className="w-3 h-3 fill-current" /> AniKoto
                         </button>
                         <button
-                          onClick={() => { setServer("ANIZONE"); setGogoStreamError(false); setIframeLoaded(false); bridgeLiveRef.current = false; setAutoSwitchMsg(null); }}
+                          onClick={() => { setServer("ANIZONE"); setGogoStreamError(false); setIframeLoaded(false); bridgeLiveRef.current = false; setBridgeLive(false); setAutoSwitchMsg(null); }}
                           className="flex items-center gap-1.5 text-[10px] font-mono font-bold px-3 py-2 border border-blue-400/70 text-blue-400 hover:bg-blue-400/10 transition-all uppercase tracking-widest"
                         >
                           <Play className="w-3 h-3 fill-current" /> AniZone
                         </button>
                         <button
-                          onClick={() => { setServer("MIRURO"); setGogoStreamError(false); setIframeLoaded(false); bridgeLiveRef.current = false; setAutoSwitchMsg(null); }}
+                          onClick={() => { setServer("MIRURO"); setGogoStreamError(false); setIframeLoaded(false); bridgeLiveRef.current = false; setBridgeLive(false); setAutoSwitchMsg(null); }}
                           className="flex items-center gap-1.5 text-[10px] font-mono font-bold px-3 py-2 border border-purple-400/70 text-purple-400 hover:bg-purple-400/10 transition-all uppercase tracking-widest"
                         >
                           <Play className="w-3 h-3 fill-current" /> Miruro
@@ -1840,8 +1845,8 @@ export default function WatchAniList() {
                   </div>
                 )}
 
-                {/* Floating "not working?" button — shown after GOGO iframe loads */}
-                {server === "GOGO" && iframeLoaded && !gogoStreamError && (
+                {/* Floating "not working?" button — shown only after bridge confirms player is live */}
+                {server === "GOGO" && bridgeLive && !gogoStreamError && (
                   <button
                     onClick={() => setGogoStreamError(true)}
                     className="absolute bottom-3 right-3 z-10 text-[9px] font-mono uppercase tracking-widest text-white/30 hover:text-white/60 border border-white/10 hover:border-white/25 px-2.5 py-1.5 transition-colors bg-black/60"
@@ -1851,7 +1856,7 @@ export default function WatchAniList() {
                 )}
 
                 {/* iframe-based loading overlay (GOGO / CUSTOM only) */}
-                {(server === "GOGO" || server === "CUSTOM") && !iframeLoaded && (
+                {((server === "GOGO" && !bridgeLive && !gogoStreamError) || (server === "CUSTOM" && !iframeLoaded)) && (
                   <div
                     className="absolute inset-0 z-10 flex flex-col items-center justify-center"
                     style={{ background: "rgba(0,0,0,0.92)" }}
@@ -2141,7 +2146,7 @@ export default function WatchAniList() {
                 ))}
               </div>
               {([
-                { key: "GOGO",    label: "GOGO",    color: "orange", onClick: () => { userPickedRef.current = true; setServer("GOGO"); setCdnNotFound(false); setIframeLoaded(false); setGogoStreamError(false); bridgeLiveRef.current = false; } },
+                { key: "GOGO",    label: "GOGO",    color: "orange", onClick: () => { userPickedRef.current = true; setServer("GOGO"); setCdnNotFound(false); setIframeLoaded(false); setGogoStreamError(false); bridgeLiveRef.current = false; setBridgeLive(false); } },
                 { key: "KOTO",    label: "KOTO",    color: "teal",   onClick: () => { userPickedRef.current = true; setServer("KOTO"); setIframeLoaded(false); } },
                 { key: "ANIZONE", label: "ANIZONE", color: "blue",   onClick: () => { userPickedRef.current = true; setServer("ANIZONE"); setIframeLoaded(false); } },
                 { key: "MIRURO",  label: "MIRURO",  color: "purple", onClick: () => { userPickedRef.current = true; setServer("MIRURO"); setIframeLoaded(false); } },

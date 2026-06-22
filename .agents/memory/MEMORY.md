@@ -1,4 +1,5 @@
 - [GoGo iframe origin rule](gogo-iframe-origin.md) — megaplay.buzz must load directly in iframe (no proxy); streaming.php double-nest causes silent JW Player error.
+- [megaplay.buzz bridge detection](megaplay-bridge-detection.md) — megaplay always returns 200 HTML even for DMCA'd videos; use bridgeLive state (not isCdnWorking) to hide error pages; auto-switch after 2.5s.
 - [Koto player fallback](koto-player-fallback.md) — kotoPlayerUrl (iframe fallback) vs kotoHlsUrl (HLS); overlay only when both are null.
 - [Miruro X-Frame-Options block](miruro-xframe.md) — miruro.to has X-Frame-Options: SAMEORIGIN sitewide; must HEAD-check before advertising iframeUrl to prevent racing with a broken URL.
 - [Miruro domain: use miruro.bz](miruro-domain.md) — miruro.to and miruro.bz are different backends; miruro.bz has fresher episode data; ultracloud.cc accepts Origin: miruro.bz; switch proxy MIRURO_ORIGIN to www.miruro.bz.
