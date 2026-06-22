@@ -1,6 +1,7 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { Link, useParams } from "wouter";
 import { useState, useRef } from "react";
+import { SeriesRatingGauge } from "@/components/SeriesRatingGauge";
 import { Play, Star, Calendar, Tv, ArrowLeft, Clock, Bookmark, BookmarkCheck, CheckCircle2, Heart, ThumbsUp } from "lucide-react";
 import {
   useGetAnime,
@@ -46,26 +47,6 @@ function timeAgo(iso: string) {
   return `${Math.floor(days / 30)}mo ago`;
 }
 
-function ReviewSummaryBar({ summary }: { summary: { skip: number; timepass: number; go_for_it: number; perfection: number; total: number } }) {
-  const total = summary.total;
-  if (total === 0) return null;
-  return (
-    <div className="flex flex-wrap gap-4 py-4 border-b border-white/5">
-      {RATING_OPTIONS.map((opt) => {
-        const count = summary[opt.value];
-        const pct = total > 0 ? Math.round((count / total) * 100) : 0;
-        return (
-          <div key={opt.value} className="flex items-center gap-2">
-            <span className={`w-2.5 h-2.5 rounded-full ${opt.dot}`} />
-            <span className="text-xs font-mono text-white/50 uppercase tracking-widest">{opt.label}</span>
-            <span className={`text-sm font-bold ${opt.color}`}>{pct}%</span>
-          </div>
-        );
-      })}
-      <span className="text-xs font-mono text-white/20 ml-auto self-center">{total} {total === 1 ? "review" : "reviews"}</span>
-    </div>
-  );
-}
 
 function ReviewCard({ review, onLike, likedIds }: {
   review: { id: number; username: string; avatarUrl: string; rating: RatingOption; content: string; likes: number; createdAt: string };
@@ -374,9 +355,12 @@ export default function AnimeDetail() {
             )}
           </div>
 
-          {/* Rating summary bar */}
+          {/* Rating gauge */}
           {reviewSummary && reviewSummary.total > 0 && (
-            <ReviewSummaryBar summary={reviewSummary} />
+            <div className="pb-8 border-b border-white/5 mb-6">
+              <p className="text-[9px] font-mono uppercase tracking-[0.25em] text-white/20 mb-4">Nexa Meter — Series Rating</p>
+              <SeriesRatingGauge summary={reviewSummary} />
+            </div>
           )}
 
           {/* Review compose box */}

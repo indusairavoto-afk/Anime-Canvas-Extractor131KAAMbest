@@ -1,6 +1,7 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { apiUrl } from "@/lib/api";
 import { Link, useParams } from "wouter";
+import { SeriesRatingGauge } from "@/components/SeriesRatingGauge";
 import {
   ArrowLeft, Star, Calendar, Tv, Bookmark, BookmarkCheck,
   Play, Film, ThumbsUp, MessageCircle, Send,
@@ -586,20 +587,11 @@ export default function AnimeDetailAniList() {
         {/* Reviews Section */}
         <div className="mt-12 sm:mt-20">
 
-          {/* Rating summary */}
+          {/* Rating gauge */}
           {reviewSummary && reviewSummary.total > 0 && (
-            <div className="flex flex-wrap gap-x-6 gap-y-2 pb-5 border-b border-white/5 mb-6">
-              {RATING_OPTIONS.map((opt) => {
-                const count = reviewSummary[opt.value];
-                const pct = reviewSummary.total > 0 ? Math.round((count / reviewSummary.total) * 100) : 0;
-                return (
-                  <div key={opt.value} className="flex items-center gap-2">
-                    <span className={`w-2 h-2 rounded-full ${opt.dot}`} />
-                    <span className="text-sm text-white/50">{opt.label}</span>
-                    <span className={`text-sm font-semibold ${opt.color}`}>{pct}%</span>
-                  </div>
-                );
-              })}
+            <div className="pb-8 border-b border-white/5 mb-6">
+              <p className="text-[9px] font-mono uppercase tracking-[0.25em] text-white/20 mb-4">Nexa Meter — Series Rating</p>
+              <SeriesRatingGauge summary={reviewSummary} />
             </div>
           )}
 
