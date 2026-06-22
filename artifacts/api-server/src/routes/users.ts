@@ -33,6 +33,37 @@ router.get("/users/:username", async (req, res) => {
   }
 });
 
+router.patch("/users/:username", async (req, res) => {
+  try {
+    const { displayName, bio } = req.body;
+    const username = req.params.username.toLowerCase();
+
+    const [row] = await db.select().from(userTable)
+      .where(eq(userTable.username, username)).limit(1);
+    if (!row) { res.status(404).json({ error: "User not found" }); return; }
+
+    const updates: Partial<typeof userTable.$inferInsert> = {};
+    if (typeof displayName === "string") {
+      const trimmed = displayName.trim();
+      if (!trimmed) { res.status(400).json({ error: "Display name cannot be empty" }); return; }
+      updates.displayName = trimmed;
+    }
+    if (typeof bio === "string") {
+      updates.bio = bio.trim() || null;
+    }
+
+    const [updated] = await db.update(userTable).set(updates)
+      .where(eq(userTable.username, username)).returning();
+
+    const reviewCount = await db.select().from(reviewTable)
+      .where(eq(reviewTable.username, updated.username));
+    res.json({ ...toPublicUser(updated), reviewCount: reviewCount.length });
+  } catch (err) {
+    req.log.error(err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 router.get("/users/:username/reviews", async (req, res) => {
   try {
     const [user] = await db.select().from(userTable)

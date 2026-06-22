@@ -1,8 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { apiUrl } from "@/lib/api";
 import { useParams, Link, useLocation } from "wouter";
-import { motion } from "framer-motion";
-import { Calendar, Users, Edit3, LogOut, ThumbsUp, MessageCircle } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Calendar, Users, Edit3, LogOut, ThumbsUp, X, Check, Loader2 } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 
 interface UserProfile {
@@ -69,6 +69,14 @@ export default function ProfilePage() {
   const [ratingFilter, setRatingFilter] = useState<RatingFilter>("all");
   const [revealedIds, setRevealedIds] = useState<Set<number>>(new Set());
 
+  // Edit modal
+  const [editOpen, setEditOpen] = useState(false);
+  const [editDisplayName, setEditDisplayName] = useState("");
+  const [editBio, setEditBio] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const displayNameRef = useRef<HTMLInputElement>(null);
+
   const isOwn = authUser?.username === username;
 
   useEffect(() => {
@@ -87,6 +95,36 @@ export default function ProfilePage() {
       .then(setReviews)
       .finally(() => setReviewsLoading(false));
   }, [username]);
+
+  function openEdit() {
+    if (!profile) return;
+    setEditDisplayName(profile.displayName);
+    setEditBio(profile.bio ?? "");
+    setEditError(null);
+    setEditOpen(true);
+    setTimeout(() => displayNameRef.current?.focus(), 50);
+  }
+
+  async function saveEdit() {
+    if (!profile || !username) return;
+    setEditSaving(true);
+    setEditError(null);
+    try {
+      const res = await fetch(apiUrl(`/api/users/${username}`), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ displayName: editDisplayName, bio: editBio }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setEditError(data.error || "Failed to save"); return; }
+      setProfile(data);
+      setEditOpen(false);
+    } catch {
+      setEditError("Network error");
+    } finally {
+      setEditSaving(false);
+    }
+  }
 
   const filteredReviews = ratingFilter === "all"
     ? reviews
@@ -168,7 +206,9 @@ export default function ProfilePage() {
               <div className="mt-5 w-full space-y-2">
                 {isOwn ? (
                   <>
-                    <button className="w-full flex items-center justify-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-white text-sm py-2.5 rounded-xl transition-colors font-medium">
+                    <button
+                      onClick={openEdit}
+                      className="w-full flex items-center justify-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-white text-sm py-2.5 rounded-xl transition-colors font-medium">
                       <Edit3 className="w-3.5 h-3.5" />
                       Edit Profile
                     </button>
@@ -302,6 +342,108 @@ export default function ProfilePage() {
           </div>
         </div>
       </div>
+
+      {/* ── Edit Profile Modal ── */}
+      <AnimatePresence>
+        {editOpen && (
+          <>
+            <motion.div
+              key="backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/70 z-50"
+              onClick={() => !editSaving && setEditOpen(false)}
+            />
+            <motion.div
+              key="modal"
+              initial={{ opacity: 0, scale: 0.95, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 8 }}
+              transition={{ duration: 0.15 }}
+              className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none"
+            >
+              <div
+                className="bg-zinc-900 border border-white/10 rounded-2xl w-full max-w-md p-6 pointer-events-auto"
+                onClick={e => e.stopPropagation()}
+              >
+                {/* Header */}
+                <div className="flex items-center justify-between mb-5">
+                  <h2 className="text-base font-semibold text-white">Edit Profile</h2>
+                  <button
+                    onClick={() => setEditOpen(false)}
+                    disabled={editSaving}
+                    className="text-white/40 hover:text-white/70 transition-colors disabled:opacity-40"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Fields */}
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-[11px] uppercase tracking-widest text-white/40 font-mono mb-1.5">
+                      Display Name
+                    </label>
+                    <input
+                      ref={displayNameRef}
+                      type="text"
+                      value={editDisplayName}
+                      onChange={e => setEditDisplayName(e.target.value)}
+                      disabled={editSaving}
+                      maxLength={50}
+                      className="w-full bg-zinc-800 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-white/25 focus:outline-none focus:border-white/30 transition-colors disabled:opacity-50"
+                      placeholder="Your display name"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] uppercase tracking-widest text-white/40 font-mono mb-1.5">
+                      Bio
+                    </label>
+                    <textarea
+                      value={editBio}
+                      onChange={e => setEditBio(e.target.value)}
+                      disabled={editSaving}
+                      maxLength={200}
+                      rows={3}
+                      className="w-full bg-zinc-800 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-white/25 focus:outline-none focus:border-white/30 transition-colors resize-none disabled:opacity-50"
+                      placeholder="Tell people about yourself…"
+                    />
+                    <p className="text-[10px] text-white/25 text-right mt-1">{editBio.length}/200</p>
+                  </div>
+                </div>
+
+                {/* Error */}
+                {editError && (
+                  <p className="mt-3 text-sm text-red-400">{editError}</p>
+                )}
+
+                {/* Actions */}
+                <div className="flex gap-3 mt-5">
+                  <button
+                    onClick={() => setEditOpen(false)}
+                    disabled={editSaving}
+                    className="flex-1 py-2.5 rounded-xl border border-white/10 text-sm text-white/50 hover:text-white/80 transition-colors disabled:opacity-40"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={saveEdit}
+                    disabled={editSaving || !editDisplayName.trim()}
+                    className="flex-1 py-2.5 rounded-xl bg-white text-black text-sm font-semibold hover:bg-white/90 transition-colors disabled:opacity-40 flex items-center justify-center gap-2"
+                  >
+                    {editSaving ? (
+                      <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Saving…</>
+                    ) : (
+                      <><Check className="w-3.5 h-3.5" /> Save</>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
