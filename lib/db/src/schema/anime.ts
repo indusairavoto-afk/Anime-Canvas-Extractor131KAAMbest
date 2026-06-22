@@ -73,8 +73,10 @@ export const reviewRatingEnum = pgEnum("review_rating", ["skip", "timepass", "go
 export const reviewTable = pgTable("review", {
   id: serial("id").primaryKey(),
   animeId: integer("anime_id").notNull(),
+  episode: integer("episode"),
   username: text("username").notNull(),
   avatarUrl: text("avatar_url").notNull(),
+  voterKey: text("voter_key"),
   rating: reviewRatingEnum("rating").notNull(),
   content: text("content").notNull(),
   spoiler: boolean("spoiler").notNull().default(false),

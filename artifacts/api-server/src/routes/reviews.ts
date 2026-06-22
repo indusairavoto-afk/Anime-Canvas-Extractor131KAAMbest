@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { reviewTable } from "@workspace/db";
-import { eq, desc, sql } from "drizzle-orm";
+import { eq, and, desc, sql, isNotNull } from "drizzle-orm";
 
 const router = Router();
 
@@ -15,6 +15,7 @@ function toReviewResponse(row: typeof reviewTable.$inferSelect) {
   return {
     id: row.id,
     animeId: row.animeId,
+    episode: row.episode,
     username: row.username,
     avatarUrl: row.avatarUrl,
     rating: row.rating,
@@ -24,6 +25,8 @@ function toReviewResponse(row: typeof reviewTable.$inferSelect) {
     createdAt: row.createdAt.toISOString(),
   };
 }
+
+// ── Anime-level reviews ──────────────────────────────────────────────────────
 
 router.get("/anime/:id/reviews", async (req, res) => {
   try {
@@ -46,16 +49,13 @@ router.post("/anime/:id/reviews", async (req, res) => {
     const { username, rating, content, spoiler } = req.body;
 
     if (!username || typeof username !== "string") {
-      res.status(400).json({ error: "username is required" });
-      return;
+      res.status(400).json({ error: "username is required" }); return;
     }
     if (!rating || !VALID_RATINGS.includes(rating)) {
-      res.status(400).json({ error: "rating must be one of: skip, timepass, go_for_it, perfection" });
-      return;
+      res.status(400).json({ error: "rating must be one of: skip, timepass, go_for_it, perfection" }); return;
     }
     if (!content || typeof content !== "string" || content.trim().length === 0) {
-      res.status(400).json({ error: "content is required" });
-      return;
+      res.status(400).json({ error: "content is required" }); return;
     }
 
     const [row] = await db
@@ -76,6 +76,63 @@ router.post("/anime/:id/reviews", async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 });
+
+// ── Episode-level reviews ────────────────────────────────────────────────────
+
+router.get("/anime/:id/episode/:ep/reviews", async (req, res) => {
+  try {
+    const animeId = parseInt(req.params.id);
+    const episode = parseInt(req.params.ep);
+    const rows = await db
+      .select()
+      .from(reviewTable)
+      .where(and(eq(reviewTable.animeId, animeId), eq(reviewTable.episode, episode)))
+      .orderBy(desc(reviewTable.likes), desc(reviewTable.createdAt));
+    res.json(rows.map(toReviewResponse));
+  } catch (err) {
+    req.log.error(err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/anime/:id/episode/:ep/reviews", async (req, res) => {
+  try {
+    const animeId = parseInt(req.params.id);
+    const episode = parseInt(req.params.ep);
+    const { username, rating, content, spoiler, voterKey } = req.body;
+
+    if (!username || typeof username !== "string") {
+      res.status(400).json({ error: "username is required" }); return;
+    }
+    if (!rating || !VALID_RATINGS.includes(rating)) {
+      res.status(400).json({ error: "Invalid rating" }); return;
+    }
+    if (!content || typeof content !== "string" || content.trim().length === 0) {
+      res.status(400).json({ error: "content is required" }); return;
+    }
+
+    const [row] = await db
+      .insert(reviewTable)
+      .values({
+        animeId,
+        episode,
+        username,
+        avatarUrl: randomAvatar(username),
+        voterKey: voterKey ?? null,
+        rating,
+        content: content.trim(),
+        spoiler: spoiler === true,
+        likes: 0,
+      })
+      .returning();
+    res.status(201).json(toReviewResponse(row));
+  } catch (err) {
+    req.log.error(err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── Like a review ────────────────────────────────────────────────────────────
 
 router.post("/reviews/:id/like", async (req, res) => {
   try {
@@ -102,9 +159,7 @@ router.get("/anime/:id/reviews/summary", async (req, res) => {
       .where(eq(reviewTable.animeId, animeId));
 
     const summary = { skip: 0, timepass: 0, go_for_it: 0, perfection: 0, total: rows.length };
-    for (const row of rows) {
-      summary[row.rating]++;
-    }
+    for (const row of rows) summary[row.rating]++;
     res.json(summary);
   } catch (err) {
     req.log.error(err);
