@@ -298,6 +298,14 @@ router.get("/miruro/proxy", async (req, res) => {
       .replace(/(src|href)='\/(?!\/|api\/miruro\/)/g, `$1='${PASS_PREFIX}/`)
       .replace(/url\(\/(?!\/|api\/miruro\/)/g, `url(${PASS_PREFIX}/`);
 
+    // Disable download capability in SSR config — Miruro reads __SSR_CONFIG__
+    // to decide whether to show the download button per provider. Setting all
+    // "download":true → "download":false here prevents the button from ever
+    // being rendered by the React app, which is more reliable than CSS/JS hiding.
+    // Replace in all formats (with/without spaces, single/double quotes).
+    html = html.replace(/"download"\s*:\s*true/g, '"download":false');
+    html = html.replace(/'download'\s*:\s*true/g, "'download':false");
+
     // Remove the deferred env2.js script tag — we inline it synchronously below
     // so window.env is set before any module/defer scripts evaluate.
     html = html.replace(/<script[^>]+env2\.js[^>]*><\/script>/gi, "");
@@ -326,14 +334,47 @@ html,body{margin:0!important;padding:0!important;overflow:hidden!important;backg
 media-download-button,
 .vds-download-button,
 [aria-label="Download"],
+[aria-label="download" i],
 [data-media-download-button],
-a[download]{
+a[download],
+button[data-download],
+[class*="download"]{
   display:none!important;
+  visibility:hidden!important;
+  width:0!important;
+  height:0!important;
+  pointer-events:none!important;
+  overflow:hidden!important;
 }
 </style>
 <script>
 ${env2Inline ? `// env2.js inlined synchronously to ensure window.env is set before module scripts\n${env2Inline}` : ""}
 (function() {
+  // ── Disable download buttons via __SSR_CONFIG__ override ────────────────
+  // Miruro reads window.__SSR_CONFIG__.streaming[provider].capabilities.download
+  // to decide whether to render the download button. Zero it out now (before
+  // the inline script that sets it runs) by defining a setter that intercepts
+  // the assignment and strips download=true from every provider.
+  try {
+    var _naSsrRaw = null;
+    Object.defineProperty(window, '__SSR_CONFIG__', {
+      configurable: true,
+      get: function() { return _naSsrRaw; },
+      set: function(v) {
+        try {
+          if (v && v.streaming) {
+            var providers = Object.keys(v.streaming);
+            for (var p = 0; p < providers.length; p++) {
+              var prov = v.streaming[providers[p]];
+              if (prov && prov.capabilities) prov.capabilities.download = false;
+            }
+          }
+        } catch(e2) {}
+        _naSsrRaw = v;
+      }
+    });
+  } catch(e) {}
+
   try { history.replaceState(null, '', ${JSON.stringify(originalPath)}); } catch(e) {}
 
   // Block service worker registration — the miruro SW precaches files at root
@@ -486,6 +527,59 @@ ${env2Inline ? `// env2.js inlined synchronously to ensure window.env is set bef
     setTimeout(_naIsolatePlayer, 1500);
     setTimeout(_naIsolatePlayer, 4000);
   }
+
+  // ── Hide download button (Vidstack renders it dynamically after React mounts) ──
+  function _naHideDownload() {
+    // Selector list covers Vidstack web components, React version class names,
+    // aria-labels (exact and partial), and raw <a download> anchor tags.
+    var sels = [
+      'media-download-button',
+      '.vds-download-button',
+      '[data-media-download-button]',
+      'a[download]',
+      'button[aria-label="Download"]',
+      'a[aria-label="Download"]',
+      'button[aria-label="download"]',
+      'a[aria-label="download"]',
+    ];
+    for (var s = 0; s < sels.length; s++) {
+      try {
+        var els = document.querySelectorAll(sels[s]);
+        for (var e = 0; e < els.length; e++) {
+          // Use setProperty with 'important' priority so Vidstack styles can't override
+          els[e].style.setProperty('display', 'none', 'important');
+          els[e].style.setProperty('visibility', 'hidden', 'important');
+          els[e].style.setProperty('width', '0', 'important');
+          els[e].style.setProperty('height', '0', 'important');
+          els[e].style.setProperty('overflow', 'hidden', 'important');
+          els[e].style.setProperty('pointer-events', 'none', 'important');
+        }
+      } catch(e2) {}
+    }
+    // Broad scan: hide any button/anchor whose aria-label contains "download"
+    try {
+      var all = document.querySelectorAll('button,a,[role="button"]');
+      for (var i = 0; i < all.length; i++) {
+        var lbl = (all[i].getAttribute('aria-label') || '').toLowerCase();
+        if (lbl.indexOf('download') !== -1) {
+          all[i].style.setProperty('display', 'none', 'important');
+          all[i].style.setProperty('visibility', 'hidden', 'important');
+          all[i].style.setProperty('width', '0', 'important');
+          all[i].style.setProperty('height', '0', 'important');
+        }
+      }
+    } catch(e3) {}
+  }
+  _naHideDownload();
+  // MutationObserver: fires whenever Vidstack re-renders controls
+  var _naDlObs = new MutationObserver(_naHideDownload);
+  _naDlObs.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['aria-label', 'download'] });
+  // Belt-and-suspenders: interval for the first 10s to catch lazy renders
+  var _naDlTick = 0;
+  var _naDlInterval = setInterval(function() {
+    _naHideDownload();
+    if (++_naDlTick >= 20) clearInterval(_naDlInterval);
+  }, 500);
 })();
 </script>`;
 
