@@ -2,7 +2,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Link, useParams } from "wouter";
 import { useState, useRef } from "react";
 import { SeriesRatingGauge } from "@/components/SeriesRatingGauge";
-import { Play, Star, Calendar, Tv, ArrowLeft, Clock, Bookmark, BookmarkCheck, CheckCircle2, Heart, ThumbsUp } from "lucide-react";
+import { Play, Star, Calendar, Tv, ArrowLeft, Clock, Bookmark, BookmarkCheck, CheckCircle2, Heart, ThumbsUp, MessageCircle, X } from "lucide-react";
 import {
   useGetAnime,
   getGetAnimeQueryKey,
@@ -101,6 +101,7 @@ export default function AnimeDetail() {
   const [reviewText, setReviewText] = useState("");
   const [username, setUsername] = useState("");
   const [likedIds, setLikedIds] = useState<Set<number>>(new Set());
+  const [showReviewsModal, setShowReviewsModal] = useState(false);
   const textRef = useRef<HTMLTextAreaElement>(null);
 
   const { data: anime, isLoading } = useGetAnime(id, {
@@ -179,6 +180,7 @@ export default function AnimeDetail() {
   const canPost = selectedRating !== null && reviewText.trim().length > 0;
 
   return (
+    <>
     <div className="bg-black text-white min-h-screen">
       <div className="relative h-[40vh] sm:h-[55vh] overflow-hidden">
         <img
@@ -436,7 +438,7 @@ export default function AnimeDetail() {
             </AnimatePresence>
           </div>
 
-          {/* Review list */}
+          {/* Review list — blurred teaser */}
           {reviewsLoading ? (
             <div className="mt-6 space-y-3">
               {[...Array(3)].map((_, i) => (
@@ -444,14 +446,67 @@ export default function AnimeDetail() {
               ))}
             </div>
           ) : reviews && reviews.length > 0 ? (
-            <motion.div
-              variants={stagger}
-              initial="hidden"
-              whileInView="show"
-              viewport={{ once: true }}
-              className="mt-4 space-y-2"
-            >
-              {reviews.map((review) => (
+            <div className="relative mt-4">
+              <div className="space-y-2 blur-sm pointer-events-none select-none">
+                {reviews.slice(0, 2).map((review) => (
+                  <ReviewCard
+                    key={review.id}
+                    review={review as any}
+                    onLike={handleLike}
+                    likedIds={likedIds}
+                  />
+                ))}
+              </div>
+              <div className="absolute inset-0 bg-gradient-to-t from-black via-black/70 to-transparent flex items-end justify-center pb-5">
+                <button
+                  onClick={() => setShowReviewsModal(true)}
+                  className="flex items-center gap-2 bg-white/10 hover:bg-white/15 border border-white/20 text-white text-sm font-medium px-6 py-2.5 rounded-full backdrop-blur-sm transition-all"
+                >
+                  <MessageCircle className="w-4 h-4" />
+                  Show Reviews ({reviews.length})
+                </button>
+              </div>
+            </div>
+          ) : (
+            <p className="mt-6 text-white/20 text-sm font-mono text-center py-8">No reviews yet. Be the first!</p>
+          )}
+        </div>
+      </div>
+    </div>
+
+    {/* Reviews Modal */}
+    <AnimatePresence>
+      {showReviewsModal && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center"
+          onClick={(e) => { if (e.target === e.currentTarget) setShowReviewsModal(false); }}
+        >
+          <motion.div
+            initial={{ y: "100%" }}
+            animate={{ y: 0 }}
+            exit={{ y: "100%" }}
+            transition={{ type: "spring", damping: 32, stiffness: 320 }}
+            className="bg-zinc-950 border border-white/10 rounded-t-2xl sm:rounded-2xl w-full sm:max-w-2xl max-h-[88vh] flex flex-col"
+          >
+            <div className="flex items-center justify-between px-5 py-4 border-b border-white/8 flex-shrink-0">
+              <h3 className="font-bold text-white text-lg">
+                Reviews
+                {reviews && reviews.length > 0 && (
+                  <span className="text-white/30 font-normal text-sm ml-2">{reviews.length}</span>
+                )}
+              </h3>
+              <button
+                onClick={() => setShowReviewsModal(false)}
+                className="text-white/40 hover:text-white transition-colors p-1"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="overflow-y-auto flex-1 px-5 py-4 space-y-2">
+              {reviews && reviews.map((review) => (
                 <ReviewCard
                   key={review.id}
                   review={review as any}
@@ -459,12 +514,11 @@ export default function AnimeDetail() {
                   likedIds={likedIds}
                 />
               ))}
-            </motion.div>
-          ) : (
-            <p className="mt-6 text-white/20 text-sm font-mono text-center py-8">No reviews yet. Be the first!</p>
-          )}
-        </div>
-      </div>
-    </div>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+    </>
   );
 }

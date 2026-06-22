@@ -4,7 +4,7 @@ import { Link, useParams } from "wouter";
 import { SeriesRatingGauge } from "@/components/SeriesRatingGauge";
 import {
   ArrowLeft, Star, Calendar, Tv, Bookmark, BookmarkCheck,
-  Play, Film, ThumbsUp, MessageCircle, Send,
+  Play, Film, ThumbsUp, MessageCircle, Send, X,
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { useWatchlist } from "@/hooks/useWatchlist";
@@ -176,6 +176,7 @@ export default function AnimeDetailAniList() {
   const [repliesData, setRepliesData] = useState<Record<number, ReplyItem[]>>({});
   const [replyText, setReplyText] = useState<Record<number, string>>({});
   const [replySubmitting, setReplySubmitting] = useState<Set<number>>(new Set());
+  const [showReviewsModal, setShowReviewsModal] = useState(false);
 
   async function loadReplies(reviewId: number) {
     const res = await fetch(apiUrl(`/api/reviews/${reviewId}/replies`));
@@ -311,6 +312,7 @@ export default function AnimeDetailAniList() {
   const streamLink = getBestStreamLink(anime.externalLinks ?? [], anime.id);
 
   return (
+    <>
     <div className="bg-black text-white min-h-screen">
       {/* Banner hero */}
       <div className="relative h-[40vh] sm:h-[55vh] overflow-hidden">
@@ -651,156 +653,50 @@ export default function AnimeDetailAniList() {
             </div>
           </div>
 
-          {/* Review list */}
-          {(() => {
-            const sorted = reviews
-              ? [...reviews].sort((a, b) => {
-                  if (sortOrder === "liked") return b.likes - a.likes;
-                  if (sortOrder === "newest") return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-                  return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-                })
-              : [];
-
-            if (reviewsLoading) {
-              return (
-                <div className="space-y-3">
-                  {[...Array(2)].map((_, i) => (
-                    <div key={i} className="bg-zinc-900 rounded-xl p-4 h-24 animate-pulse" />
-                  ))}
-                </div>
-              );
-            }
-
-            if (!sorted.length) {
-              return <p className="text-white/20 text-sm text-center py-10">No reviews yet. Be the first!</p>;
-            }
-
-            return (
-              <div className="space-y-3">
-                {sorted.map((review) => {
+          {/* Review list — blurred teaser */}
+          {reviewsLoading ? (
+            <div className="space-y-3 mt-3">
+              {[...Array(2)].map((_, i) => (
+                <div key={i} className="bg-zinc-900 rounded-xl p-4 h-24 animate-pulse" />
+              ))}
+            </div>
+          ) : !reviews || reviews.length === 0 ? (
+            <p className="text-white/20 text-sm text-center py-10">No reviews yet. Be the first!</p>
+          ) : (
+            <div className="relative mt-3">
+              <div className="space-y-3 blur-sm pointer-events-none select-none">
+                {reviews.slice(0, 2).map((review) => {
                   const cfg = getRatingConfig(review.rating as RatingOption);
-                  const liked = likedIds.has(review.id);
-                  const isSpoilerReview = review.spoiler;
-                  const revealed = showSpoilers || revealedIds.has(review.id);
                   return (
-                    <motion.div
-                      key={review.id}
-                      initial={{ opacity: 0, y: 6 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="bg-zinc-900 rounded-xl p-4"
-                    >
+                    <div key={review.id} className="bg-zinc-900 rounded-xl p-4">
                       <div className="flex items-start gap-3">
-                        <img
-                          src={review.avatarUrl}
-                          alt={review.username}
-                          className="w-10 h-10 rounded-full flex-shrink-0 bg-zinc-800"
-                        />
+                        <img src={review.avatarUrl} alt="" className="w-10 h-10 rounded-full flex-shrink-0 bg-zinc-800" />
                         <div className="flex-1 min-w-0">
                           <div className="flex items-start justify-between gap-2 mb-1">
                             <div>
                               <span className="text-sm font-semibold text-white">{review.username}</span>
                               <span className="block text-[11px] text-white/35 mt-0.5">{timeAgo(review.createdAt)}</span>
                             </div>
-                            <div className="flex items-center gap-2 flex-shrink-0">
-                              {isSpoilerReview && (
-                                <span className="text-[10px] px-2 py-0.5 rounded-full border border-amber-400/30 text-amber-400/70 bg-amber-400/10">
-                                  spoiler
-                                </span>
-                              )}
-                              <span className={`text-xs font-medium px-3 py-1 rounded-full ${cfg.bg} ${cfg.border} ${cfg.color} border`}>
-                                {cfg.label}
-                              </span>
-                            </div>
+                            <span className={`text-xs font-medium px-3 py-1 rounded-full ${cfg.bg} ${cfg.border} ${cfg.color} border`}>{cfg.label}</span>
                           </div>
-
-                          {isSpoilerReview && !revealed ? (
-                            <div className="relative mt-1">
-                              <p className="text-white/60 text-sm leading-relaxed blur-sm select-none pointer-events-none">{review.content}</p>
-                              <button
-                                onClick={() => setRevealedIds((prev) => new Set(prev).add(review.id))}
-                                className="absolute inset-0 flex items-center justify-center text-[11px] text-amber-400/80 hover:text-amber-400 transition-colors"
-                              >
-                                Click to reveal spoiler
-                              </button>
-                            </div>
-                          ) : (
-                            <p className="text-white/60 text-sm leading-relaxed mt-1">{review.content}</p>
-                          )}
+                          <p className="text-white/60 text-sm leading-relaxed mt-1 line-clamp-2">{review.content}</p>
                         </div>
                       </div>
-
-                      {/* Like + Reply buttons */}
-                      <div className="flex items-center gap-2 mt-3">
-                        <button
-                          onClick={() => handleLike(review.id)}
-                          disabled={liked}
-                          className={`flex items-center gap-1.5 text-xs rounded-full px-3 py-1 border transition-colors ${
-                            liked
-                              ? "border-white/15 text-white/35 cursor-default"
-                              : "border-white/10 text-white/40 hover:border-white/25 hover:text-white/60"
-                          }`}
-                        >
-                          <ThumbsUp className="w-3 h-3" />
-                          {review.likes}
-                        </button>
-                        <button
-                          onClick={() => toggleReplies(review.id)}
-                          className="flex items-center gap-1.5 text-xs rounded-full px-3 py-1 border border-white/10 text-white/40 hover:border-white/25 hover:text-white/60 transition-colors"
-                        >
-                          <MessageCircle className="w-3 h-3" />
-                          {expandedReplies.has(review.id) ? "Hide" : "Reply"}
-                        </button>
-                      </div>
-
-                      {/* Reply section */}
-                      <AnimatePresence>
-                        {expandedReplies.has(review.id) && (
-                          <motion.div
-                            initial={{ opacity: 0, height: 0 }}
-                            animate={{ opacity: 1, height: "auto" }}
-                            exit={{ opacity: 0, height: 0 }}
-                            transition={{ duration: 0.18 }}
-                            className="mt-3 pl-3 border-l border-white/8 space-y-3 overflow-hidden"
-                          >
-                            {(repliesData[review.id] || []).map(reply => (
-                              <div key={reply.id} className="flex items-start gap-2">
-                                <img src={reply.avatarUrl} alt={reply.username} className="w-6 h-6 rounded-full flex-shrink-0 bg-zinc-800" />
-                                <div>
-                                  <span className="text-xs font-semibold text-white/70">{reply.username}</span>
-                                  <span className="text-[10px] text-white/30 ml-2">{timeAgo(reply.createdAt)}</span>
-                                  <p className="text-xs text-white/55 leading-relaxed mt-0.5">{reply.content}</p>
-                                </div>
-                              </div>
-                            ))}
-                            <div className="flex items-center gap-2 pt-1">
-                              <div className="w-6 h-6 rounded-full bg-zinc-700 flex items-center justify-center text-[10px] font-bold text-white/60 uppercase flex-shrink-0 select-none">
-                                {authUser ? authUser.displayName[0].toUpperCase() : "G"}
-                              </div>
-                              <input
-                                type="text"
-                                placeholder="Write a reply..."
-                                value={replyText[review.id] || ""}
-                                onChange={e => setReplyText(prev => ({ ...prev, [review.id]: e.target.value }))}
-                                onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submitReply(review.id); } }}
-                                className="flex-1 bg-zinc-800 rounded-full px-3 py-1.5 text-xs text-white placeholder:text-white/25 focus:outline-none focus:ring-1 focus:ring-white/20"
-                              />
-                              <button
-                                onClick={() => submitReply(review.id)}
-                                disabled={replySubmitting.has(review.id) || !(replyText[review.id] || "").trim()}
-                                className="text-white/40 hover:text-white/70 transition-colors disabled:opacity-30"
-                              >
-                                <Send className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </motion.div>
+                    </div>
                   );
                 })}
               </div>
-            );
-          })()}
+              <div className="absolute inset-0 bg-gradient-to-t from-black via-black/70 to-transparent rounded-xl flex items-end justify-center pb-5">
+                <button
+                  onClick={() => setShowReviewsModal(true)}
+                  className="flex items-center gap-2 bg-white/10 hover:bg-white/15 border border-white/20 text-white text-sm font-medium px-6 py-2.5 rounded-full backdrop-blur-sm transition-all"
+                >
+                  <MessageCircle className="w-4 h-4" />
+                  Show Reviews ({reviews.length})
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Recommendations */}
@@ -869,5 +765,184 @@ export default function AnimeDetailAniList() {
         )}
       </div>
     </div>
+
+    {/* Reviews Modal */}
+    <AnimatePresence>
+      {showReviewsModal && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center"
+          onClick={(e) => { if (e.target === e.currentTarget) setShowReviewsModal(false); }}
+        >
+          <motion.div
+            initial={{ y: "100%" }}
+            animate={{ y: 0 }}
+            exit={{ y: "100%" }}
+            transition={{ type: "spring", damping: 32, stiffness: 320 }}
+            className="bg-zinc-950 border border-white/10 rounded-t-2xl sm:rounded-2xl w-full sm:max-w-2xl max-h-[88vh] flex flex-col"
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-white/8 flex-shrink-0">
+              <h3 className="font-bold text-white text-lg">
+                Reviews
+                {reviews && reviews.length > 0 && (
+                  <span className="text-white/30 font-normal text-sm ml-2">{reviews.length}</span>
+                )}
+              </h3>
+              <div className="flex items-center gap-3">
+                <select
+                  value={sortOrder}
+                  onChange={(e) => setSortOrder(e.target.value as typeof sortOrder)}
+                  className="bg-zinc-900 border border-white/10 text-white/70 text-xs rounded-lg px-3 py-1.5 focus:outline-none focus:border-white/30 cursor-pointer"
+                >
+                  <option value="liked">Most Liked</option>
+                  <option value="newest">Newest</option>
+                  <option value="oldest">Oldest</option>
+                </select>
+                <label className="flex items-center gap-1.5 cursor-pointer select-none group">
+                  <div
+                    onClick={() => setShowSpoilers((v) => !v)}
+                    className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${
+                      showSpoilers ? "bg-amber-500/80 border-amber-400" : "border-white/20 bg-transparent group-hover:border-white/40"
+                    }`}
+                  >
+                    {showSpoilers && (
+                      <svg className="w-2.5 h-2.5 text-black" viewBox="0 0 10 10" fill="none">
+                        <path d="M1.5 5L4 7.5L8.5 2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    )}
+                  </div>
+                  <span className="text-xs text-white/40">Spoilers</span>
+                </label>
+                <button
+                  onClick={() => setShowReviewsModal(false)}
+                  className="text-white/40 hover:text-white transition-colors p-1"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Scrollable review list */}
+            <div className="overflow-y-auto flex-1 px-5 py-4 space-y-3">
+              {reviews && [...reviews]
+                .sort((a, b) => {
+                  if (sortOrder === "liked") return b.likes - a.likes;
+                  if (sortOrder === "newest") return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+                  return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+                })
+                .map((review) => {
+                  const cfg = getRatingConfig(review.rating as RatingOption);
+                  const liked = likedIds.has(review.id);
+                  const isSpoilerReview = review.spoiler;
+                  const revealed = showSpoilers || revealedIds.has(review.id);
+                  return (
+                    <motion.div
+                      key={review.id}
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="bg-zinc-900 rounded-xl p-4"
+                    >
+                      <div className="flex items-start gap-3">
+                        <img src={review.avatarUrl} alt={review.username} className="w-10 h-10 rounded-full flex-shrink-0 bg-zinc-800" />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between gap-2 mb-1">
+                            <div>
+                              <span className="text-sm font-semibold text-white">{review.username}</span>
+                              <span className="block text-[11px] text-white/35 mt-0.5">{timeAgo(review.createdAt)}</span>
+                            </div>
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                              {isSpoilerReview && (
+                                <span className="text-[10px] px-2 py-0.5 rounded-full border border-amber-400/30 text-amber-400/70 bg-amber-400/10">spoiler</span>
+                              )}
+                              <span className={`text-xs font-medium px-3 py-1 rounded-full ${cfg.bg} ${cfg.border} ${cfg.color} border`}>{cfg.label}</span>
+                            </div>
+                          </div>
+                          {isSpoilerReview && !revealed ? (
+                            <div className="relative mt-1">
+                              <p className="text-white/60 text-sm leading-relaxed blur-sm select-none pointer-events-none">{review.content}</p>
+                              <button
+                                onClick={() => setRevealedIds((prev) => new Set(prev).add(review.id))}
+                                className="absolute inset-0 flex items-center justify-center text-[11px] text-amber-400/80 hover:text-amber-400 transition-colors"
+                              >
+                                Click to reveal spoiler
+                              </button>
+                            </div>
+                          ) : (
+                            <p className="text-white/60 text-sm leading-relaxed mt-1">{review.content}</p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 mt-3">
+                        <button
+                          onClick={() => handleLike(review.id)}
+                          disabled={liked}
+                          className={`flex items-center gap-1.5 text-xs rounded-full px-3 py-1 border transition-colors ${
+                            liked ? "border-white/15 text-white/35 cursor-default" : "border-white/10 text-white/40 hover:border-white/25 hover:text-white/60"
+                          }`}
+                        >
+                          <ThumbsUp className="w-3 h-3" />{review.likes}
+                        </button>
+                        <button
+                          onClick={() => toggleReplies(review.id)}
+                          className="flex items-center gap-1.5 text-xs rounded-full px-3 py-1 border border-white/10 text-white/40 hover:border-white/25 hover:text-white/60 transition-colors"
+                        >
+                          <MessageCircle className="w-3 h-3" />
+                          {expandedReplies.has(review.id) ? "Hide" : "Reply"}
+                        </button>
+                      </div>
+                      <AnimatePresence>
+                        {expandedReplies.has(review.id) && (
+                          <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: "auto" }}
+                            exit={{ opacity: 0, height: 0 }}
+                            transition={{ duration: 0.18 }}
+                            className="mt-3 pl-3 border-l border-white/8 space-y-3 overflow-hidden"
+                          >
+                            {(repliesData[review.id] || []).map(reply => (
+                              <div key={reply.id} className="flex items-start gap-2">
+                                <img src={reply.avatarUrl} alt={reply.username} className="w-6 h-6 rounded-full flex-shrink-0 bg-zinc-800" />
+                                <div>
+                                  <span className="text-xs font-semibold text-white/70">{reply.username}</span>
+                                  <span className="text-[10px] text-white/30 ml-2">{timeAgo(reply.createdAt)}</span>
+                                  <p className="text-xs text-white/55 leading-relaxed mt-0.5">{reply.content}</p>
+                                </div>
+                              </div>
+                            ))}
+                            <div className="flex items-center gap-2 pt-1">
+                              <div className="w-6 h-6 rounded-full bg-zinc-700 flex items-center justify-center text-[10px] font-bold text-white/60 uppercase flex-shrink-0 select-none">
+                                {authUser ? authUser.displayName[0].toUpperCase() : "G"}
+                              </div>
+                              <input
+                                type="text"
+                                placeholder="Write a reply..."
+                                value={replyText[review.id] || ""}
+                                onChange={e => setReplyText(prev => ({ ...prev, [review.id]: e.target.value }))}
+                                onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submitReply(review.id); } }}
+                                className="flex-1 bg-zinc-800 rounded-full px-3 py-1.5 text-xs text-white placeholder:text-white/25 focus:outline-none focus:ring-1 focus:ring-white/20"
+                              />
+                              <button
+                                onClick={() => submitReply(review.id)}
+                                disabled={replySubmitting.has(review.id) || !(replyText[review.id] || "").trim()}
+                                className="text-white/40 hover:text-white/70 transition-colors disabled:opacity-30"
+                              >
+                                <Send className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </motion.div>
+                  );
+                })}
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+    </>
   );
 }
