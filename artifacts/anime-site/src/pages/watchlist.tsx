@@ -16,81 +16,172 @@ const READ_STATUSES: { value: ReadStatus; label: string; dot: string; pill: stri
   { value: "completed",    label: "Completed",    dot: "bg-purple-400", pill: "border-purple-400/30 text-purple-400 bg-purple-400/[0.08]" },
 ];
 
+const ANILIST_ANIME_QUERY = `
+query ($id: Int!) {
+  Media(id: $id, type: ANIME) {
+    id
+    title { romaji english }
+    coverImage { extraLarge large }
+    averageScore
+    episodes
+    status
+  }
+}`;
+
+interface AnilistAnimeInfo {
+  id: number;
+  title: { romaji: string; english?: string | null };
+  coverImage: { extraLarge?: string; large?: string };
+  averageScore?: number | null;
+  episodes?: number | null;
+  status: string;
+}
+
 /* ── Anime card ─────────────────────────────────────────────────────────── */
 function WatchlistCard({ animeId, onRemove }: { animeId: number; onRemove: () => void }) {
-  const { data: anime } = useGetAnime(animeId);
+  const { data: localAnime, isError: localError, isPending: localPending } = useGetAnime(animeId, {
+    query: { retry: false },
+  });
   const { data: episodes } = useListEpisodes(animeId);
   const { getLastWatched, countWatched } = useWatchProgress();
+  const [anilistAnime, setAnilistAnime] = useState<AnilistAnimeInfo | null>(null);
+  const [anilistLoading, setAnilistLoading] = useState(false);
 
-  if (!anime) return <div className="aspect-[2/3] bg-white/[0.03] animate-pulse border border-white/5" />;
+  useEffect(() => {
+    if (!localError) return;
+    let alive = true;
+    setAnilistLoading(true);
+    fetch("https://graphql.anilist.co", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query: ANILIST_ANIME_QUERY, variables: { id: animeId } }),
+    })
+      .then((r) => r.json())
+      .then((j) => { if (alive) setAnilistAnime(j?.data?.Media ?? null); })
+      .catch(() => {})
+      .finally(() => { if (alive) setAnilistLoading(false); });
+    return () => { alive = false; };
+  }, [animeId, localError]);
 
-  const lastEpisodeId = getLastWatched(animeId);
-  const watchedCount  = episodes ? countWatched(episodes.map((e) => e.id)) : 0;
-  const total         = episodes?.length ?? anime.totalEpisodes;
-  const progress      = total > 0 ? (watchedCount / total) * 100 : 0;
-  const continueEp    = episodes?.find((e) => e.id === lastEpisodeId) ?? episodes?.[0];
-  const isCompleted   = watchedCount > 0 && watchedCount >= total;
+  const isLoading = localPending || (localError && anilistLoading);
 
-  return (
-    <motion.div variants={fadeUp} className="group relative flex flex-col">
-      <Link href={continueEp ? `/watch/${continueEp.id}` : `/anime/${animeId}`}>
-        <div className="relative aspect-[2/3] overflow-hidden border border-white/5 group-hover:border-white/20 transition-all cursor-pointer">
-          <img src={anime.coverImage} alt={anime.title} className="w-full h-full object-cover transition-all duration-500 group-hover:scale-105" />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent" />
-          {watchedCount > 0 && (
-            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-white/10">
-              <div className="h-full bg-white transition-all duration-500" style={{ width: `${progress}%` }} />
+  if (isLoading) {
+    return <div className="aspect-[2/3] bg-white/[0.03] animate-pulse border border-white/5" />;
+  }
+
+  if (localAnime) {
+    const lastEpisodeId = getLastWatched(animeId);
+    const watchedCount  = episodes ? countWatched(episodes.map((e) => e.id)) : 0;
+    const total         = episodes?.length ?? localAnime.totalEpisodes;
+    const progress      = total > 0 ? (watchedCount / total) * 100 : 0;
+    const continueEp    = episodes?.find((e) => e.id === lastEpisodeId) ?? episodes?.[0];
+    const isCompleted   = watchedCount > 0 && watchedCount >= total;
+
+    return (
+      <motion.div variants={fadeUp} className="group relative flex flex-col">
+        <Link href={continueEp ? `/watch/${continueEp.id}` : `/anime/${animeId}`}>
+          <div className="relative aspect-[2/3] overflow-hidden border border-white/5 group-hover:border-white/20 transition-all cursor-pointer">
+            <img src={localAnime.coverImage} alt={localAnime.title} className="w-full h-full object-cover transition-all duration-500 group-hover:scale-105" />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent" />
+            {watchedCount > 0 && (
+              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-white/10">
+                <div className="h-full bg-white transition-all duration-500" style={{ width: `${progress}%` }} />
+              </div>
+            )}
+            {isCompleted && (
+              <div className="absolute top-2 left-2">
+                <span className="flex items-center gap-1 text-[8px] font-mono bg-white text-black px-2 py-0.5 uppercase tracking-widest font-bold">
+                  <CheckCircle2 className="w-2.5 h-2.5" /> Done
+                </span>
+              </div>
+            )}
+            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/30">
+              <div className="w-10 h-10 border border-white/60 flex items-center justify-center">
+                <Play className="w-4 h-4 text-white fill-white ml-0.5" />
+              </div>
             </div>
-          )}
-          {isCompleted && (
-            <div className="absolute top-2 left-2">
-              <span className="flex items-center gap-1 text-[8px] font-mono bg-white text-black px-2 py-0.5 uppercase tracking-widest font-bold">
-                <CheckCircle2 className="w-2.5 h-2.5" /> Done
-              </span>
+            <button onClick={(e) => { e.preventDefault(); onRemove(); }}
+              className="absolute top-2 right-2 w-7 h-7 bg-black/70 border border-white/10 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-white hover:text-black text-white"
+              title="Remove from list">
+              <BookmarkX className="w-3.5 h-3.5" />
+            </button>
+            <div className="absolute bottom-2 left-0 right-0 px-3">
+              <h3 className="text-white font-serif text-sm leading-snug line-clamp-2">{localAnime.title}</h3>
+              <div className="flex items-center gap-2 mt-1 text-[9px] font-mono text-white/50 uppercase tracking-widest">
+                <span className="flex items-center gap-1"><Star className="w-2.5 h-2.5" />{localAnime.rating.toFixed(1)}</span>
+                <span className="w-0.5 h-0.5 rounded-full bg-white/30" />
+                {watchedCount > 0 ? (
+                  <span className="flex items-center gap-1"><CheckCircle2 className="w-2.5 h-2.5" />{watchedCount}/{total}</span>
+                ) : (
+                  <span className="flex items-center gap-1"><Clock className="w-2.5 h-2.5" />Not started</span>
+                )}
+              </div>
             </div>
-          )}
-          <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/30">
-            <div className="w-10 h-10 border border-white/60 flex items-center justify-center">
-              <Play className="w-4 h-4 text-white fill-white ml-0.5" />
-            </div>
-          </div>
-          <button onClick={(e) => { e.preventDefault(); onRemove(); }}
-            className="absolute top-2 right-2 w-7 h-7 bg-black/70 border border-white/10 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-white hover:text-black text-white"
-            title="Remove from list">
-            <BookmarkX className="w-3.5 h-3.5" />
-          </button>
-          <div className="absolute bottom-2 left-0 right-0 px-3">
-            <h3 className="text-white font-serif text-sm leading-snug line-clamp-2">{anime.title}</h3>
-            <div className="flex items-center gap-2 mt-1 text-[9px] font-mono text-white/50 uppercase tracking-widest">
-              <span className="flex items-center gap-1"><Star className="w-2.5 h-2.5" />{anime.rating.toFixed(1)}</span>
-              <span className="w-0.5 h-0.5 rounded-full bg-white/30" />
-              {watchedCount > 0 ? (
-                <span className="flex items-center gap-1"><CheckCircle2 className="w-2.5 h-2.5" />{watchedCount}/{total}</span>
-              ) : (
-                <span className="flex items-center gap-1"><Clock className="w-2.5 h-2.5" />Not started</span>
-              )}
-            </div>
-          </div>
-        </div>
-      </Link>
-      {continueEp && watchedCount > 0 && !isCompleted && (
-        <Link href={`/watch/${continueEp.id}`}>
-          <div className="mt-1.5 flex items-center gap-2 border border-white/10 px-3 py-2 hover:border-white/30 hover:bg-white/[0.03] transition-all cursor-pointer">
-            <Play className="w-3 h-3 text-white/50 fill-white/50 flex-shrink-0" />
-            <span className="text-white/50 text-[10px] font-mono truncate">Continue EP {continueEp.episodeNumber}</span>
           </div>
         </Link>
-      )}
-      {continueEp && watchedCount === 0 && (
-        <Link href={`/watch/${continueEp.id}`}>
+        {continueEp && watchedCount > 0 && !isCompleted && (
+          <Link href={`/watch/${continueEp.id}`}>
+            <div className="mt-1.5 flex items-center gap-2 border border-white/10 px-3 py-2 hover:border-white/30 hover:bg-white/[0.03] transition-all cursor-pointer">
+              <Play className="w-3 h-3 text-white/50 fill-white/50 flex-shrink-0" />
+              <span className="text-white/50 text-[10px] font-mono truncate">Continue EP {continueEp.episodeNumber}</span>
+            </div>
+          </Link>
+        )}
+        {continueEp && watchedCount === 0 && (
+          <Link href={`/watch/${continueEp.id}`}>
+            <div className="mt-1.5 flex items-center gap-2 border border-white/10 px-3 py-2 hover:border-white/30 hover:bg-white/[0.03] transition-all cursor-pointer">
+              <Play className="w-3 h-3 text-white/50 fill-white/50 flex-shrink-0" />
+              <span className="text-white/50 text-[10px] font-mono truncate">Start watching</span>
+            </div>
+          </Link>
+        )}
+      </motion.div>
+    );
+  }
+
+  if (anilistAnime) {
+    const title  = anilistAnime.title.english ?? anilistAnime.title.romaji;
+    const cover  = anilistAnime.coverImage.extraLarge ?? anilistAnime.coverImage.large ?? "";
+    const score  = anilistAnime.averageScore ? (anilistAnime.averageScore / 10).toFixed(1) : null;
+    const total  = anilistAnime.episodes ?? 0;
+
+    return (
+      <motion.div variants={fadeUp} className="group relative flex flex-col">
+        <Link href={`/anime/al/${animeId}`}>
+          <div className="relative aspect-[2/3] overflow-hidden border border-white/5 group-hover:border-white/20 transition-all cursor-pointer">
+            {cover && <img src={cover} alt={title} className="w-full h-full object-cover transition-all duration-500 group-hover:scale-105" />}
+            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent" />
+            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/30">
+              <div className="w-10 h-10 border border-white/60 flex items-center justify-center">
+                <Play className="w-4 h-4 text-white fill-white ml-0.5" />
+              </div>
+            </div>
+            <button onClick={(e) => { e.preventDefault(); onRemove(); }}
+              className="absolute top-2 right-2 w-7 h-7 bg-black/70 border border-white/10 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-white hover:text-black text-white"
+              title="Remove from list">
+              <BookmarkX className="w-3.5 h-3.5" />
+            </button>
+            <div className="absolute bottom-2 left-0 right-0 px-3">
+              <h3 className="text-white font-serif text-sm leading-snug line-clamp-2">{title}</h3>
+              <div className="flex items-center gap-2 mt-1 text-[9px] font-mono text-white/50 uppercase tracking-widest">
+                {score && <span className="flex items-center gap-1"><Star className="w-2.5 h-2.5" />{score}</span>}
+                {score && total > 0 && <span className="w-0.5 h-0.5 rounded-full bg-white/30" />}
+                {total > 0 && <span className="flex items-center gap-1"><Clock className="w-2.5 h-2.5" />{total} eps</span>}
+              </div>
+            </div>
+          </div>
+        </Link>
+        <Link href={`/anime/al/${animeId}`}>
           <div className="mt-1.5 flex items-center gap-2 border border-white/10 px-3 py-2 hover:border-white/30 hover:bg-white/[0.03] transition-all cursor-pointer">
             <Play className="w-3 h-3 text-white/50 fill-white/50 flex-shrink-0" />
             <span className="text-white/50 text-[10px] font-mono truncate">Start watching</span>
           </div>
         </Link>
-      )}
-    </motion.div>
-  );
+      </motion.div>
+    );
+  }
+
+  return <div className="aspect-[2/3] bg-white/[0.03] border border-white/5" />;
 }
 
 /* ── Manga card ─────────────────────────────────────────────────────────── */
