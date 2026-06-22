@@ -20,6 +20,17 @@ interface AtsuSearchDoc {
   chapterCount?: number;
 }
 
+const BROWSER_HEADERS = {
+  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+  "Accept": "application/json, text/plain, */*",
+  "Accept-Language": "en-US,en;q=0.9",
+  "Origin": "https://atsu.moe",
+  "Referer": "https://atsu.moe/",
+  "Sec-Fetch-Dest": "empty",
+  "Sec-Fetch-Mode": "cors",
+  "Sec-Fetch-Site": "same-origin",
+};
+
 async function searchAtsu(query: string, perPage = 5): Promise<AtsuSearchDoc[]> {
   const params = new URLSearchParams({
     q: query,
@@ -27,10 +38,8 @@ async function searchAtsu(query: string, perPage = 5): Promise<AtsuSearchDoc[]> 
     per_page: String(perPage),
     include_fields: "id,title,englishTitle,chapterCount",
   });
-  const res = await fetch(`${SEARCH_URL}?${params}`, {
-    headers: { "User-Agent": "Mozilla/5.0" },
-  });
-  if (!res.ok) return [];
+  const res = await fetch(`${SEARCH_URL}?${params}`, { headers: BROWSER_HEADERS });
+  if (!res.ok) throw new Error(`atsu search HTTP ${res.status}`);
   const json = await res.json() as { hits?: { document: AtsuSearchDoc }[] };
   return (json.hits ?? []).map(h => h.document);
 }
@@ -38,8 +47,9 @@ async function searchAtsu(query: string, perPage = 5): Promise<AtsuSearchDoc[]> 
 async function fetchChapters(mangaId: string): Promise<AtsuChapter[]> {
   const res = await fetch(`${MANGA_BASE}/${mangaId}`, {
     headers: {
-      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-      "Accept": "text/html",
+      ...BROWSER_HEADERS,
+      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      "Referer": "https://atsu.moe/",
     },
   });
   if (!res.ok) return [];
@@ -103,7 +113,7 @@ router.get("/atsu/find", async (req, res) => {
     });
   } catch (err) {
     console.error("[atsu] find error:", err);
-    res.json({ found: false });
+    res.json({ found: false, error: true });
   }
 });
 

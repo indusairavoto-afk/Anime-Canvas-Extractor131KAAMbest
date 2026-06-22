@@ -117,7 +117,7 @@ function ReaderModal({
   onClose: () => void;
 }) {
   const [mangaId, setMangaId] = useState<string | null>(null);
-  const [findStatus, setFindStatus] = useState<"searching" | "found" | "not_found">("searching");
+  const [findStatus, setFindStatus] = useState<"searching" | "found" | "not_found" | "error">("searching");
   const [chapters, setChapters] = useState<AtsuChapter[]>([]);
   const [selectedChapter, setSelectedChapter] = useState<AtsuChapter | null>(null);
   const [chapterMenuOpen, setChapterMenuOpen] = useState(false);
@@ -131,7 +131,7 @@ function ReaderModal({
 
     fetch(apiUrl(`/api/atsu/find?title=${encodeURIComponent(title)}`))
       .then(r => r.json())
-      .then((data: { found: boolean; mangaId?: string; chapters?: AtsuChapter[] }) => {
+      .then((data: { found: boolean; error?: boolean; mangaId?: string; chapters?: AtsuChapter[] }) => {
         if (cancelled) return;
         if (data.found && data.mangaId) {
           setMangaId(data.mangaId);
@@ -139,11 +139,13 @@ function ReaderModal({
           setChapters(chs);
           if (chs.length) setSelectedChapter(chs[0]);
           setFindStatus("found");
+        } else if (data.error) {
+          setFindStatus("error");
         } else {
           setFindStatus("not_found");
         }
       })
-      .catch(() => { if (!cancelled) setFindStatus("not_found"); });
+      .catch(() => { if (!cancelled) setFindStatus("error"); });
     return () => { cancelled = true; };
   }, [title]);
 
@@ -288,11 +290,37 @@ function ReaderModal({
           </div>
         )}
 
-        {findStatus === "not_found" && (
+        {(findStatus === "not_found" || findStatus === "error") && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 px-6">
             <BookOpen className="w-10 h-10 text-white/10" />
             <p className="text-white/40 font-serif text-lg text-center">{title}</p>
-            <p className="text-[11px] font-mono text-white/20 uppercase tracking-widest">Not found on atsu.moe</p>
+            {findStatus === "error" ? (
+              <>
+                <p className="text-[11px] font-mono text-white/20 uppercase tracking-widest">Could not reach atsu.moe</p>
+                <a
+                  href={`https://atsu.moe/search?q=${encodeURIComponent(title)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 px-3 py-1.5 border border-white/10 text-[11px] font-mono text-white/40 hover:border-white/30 hover:text-white/70 transition-colors"
+                >
+                  <ExternalLink className="w-3 h-3" />
+                  Search on atsu.moe
+                </a>
+              </>
+            ) : (
+              <>
+                <p className="text-[11px] font-mono text-white/20 uppercase tracking-widest">Not found on atsu.moe</p>
+                <a
+                  href={`https://atsu.moe/search?q=${encodeURIComponent(title)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 px-3 py-1.5 border border-white/10 text-[11px] font-mono text-white/40 hover:border-white/30 hover:text-white/70 transition-colors"
+                >
+                  <ExternalLink className="w-3 h-3" />
+                  Search on atsu.moe
+                </a>
+              </>
+            )}
           </div>
         )}
 
