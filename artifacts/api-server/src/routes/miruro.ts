@@ -523,7 +523,13 @@ router.get("/miruro/stream", async (req, res) => {
     ? `${MIRURO_ORIGIN}/watch/${anilistId}/${slug}?ep=${epNum}`
     : `${MIRURO_ORIGIN}/watch/${anilistId}?ep=${epNum}`;
 
-  const iframeUrl = `/api/miruro/proxy?url=${encodeURIComponent(miruroUrl)}`;
+  // Build an absolute URL so this works in all deployment environments
+  // (Render, Replit prod, etc.) where the frontend and API may be on
+  // different origins. A relative path would resolve to the static frontend
+  // server which has no /api routes and returns 404 for the iframe src.
+  const proto = (req.headers["x-forwarded-proto"] as string | undefined) ?? (req.socket && (req.socket as { encrypted?: boolean }).encrypted ? "https" : "http");
+  const host = (req.headers["x-forwarded-host"] as string | undefined) ?? req.headers.host ?? "localhost:8080";
+  const iframeUrl = `${proto}://${host}/api/miruro/proxy?url=${encodeURIComponent(miruroUrl)}`;
   res.json({ iframeUrl });
 });
 
