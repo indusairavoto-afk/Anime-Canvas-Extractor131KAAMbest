@@ -203,36 +203,8 @@ export function EpisodeRatingMeter({ animeId, episode, episodeTitle, onPostRevie
           </svg>
         </div>
 
-        {/* Right side: vote chips + breakdown */}
+        {/* Right side: breakdown only */}
         <div className="flex-1 min-w-0 pt-1 space-y-4">
-
-          {/* Vote chips */}
-          <div className="flex flex-wrap gap-2">
-            {CATS.map(cat => {
-              const isMe = myVote === cat.key;
-              return (
-                <motion.button
-                  key={cat.key}
-                  onClick={() => castVote(cat.key)}
-                  disabled={submitting}
-                  whileTap={{ scale: 0.95 }}
-                  className="relative flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-mono uppercase tracking-widest transition-all duration-200 cursor-pointer select-none"
-                  style={{
-                    border: `1px solid ${isMe ? cat.accent + "80" : "rgba(255,255,255,0.08)"}`,
-                    background: isMe ? cat.color + "18" : "transparent",
-                    color: isMe ? cat.accent : "rgba(255,255,255,0.28)",
-                    borderRadius: "3px",
-                  }}
-                >
-                  <span
-                    className="w-1.5 h-1.5 rounded-full shrink-0"
-                    style={{ background: isMe ? cat.accent : "rgba(255,255,255,0.15)" }}
-                  />
-                  {cat.label}
-                </motion.button>
-              );
-            })}
-          </div>
 
           {/* Breakdown bars */}
           <div className="space-y-2">
@@ -267,98 +239,107 @@ export function EpisodeRatingMeter({ animeId, episode, episodeTitle, onPostRevie
             })}
           </div>
 
-          {myVote && (
-            <p className="text-[8px] font-mono text-white/15 uppercase tracking-[0.2em]">
-              tap again to remove vote
-            </p>
-          )}
         </div>
       </div>
 
-      {/* Review Box */}
-      <AnimatePresence>
-        {myVote && (
-          <motion.div
-            key="review-box"
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 8 }}
-            transition={{ duration: 0.2 }}
-            className="mt-6 border-t border-white/[0.05] pt-5 space-y-3"
-          >
-            {reviewPosted ? (
-              <div className="flex items-center gap-2 py-2.5 px-3 border border-white/[0.06] bg-white/[0.02]">
-                <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: activeCat?.accent }} />
-                <span className="text-[10px] font-mono text-white/30 tracking-wide">Review posted · thanks!</span>
-              </div>
-            ) : (
-              <>
-                <div className="relative">
-                  <textarea
-                    ref={textareaRef}
-                    value={reviewText}
-                    onChange={e => setReviewText(e.target.value.slice(0, 1000))}
-                    placeholder="Write your review here..."
-                    rows={3}
-                    maxLength={1000}
-                    className="w-full bg-transparent border border-white/[0.08] px-3 py-2.5 text-xs text-white/80 placeholder-white/15 focus:outline-none focus:border-white/20 resize-none transition-colors"
+      {/* Review Box — always visible, vote chips live inside */}
+      <div className="mt-6 border-t border-white/[0.05] pt-5 space-y-3">
+        {reviewPosted ? (
+          <div className="flex items-center gap-2 py-2.5 px-3 border border-white/[0.06] bg-white/[0.02]" style={{ borderRadius: "2px" }}>
+            <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: activeCat?.accent }} />
+            <span className="text-[10px] font-mono text-white/30 tracking-wide">Review posted · thanks!</span>
+          </div>
+        ) : (
+          <>
+            {/* Vote chips row inside the box */}
+            <div className="flex gap-1.5 flex-wrap">
+              {CATS.map(cat => {
+                const isMe = myVote === cat.key;
+                return (
+                  <motion.button
+                    key={cat.key}
+                    onClick={() => castVote(cat.key)}
+                    disabled={submitting}
+                    whileTap={{ scale: 0.95 }}
+                    className="px-3.5 py-1.5 text-[11px] font-medium transition-all duration-150 cursor-pointer select-none"
                     style={{
-                      borderColor: reviewText.trim() ? (activeCat?.color ?? "") + "50" : undefined,
-                      borderRadius: "2px",
+                      borderRadius: "999px",
+                      border: `1px solid ${isMe ? cat.accent + "70" : "rgba(255,255,255,0.07)"}`,
+                      background: isMe ? cat.color + "22" : "rgba(255,255,255,0.03)",
+                      color: isMe ? cat.accent : "rgba(255,255,255,0.35)",
                     }}
+                  >
+                    {cat.label}
+                  </motion.button>
+                );
+              })}
+            </div>
+
+            {/* Textarea */}
+            <div className="relative">
+              <textarea
+                ref={textareaRef}
+                value={reviewText}
+                onChange={e => setReviewText(e.target.value.slice(0, 1000))}
+                placeholder="Write your review here..."
+                rows={3}
+                maxLength={1000}
+                className="w-full bg-transparent border border-white/[0.07] px-3 py-2.5 text-xs text-white/80 placeholder-white/15 focus:outline-none focus:border-white/20 resize-none transition-colors"
+                style={{
+                  borderColor: reviewText.trim() ? (activeCat?.color ?? "") + "45" : undefined,
+                  borderRadius: "2px",
+                }}
+              />
+              <span className="absolute bottom-2 right-2.5 text-[8px] font-mono text-white/15 tabular-nums">
+                {reviewText.length}/1000
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between">
+              {/* Spoiler toggle */}
+              <motion.button
+                type="button"
+                onClick={() => setIsSpoiler(v => !v)}
+                whileTap={{ scale: 0.96 }}
+                className="flex items-center gap-2"
+              >
+                <div
+                  className="relative w-7 h-3.5 rounded-full shrink-0 transition-all duration-200"
+                  style={{ background: isSpoiler ? "rgba(124,58,237,0.5)" : "rgba(255,255,255,0.07)" }}
+                >
+                  <motion.span
+                    animate={{ x: isSpoiler ? 14 : 1 }}
+                    transition={{ type: "spring", stiffness: 500, damping: 35 }}
+                    className="absolute top-0.5 w-2.5 h-2.5 rounded-full bg-white/80"
                   />
-                  <span className="absolute bottom-2 right-2.5 text-[8px] font-mono text-white/15 tabular-nums">
-                    {reviewText.length}/1000
-                  </span>
                 </div>
+                <span
+                  className="text-[9px] font-mono uppercase tracking-wider transition-colors duration-200"
+                  style={{ color: isSpoiler ? "rgba(167,139,250,0.8)" : "rgba(255,255,255,0.2)" }}
+                >
+                  {isSpoiler ? "Spoiler" : "Mark spoiler"}
+                </span>
+              </motion.button>
 
-                <div className="flex items-center justify-between">
-                  {/* Spoiler toggle */}
-                  <motion.button
-                    type="button"
-                    onClick={() => setIsSpoiler(v => !v)}
-                    whileTap={{ scale: 0.96 }}
-                    className="flex items-center gap-2 group"
-                  >
-                    <div
-                      className="relative w-7 h-3.5 rounded-full shrink-0 transition-all duration-200"
-                      style={{ background: isSpoiler ? "rgba(124,58,237,0.5)" : "rgba(255,255,255,0.07)" }}
-                    >
-                      <motion.span
-                        animate={{ x: isSpoiler ? 14 : 1 }}
-                        transition={{ type: "spring", stiffness: 500, damping: 35 }}
-                        className="absolute top-0.5 w-2.5 h-2.5 rounded-full bg-white/80"
-                      />
-                    </div>
-                    <span
-                      className="text-[9px] font-mono uppercase tracking-wider transition-colors duration-200"
-                      style={{ color: isSpoiler ? "rgba(167,139,250,0.8)" : "rgba(255,255,255,0.2)" }}
-                    >
-                      {isSpoiler ? "Spoiler" : "Mark spoiler"}
-                    </span>
-                  </motion.button>
-
-                  {/* Post button */}
-                  <motion.button
-                    onClick={handlePostReview}
-                    disabled={!reviewText.trim()}
-                    whileTap={{ scale: 0.96 }}
-                    className="px-4 py-1.5 text-[9px] font-mono uppercase tracking-[0.15em] transition-all duration-200 disabled:opacity-20 disabled:cursor-not-allowed"
-                    style={{
-                      border: `1px solid ${reviewText.trim() ? (activeCat?.accent ?? "#fff") + "60" : "rgba(255,255,255,0.08)"}`,
-                      color: reviewText.trim() ? activeCat?.accent : "rgba(255,255,255,0.2)",
-                      background: reviewText.trim() ? activeCat?.color + "15" : "transparent",
-                      borderRadius: "2px",
-                    }}
-                  >
-                    Post Review
-                  </motion.button>
-                </div>
-              </>
-            )}
-          </motion.div>
+              {/* Post button */}
+              <motion.button
+                onClick={handlePostReview}
+                disabled={!myVote || !reviewText.trim()}
+                whileTap={{ scale: 0.96 }}
+                className="px-5 py-1.5 text-[10px] font-medium transition-all duration-200 disabled:opacity-25 disabled:cursor-not-allowed"
+                style={{
+                  borderRadius: "999px",
+                  border: `1px solid ${myVote && reviewText.trim() ? (activeCat?.accent ?? "#fff") + "60" : "rgba(255,255,255,0.08)"}`,
+                  color: myVote && reviewText.trim() ? activeCat?.accent : "rgba(255,255,255,0.2)",
+                  background: myVote && reviewText.trim() ? (activeCat?.color ?? "") + "18" : "transparent",
+                }}
+              >
+                Post
+              </motion.button>
+            </div>
+          </>
         )}
-      </AnimatePresence>
+      </div>
     </div>
   );
 }
