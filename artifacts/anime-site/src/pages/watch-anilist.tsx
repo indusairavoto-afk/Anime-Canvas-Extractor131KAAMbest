@@ -1845,17 +1845,34 @@ export default function WatchAniList() {
                   />
                 )}
 
-                {/* ANIMEONSEN direct iframe embed */}
+                {/* ANIMEONSEN — launch panel (player blocks cross-origin iframes) */}
                 {server === "ANIMEONSEN" && animeonsenIframeUrl && (
-                  <iframe
-                    key={`animeonsen-${animeId}-${currentEp}`}
-                    src={animeonsenIframeUrl}
-                    className="w-full h-full"
-                    allowFullScreen
-                    allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
-                    title={`${title} Episode ${currentEp}`}
-                    onLoad={() => setTimeout(() => setIframeLoaded(true), 200)}
-                  />
+                  <div className="absolute inset-0 z-10 flex flex-col items-center justify-center" style={{ background: "rgba(0,0,0,0.92)" }}>
+                    {banner && <img src={banner} alt="" className="absolute inset-0 w-full h-full object-cover opacity-10 scale-110 blur-md pointer-events-none" />}
+                    <div className="relative z-10 flex flex-col items-center gap-5 px-6 text-center max-w-xs">
+                      {cover && (
+                        <img src={cover} alt={title} className="w-14 h-20 object-cover shadow-2xl opacity-90" />
+                      )}
+                      <div className="space-y-1.5">
+                        <p className="text-white text-sm font-semibold tracking-wide line-clamp-2">{title}</p>
+                        <p className="text-white/40 text-[11px] font-mono uppercase tracking-widest">
+                          Episode {currentEp}{getEpTitle(currentEp) !== `Episode ${currentEp}` ? ` · ${getEpTitle(currentEp)}` : ""}
+                        </p>
+                      </div>
+                      <a
+                        href={animeonsenIframeUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2.5 text-[13px] font-mono font-bold px-8 py-3.5 bg-green-500 text-black hover:bg-green-400 active:scale-95 transition-all uppercase tracking-widest shadow-xl shadow-green-500/20"
+                      >
+                        <Play className="w-4 h-4 fill-current" />
+                        Watch on AnimeonSen
+                      </a>
+                      <p className="text-white/20 text-[10px] font-mono leading-relaxed max-w-[200px]">
+                        Opens in a new tab — AnimeonSen blocks in-page embedding
+                      </p>
+                    </div>
+                  </div>
                 )}
 
                 {/* KOTO native HLS player (bypasses mewcdn cross-origin player) */}
