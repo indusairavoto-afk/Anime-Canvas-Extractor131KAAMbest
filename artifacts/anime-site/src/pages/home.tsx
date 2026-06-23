@@ -337,25 +337,22 @@ function HeroSlide({ anime }: { anime: AniMedia }) {
   );
 }
 
-/* ── Mobile hero: full-bleed image bg with overlaid info ── */
+/* ── Mobile hero: split layout — cover art right, info left ── */
 function MobileHeroCard({ anime, direction, dots }: { anime: AniMedia; direction: number; dots: React.ReactNode }) {
   const title = anime.title.english || anime.title.romaji;
-  const score = anime.averageScore ? Math.round(anime.averageScore) : null;
-  const bg = anime.bannerImage || anime.coverImage?.extraLarge || anime.coverImage?.large || "";
+  const score = anime.averageScore ? (anime.averageScore / 10).toFixed(1) : null;
+  const cover = anime.coverImage?.extraLarge || anime.coverImage?.large || "";
+  const banner = anime.bannerImage || cover;
 
-  let airingLabel: string | null = null;
   let currentEp: number | null = null;
+  let airingLabel: string | null = null;
   if (anime.nextAiringEpisode) {
     const { episode, timeUntilAiring } = anime.nextAiringEpisode;
     currentEp = episode - 1;
     const days = Math.floor(timeUntilAiring / 86400);
     const hours = Math.floor((timeUntilAiring % 86400) / 3600);
-    airingLabel = `EP ${episode} · ${days > 0 ? `${days}D ` : ""}${hours}H`;
+    airingLabel = `EP ${episode} in ${days > 0 ? `${days}d ` : ""}${hours}h`;
   }
-
-  const episodeDisplay = currentEp !== null && anime.episodes
-    ? `${currentEp} / ${anime.episodes}`
-    : anime.episodes ? `${anime.episodes} EPs` : null;
 
   return (
     <AnimatePresence mode="wait" custom={direction}>
@@ -366,107 +363,109 @@ function MobileHeroCard({ anime, direction, dots }: { anime: AniMedia; direction
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         transition={{ duration: 0.4 }}
-        className="absolute inset-0 overflow-hidden"
+        className="absolute inset-0 overflow-hidden bg-black"
       >
-        {/* Full-bleed background image — same image fills everything */}
-        <img
-          src={bg}
-          alt=""
-          className="absolute inset-0 w-full h-full object-cover object-top"
-        />
-        {/* Multi-stop gradient: transparent on top → opaque at bottom */}
+        {/* Blurred banner as full background — very dark */}
+        {banner && (
+          <img
+            src={banner}
+            alt=""
+            className="absolute inset-0 w-full h-full object-cover object-center scale-110"
+            style={{ filter: "blur(18px) brightness(0.18) saturate(1.4)" }}
+          />
+        )}
+
+        {/* Right side — portrait cover art */}
         <div
-          className="absolute inset-0"
-          style={{
-            background: "linear-gradient(to bottom, rgba(0,0,0,0.08) 0%, rgba(0,0,0,0.15) 30%, rgba(0,0,0,0.65) 55%, rgba(0,0,0,0.93) 72%, rgba(0,0,0,0.98) 100%)",
-          }}
-        />
-
-        {/* Top badges — just below the navbar */}
-        <div className="absolute left-3 right-3 flex items-center justify-between" style={{ top: 64 }}>
-          {airingLabel ? (
-            <div className="flex items-center gap-1.5 bg-black/50 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10">
-              <Clock className="w-3 h-3 text-white/65 flex-shrink-0" />
-              <span className="text-[11px] font-semibold text-white tracking-wide">{airingLabel}</span>
-            </div>
-          ) : <span />}
-          {episodeDisplay && (
-            <div className="bg-black/50 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10">
-              <span className="text-[11px] font-semibold text-white tracking-wide">{episodeDisplay}</span>
-            </div>
-          )}
+          className="absolute right-0 top-0 bottom-0"
+          style={{ width: "52%" }}
+        >
+          <img
+            src={cover}
+            alt=""
+            className="absolute inset-0 w-full h-full object-cover object-top"
+            style={{ filter: "brightness(0.92)" }}
+          />
+          {/* Fade left edge into the dark bg */}
+          <div
+            className="absolute inset-0"
+            style={{
+              background: "linear-gradient(to right, black 0%, rgba(0,0,0,0.55) 30%, rgba(0,0,0,0.05) 80%, transparent 100%)",
+            }}
+          />
+          {/* Fade bottom */}
+          <div
+            className="absolute inset-0"
+            style={{
+              background: "linear-gradient(to top, black 0%, rgba(0,0,0,0.4) 30%, transparent 60%)",
+            }}
+          />
         </div>
 
-        {/* Slide dots — mid-card */}
-        <div className="absolute left-4 flex items-center gap-1.5" style={{ top: "48%" }}>
-          {dots}
-        </div>
+        {/* Left side — all text and buttons */}
+        <div className="absolute inset-0 flex flex-col justify-end pb-5 px-4" style={{ width: "62%" }}>
+          {/* Trending badge */}
+          <div className="mb-2">
+            <span className="text-[9px] font-bold uppercase tracking-[0.18em] text-orange-400/90 bg-orange-500/10 border border-orange-500/20 px-2 py-0.5 rounded-sm">
+              TRENDING
+            </span>
+          </div>
 
-        {/* Info — pinned to bottom */}
-        <div className="absolute bottom-0 left-0 right-0 px-4 pb-5 flex flex-col gap-3">
-          {/* Metadata badges */}
-          <div className="flex items-center gap-1.5 flex-wrap">
+          {/* Title */}
+          <h1 className="font-bold text-[20px] leading-tight text-white mb-2 line-clamp-2 drop-shadow-md">
+            {title}
+          </h1>
+
+          {/* Score + format + year */}
+          <div className="flex items-center gap-2 mb-3 flex-wrap">
+            {score && (
+              <span className="flex items-center gap-1 text-[11px] font-bold text-yellow-400">
+                <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" /> {score}
+              </span>
+            )}
             {anime.format && (
-              <span className="text-[11px] font-semibold text-white/80 px-2.5 py-1 rounded-full border border-white/20 bg-white/[0.08]">
+              <span className="text-[10px] font-mono text-white/50 bg-white/8 border border-white/15 px-1.5 py-0.5 uppercase tracking-wider">
                 {anime.format}
               </span>
             )}
-            {anime.episodes && (
-              <span className="flex items-center gap-1 text-[11px] font-semibold text-white/80 px-2.5 py-1 rounded-full border border-white/20 bg-white/[0.08]">
-                <span className="text-white/45 text-[10px]">CC</span> {anime.episodes}
-              </span>
+            {anime.seasonYear && (
+              <span className="text-[10px] font-mono text-white/40">{anime.seasonYear}</span>
             )}
-            {score && (
-              <span className="flex items-center gap-1 text-[11px] font-semibold text-white/80 px-2.5 py-1 rounded-full border border-white/20 bg-white/[0.08]">
-                <Star className="w-3 h-3 fill-white/55 text-white/55" /> {score}
-              </span>
-            )}
-            {anime.duration && (
-              <span className="flex items-center gap-1 text-[11px] font-semibold text-white/80 px-2.5 py-1 rounded-full border border-white/20 bg-white/[0.08]">
-                <Clock className="w-3 h-3 text-white/45" /> {anime.duration} mins
+            {airingLabel && (
+              <span className="flex items-center gap-1 text-[10px] text-white/50">
+                <Clock className="w-2.5 h-2.5" />{airingLabel}
               </span>
             )}
           </div>
 
-          {/* Title — orange/amber gradient */}
-          <h1
-            className="font-bold text-[22px] leading-tight line-clamp-2"
-            style={{
-              background: "linear-gradient(135deg, #fb923c 0%, #f59e0b 60%, #fcd34d 100%)",
-              WebkitBackgroundClip: "text",
-              WebkitTextFillColor: "transparent",
-              backgroundClip: "text",
-            }}
-          >
-            {title}
-          </h1>
-
-          {/* Genre + studio pills */}
+          {/* Genres */}
           {anime.genres.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              <span className="text-[12px] text-white/60 px-3 py-1 rounded-full border border-white/15 bg-black/30">
-                {anime.genres.slice(0, 3).join(" · ")}
-              </span>
-              {anime.studios?.nodes?.[0]?.name && (
-                <span className="text-[12px] text-white/60 px-3 py-1 rounded-full border border-white/15 bg-black/30">
-                  {anime.studios.nodes[0].name}
+            <div className="flex flex-wrap gap-1.5 mb-4">
+              {anime.genres.slice(0, 3).map((g) => (
+                <span key={g} className="text-[10px] text-white/50 px-2 py-0.5 rounded-full border border-white/12 bg-white/[0.05]">
+                  {g}
                 </span>
-              )}
+              ))}
             </div>
           )}
 
           {/* CTA buttons */}
-          <div className="flex gap-3">
-            <Link href={`/anime/al/${anime.id}`} className="flex-1">
-              <button className="w-full flex items-center justify-center gap-2 bg-white/12 text-white py-2.5 rounded-full text-[13px] font-bold border border-white/25 active:bg-white/20 transition-colors backdrop-blur-sm">
-                <Info className="w-4 h-4" /> DETAILS
-              </button>
-            </Link>
+          <div className="flex gap-2.5">
             <Link href={`/watch/al/${anime.id}/${currentEp ?? 1}`} className="flex-1">
-              <button className="w-full flex items-center justify-center gap-2 bg-white text-black py-2.5 rounded-full text-[13px] font-bold active:bg-white/90 transition-colors">
-                <Play className="w-4 h-4 fill-black" /> WATCH NOW
+              <button className="w-full flex items-center justify-center gap-1.5 bg-white text-black py-2.5 rounded-md text-[12px] font-bold active:bg-white/90 transition-colors">
+                <Play className="w-3.5 h-3.5 fill-black" /> WATCH
               </button>
             </Link>
+            <Link href={`/anime/al/${anime.id}`}>
+              <button className="flex items-center justify-center bg-white/10 text-white px-3.5 py-2.5 rounded-md text-[12px] font-bold border border-white/20 active:bg-white/20 transition-colors">
+                <Info className="w-3.5 h-3.5" />
+              </button>
+            </Link>
+          </div>
+
+          {/* Slide dots */}
+          <div className="flex items-center gap-1.5 mt-4">
+            {dots}
           </div>
         </div>
       </motion.div>
