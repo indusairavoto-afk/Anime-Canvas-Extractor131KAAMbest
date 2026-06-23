@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from "framer-motion";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, memo } from "react";
 import { Link } from "wouter";
 import { Clock, Play, Star, Calendar, Loader2, Radio } from "lucide-react";
 
@@ -13,10 +13,8 @@ interface AiringAnime {
   day: Day;
   airingAt: number;
   cover: string;
-  banner: string | null;
   genres: string[];
   score: number | null;
-  studio: string | null;
 }
 
 const ANILIST_QUERY = `query {
@@ -30,10 +28,8 @@ const ANILIST_QUERY = `query {
       id
       title { romaji english }
       coverImage { extraLarge large }
-      bannerImage
       genres
       averageScore
-      studios(isMain: true) { nodes { name } }
       nextAiringEpisode { airingAt episode }
     }
   }
@@ -52,17 +48,8 @@ function formatTime(ts: number): string {
   });
 }
 
-function useNow(intervalMs = 1000) {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), intervalMs);
-    return () => clearInterval(id);
-  }, [intervalMs]);
-  return now;
-}
-
 function formatCountdown(secondsLeft: number): string {
-  if (secondsLeft <= 0) return "Now";
+  if (secondsLeft <= 0) return "On Air";
   const d = Math.floor(secondsLeft / 86400);
   const h = Math.floor((secondsLeft % 86400) / 3600);
   const m = Math.floor((secondsLeft % 3600) / 60);
@@ -76,14 +63,145 @@ function formatCountdown(secondsLeft: number): string {
 type AirStatus = "aired" | "airing" | "upcoming";
 
 function getStatus(airingAt: number, nowMs: number): AirStatus {
-  const nowS = nowMs / 1000;
-  const diff = airingAt - nowS;
+  const diff = airingAt - nowMs / 1000;
   if (diff < -3600) return "aired";
   if (diff <= 0) return "airing";
   return "upcoming";
 }
 
 const TODAY_INDEX = new Date().getDay() === 0 ? 6 : new Date().getDay() - 1;
+
+/* ── Isolated countdown cell — ticks only itself, not the whole list ── */
+const CountdownCell = memo(function CountdownCell({
+  airingAt,
+}: {
+  airingAt: number;
+}) {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const secsLeft = Math.floor(airingAt - now / 1000);
+  const status = getStatus(airingAt, now);
+  const isAiring = status === "airing";
+  const isAired = status === "aired";
+
+  if (isAired) return null;
+
+  return (
+    <span
+      className={`text-[10px] font-bold font-mono tabular-nums ${
+        isAiring ? "text-orange-400" : secsLeft < 3600 ? "text-yellow-400" : "text-white/45"
+      }`}
+    >
+      {formatCountdown(secsLeft)}
+    </span>
+  );
+});
+
+/* ── Episode row — stable, never re-mounts from parent ticks ── */
+const EpisodeRow = memo(function EpisodeRow({
+  ep,
+  index,
+  nowMs,
+}: {
+  ep: AiringAnime;
+  index: number;
+  nowMs: number;
+}) {
+  const status = getStatus(ep.airingAt, nowMs);
+  const isAiring = status === "airing";
+  const isAired = status === "aired";
+
+  return (
+    <Link href={`/anime/al/${ep.id}`}>
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3, delay: Math.min(index * 0.03, 0.25), ease: [0.4, 0, 0.2, 1] }}
+        className={`group relative flex items-center gap-3 rounded-xl p-3 border cursor-pointer transition-colors ${
+          isAiring
+            ? "border-orange-500/30 bg-orange-500/[0.05]"
+            : isAired
+            ? "border-white/[0.04] bg-white/[0.015] opacity-55"
+            : "border-white/[0.06] bg-white/[0.025] hover:bg-white/[0.05] hover:border-white/15"
+        }`}
+      >
+        {/* Airing glow ring */}
+        {isAiring && (
+          <div
+            className="absolute inset-0 rounded-xl pointer-events-none"
+            style={{ boxShadow: "inset 0 0 0 1px rgba(249,115,22,0.3)" }}
+          />
+        )}
+
+        {/* Cover */}
+        <div className="relative flex-shrink-0 w-11 h-[66px] rounded-lg overflow-hidden">
+          <img
+            src={ep.cover}
+            alt={ep.title}
+            className="w-full h-full object-cover"
+            loading="lazy"
+          />
+          {isAired && (
+            <div className="absolute inset-0 bg-black/55 flex items-center justify-center">
+              <span className="text-[7px] font-bold text-white/45 uppercase tracking-widest">Aired</span>
+            </div>
+          )}
+        </div>
+
+        {/* Info */}
+        <div className="flex-1 min-w-0">
+          {isAiring && (
+            <div className="flex items-center gap-1 mb-1">
+              <Radio className="w-2.5 h-2.5 text-orange-400 animate-pulse" />
+              <span className="text-[9px] font-bold uppercase tracking-widest text-orange-400">
+                Live Now
+              </span>
+            </div>
+          )}
+          <h3
+            className={`font-semibold text-[13px] leading-snug truncate mb-1 ${
+              isAired ? "text-white/40" : "text-white"
+            }`}
+          >
+            {ep.title}
+          </h3>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[9px] font-mono text-white/35 uppercase tracking-wider">
+              EP {ep.episode}
+            </span>
+            {ep.score && (
+              <span className="flex items-center gap-0.5 text-[9px] font-mono text-yellow-400/65">
+                <Star className="w-2 h-2 fill-current" />
+                {(ep.score / 10).toFixed(1)}
+              </span>
+            )}
+            {ep.genres.slice(0, 2).map((g) => (
+              <span key={g} className="text-[8px] font-mono text-white/20 uppercase tracking-widest">
+                {g}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        {/* Right: time + live countdown */}
+        <div className="flex-shrink-0 flex flex-col items-end gap-1 min-w-[58px]">
+          <span className="text-[10px] font-mono text-white/30">{formatTime(ep.airingAt)}</span>
+          <CountdownCell airingAt={ep.airingAt} />
+          {!isAired && (
+            <div className="w-7 h-7 rounded-full border border-white/10 group-hover:border-white/35 flex items-center justify-center text-white/20 group-hover:text-white transition-all mt-0.5">
+              <Play className="w-2.5 h-2.5 fill-current" />
+            </div>
+          )}
+        </div>
+      </motion.div>
+    </Link>
+  );
+});
 
 export default function Schedule() {
   const today = new Date();
@@ -95,7 +213,13 @@ export default function Schedule() {
     MON: [], TUE: [], WED: [], THU: [], FRI: [], SAT: [], SUN: [],
   });
   const [loading, setLoading] = useState(true);
-  const now = useNow(1000);
+
+  /* Parent only needs minute-level precision for the "X Live" badge */
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     setLoading(true);
@@ -120,10 +244,8 @@ export default function Schedule() {
             day,
             airingAt: m.nextAiringEpisode.airingAt,
             cover: m.coverImage?.extraLarge || m.coverImage?.large || "",
-            banner: m.bannerImage || null,
-            genres: (m.genres ?? []).slice(0, 2),
+            genres: m.genres ?? [],
             score: m.averageScore ?? null,
-            studio: m.studios?.nodes?.[0]?.name ?? null,
           });
         }
         for (const day of DAYS) {
@@ -137,15 +259,15 @@ export default function Schedule() {
 
   const episodes = schedule[selectedDay] ?? [];
   const airingNowCount = episodes.filter(
-    (e) => getStatus(e.airingAt, now) === "airing"
+    (e) => getStatus(e.airingAt, nowMs) === "airing"
   ).length;
 
   return (
     <div className="bg-black text-white min-h-screen pb-24">
-      {/* ── Page header ── */}
+      {/* Header */}
       <div className="px-4 pt-6 pb-4 sm:px-8 sm:pt-10">
         <div className="flex items-center gap-3 mb-1">
-          <Calendar className="w-5 h-5 text-white/40" />
+          <Calendar className="w-5 h-5 text-white/35" />
           <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
             Schedule
           </h1>
@@ -156,13 +278,13 @@ export default function Schedule() {
             </span>
           )}
         </div>
-        <p className="text-white/30 text-xs font-mono uppercase tracking-widest ml-8">
+        <p className="text-white/25 text-xs font-mono uppercase tracking-widest ml-8">
           {today.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })} · AniList
         </p>
       </div>
 
-      {/* ── Day tabs ── */}
-      <div className="border-b border-white/[0.07] overflow-x-auto mb-6">
+      {/* Day tabs */}
+      <div className="border-b border-white/[0.07] overflow-x-auto mb-5">
         <div className="flex min-w-max px-2 sm:px-0 sm:justify-center sm:min-w-0 sm:max-w-3xl sm:mx-auto">
           {DAYS.map((day, i) => {
             const date = new Date(weekStart);
@@ -171,28 +293,20 @@ export default function Schedule() {
             const isSelected = day === selectedDay;
             const count = schedule[day]?.length ?? 0;
             const hasLive = schedule[day]?.some(
-              (e) => getStatus(e.airingAt, now) === "airing"
+              (e) => getStatus(e.airingAt, nowMs) === "airing"
             );
             return (
               <button
                 key={day}
                 onClick={() => setSelectedDay(day)}
                 className={`relative flex flex-col items-center pt-3 pb-3.5 px-4 sm:px-7 transition-colors flex-shrink-0 ${
-                  isSelected ? "text-white" : "text-white/30 hover:text-white/60"
+                  isSelected ? "text-white" : "text-white/28 hover:text-white/55"
                 }`}
               >
                 <span className="text-[9px] font-bold uppercase tracking-widest mb-1 font-mono">
                   {day}
                 </span>
-                <span
-                  className={`text-lg font-extrabold leading-none ${
-                    isToday
-                      ? "text-white"
-                      : isSelected
-                      ? "text-white"
-                      : "text-white/30"
-                  }`}
-                >
+                <span className={`text-[17px] font-extrabold leading-none ${isSelected || isToday ? "text-white" : "text-white/30"}`}>
                   {date.getDate()}
                 </span>
                 <div className="flex items-center gap-1 mt-1">
@@ -200,9 +314,7 @@ export default function Schedule() {
                     <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse" />
                   )}
                   {count > 0 && (
-                    <span className="text-[8px] font-mono text-white/25">
-                      {count}
-                    </span>
+                    <span className="text-[8px] font-mono text-white/22">{count}</span>
                   )}
                 </div>
                 {isSelected && (
@@ -218,7 +330,7 @@ export default function Schedule() {
         </div>
       </div>
 
-      {/* ── Episode list ── */}
+      {/* Episode list */}
       <div className="max-w-3xl mx-auto px-3 sm:px-6">
         {loading ? (
           <div className="flex flex-col items-center justify-center py-32 gap-4">
@@ -234,107 +346,11 @@ export default function Schedule() {
           </div>
         ) : (
           <AnimatePresence mode="wait">
-            <motion.div
-              key={selectedDay}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.22 }}
-              className="space-y-2"
-            >
-              {episodes.map((ep, i) => {
-                const status = getStatus(ep.airingAt, now);
-                const secsLeft = Math.floor(ep.airingAt - now / 1000);
-                const isAiring = status === "airing";
-                const isAired = status === "aired";
-
-                return (
-                  <Link key={ep.id} href={`/anime/al/${ep.id}`}>
-                    <motion.div
-                      initial={{ opacity: 0, y: 6 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: Math.min(i * 0.03, 0.3) }}
-                      className={`group relative flex items-center gap-3 rounded-xl p-3 transition-all cursor-pointer border ${
-                        isAiring
-                          ? "border-orange-500/30 bg-orange-500/[0.05]"
-                          : isAired
-                          ? "border-white/[0.04] bg-white/[0.02] opacity-60"
-                          : "border-white/[0.06] bg-white/[0.025] hover:bg-white/[0.05] hover:border-white/15"
-                      }`}
-                    >
-                      {/* Airing glow */}
-                      {isAiring && (
-                        <div className="absolute inset-0 rounded-xl pointer-events-none" style={{ boxShadow: "inset 0 0 0 1px rgba(249,115,22,0.25)" }} />
-                      )}
-
-                      {/* Cover art */}
-                      <div className="relative flex-shrink-0 w-12 h-[72px] rounded-lg overflow-hidden">
-                        <img
-                          src={ep.cover}
-                          alt={ep.title}
-                          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                          loading="lazy"
-                        />
-                        {isAired && (
-                          <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-                            <span className="text-[7px] font-bold text-white/50 uppercase tracking-widest">Aired</span>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Info */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5 mb-1">
-                          {isAiring && (
-                            <span className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-widest text-orange-400">
-                              <Radio className="w-2.5 h-2.5 animate-pulse" /> Live
-                            </span>
-                          )}
-                        </div>
-                        <h3 className={`font-semibold text-[13px] leading-snug truncate mb-1 ${isAired ? "text-white/45" : "text-white"}`}>
-                          {ep.title}
-                        </h3>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-[9px] font-mono text-white/40 uppercase tracking-wider">
-                            EP {ep.episode}
-                          </span>
-                          {ep.score && (
-                            <span className="flex items-center gap-0.5 text-[9px] font-mono text-yellow-400/70">
-                              <Star className="w-2 h-2 fill-current" />
-                              {(ep.score / 10).toFixed(1)}
-                            </span>
-                          )}
-                          {ep.genres.map((g) => (
-                            <span key={g} className="text-[8px] font-mono text-white/20 uppercase tracking-widest">
-                              {g}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Right: time + countdown */}
-                      <div className="flex-shrink-0 flex flex-col items-end gap-1 min-w-[60px]">
-                        <span className="text-[10px] font-mono text-white/30">{formatTime(ep.airingAt)}</span>
-                        {!isAired && (
-                          <span
-                            className={`text-[10px] font-bold font-mono tabular-nums ${
-                              isAiring ? "text-orange-400" : secsLeft < 3600 ? "text-yellow-400" : "text-white/50"
-                            }`}
-                          >
-                            {isAiring ? "On Air" : formatCountdown(secsLeft)}
-                          </span>
-                        )}
-                        {!isAired && (
-                          <div className="w-8 h-8 rounded-full border border-white/10 group-hover:border-white/35 flex items-center justify-center text-white/20 group-hover:text-white transition-all mt-0.5">
-                            <Play className="w-3 h-3 fill-current" />
-                          </div>
-                        )}
-                      </div>
-                    </motion.div>
-                  </Link>
-                );
-              })}
-            </motion.div>
+            <div key={selectedDay} className="space-y-2">
+              {episodes.map((ep, i) => (
+                <EpisodeRow key={ep.id} ep={ep} index={i} nowMs={nowMs} />
+              ))}
+            </div>
           </AnimatePresence>
         )}
       </div>
