@@ -169,6 +169,7 @@ export default function WatchAniList() {
   const epListRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [cdnUrl, setCdnUrl] = useState<string | null>(null);
+  const [gogoHlsUrl, setGogoHlsUrl] = useState<string | null>(null);
   const [cdnLoading, setCdnLoading] = useState(false);
   const [cdnNotFound, setCdnNotFound] = useState(false);
   const [kotoSlug, setKotoSlug] = useState("");
@@ -200,7 +201,7 @@ export default function WatchAniList() {
   const [bridgeLive, setBridgeLive] = useState(false);
   const userPickedRef = useRef(false);
   const raceCache = useRef<{
-    gogo?: { cdnUrl: string; resolvedSlug?: string; pageTitle?: string | null; streamOk?: boolean } | null;
+    gogo?: { cdnUrl: string; hlsUrl?: string | null; resolvedSlug?: string; pageTitle?: string | null; streamOk?: boolean } | null;
     koto?: { url?: string; hlsUrl?: string | null } | null;
     anizone?: { hlsUrl?: string; subtitles?: { src: string; label: string; srclang: string; isDefault: boolean }[] } | null;
     miruro?: { iframeUrl?: string } | null;
@@ -553,10 +554,10 @@ export default function WatchAniList() {
         ? fetch(apiUrl(`/api/gogo/cdn-url?slug=${encodeURIComponent(gSlug)}&ep=${currentEp}`), { cache: "no-store" }).then(r => r.json())
         : Promise.resolve({});
       firstFetch
-        .then((data: { cdnUrl?: string; resolvedSlug?: string; pageTitle?: string | null; streamOk?: boolean }) => {
+        .then((data: { cdnUrl?: string; hlsUrl?: string | null; resolvedSlug?: string; pageTitle?: string | null; streamOk?: boolean }) => {
           if (cancelled) return;
           if (data.cdnUrl) {
-            raceCache.current.gogo = { cdnUrl: data.cdnUrl, resolvedSlug: data.resolvedSlug, pageTitle: data.pageTitle, streamOk: data.streamOk };
+            raceCache.current.gogo = { cdnUrl: data.cdnUrl, hlsUrl: data.hlsUrl ?? null, resolvedSlug: data.resolvedSlug, pageTitle: data.pageTitle, streamOk: data.streamOk };
             if (data.streamOk === false) {
               // Stream is DMCA'd/broken — don't win the race; let other servers compete
               setServerHealth(h => ({ ...h, GOGO: "fail" }));
@@ -570,10 +571,10 @@ export default function WatchAniList() {
           // Slug variants all failed — silently try resolve-slug (server searches GoGo by title)
           return fetch(apiUrl(`/api/gogo/resolve-slug?title=${encodeURIComponent(gogoTitle)}&ep=${currentEp}`), { cache: "no-store" })
             .then(r => r.json())
-            .then((resolveData: { cdnUrl?: string; resolvedSlug?: string; pageTitle?: string | null; streamOk?: boolean }) => {
+            .then((resolveData: { cdnUrl?: string; hlsUrl?: string | null; resolvedSlug?: string; pageTitle?: string | null; streamOk?: boolean }) => {
               if (cancelled) return;
               if (resolveData.cdnUrl) {
-                raceCache.current.gogo = { cdnUrl: resolveData.cdnUrl, resolvedSlug: resolveData.resolvedSlug, pageTitle: resolveData.pageTitle, streamOk: resolveData.streamOk };
+                raceCache.current.gogo = { cdnUrl: resolveData.cdnUrl, hlsUrl: resolveData.hlsUrl ?? null, resolvedSlug: resolveData.resolvedSlug, pageTitle: resolveData.pageTitle, streamOk: resolveData.streamOk };
                 if (resolveData.streamOk === false) {
                   setServerHealth(h => ({ ...h, GOGO: "fail" }));
                   setGogoStreamError(true);
@@ -671,8 +672,9 @@ export default function WatchAniList() {
 
   // When GOGO server is selected, fetch the CDN player iframe URL from the gogoanimes.cv page
   // so we can embed only the CDN player (with our control bridge) instead of the full site.
+  // Also extracts the direct HLS URL when available so we can drive our own player.
   useEffect(() => {
-    if (server !== "GOGO" || !gogoSlug) { setCdnUrl(null); setCdnLoading(false); setCdnNotFound(false); return; }
+    if (server !== "GOGO" || !gogoSlug) { setCdnUrl(null); setGogoHlsUrl(null); setCdnLoading(false); setCdnNotFound(false); return; }
     // Use race-cached result if available (avoids double network call)
     const cached = raceCache.current.gogo;
     if (cached !== undefined) {
@@ -685,13 +687,14 @@ export default function WatchAniList() {
         }
         raceCache.current.gogo = undefined;
         if (cached.streamOk === false) {
-          // Broken stream detected in race — trigger auto-switch without loading the iframe
           setCdnUrl(cached.cdnUrl);
+          setGogoHlsUrl(null);
           setCdnLoading(false);
           setCdnNotFound(false);
           setGogoStreamError(true);
         } else {
           setCdnUrl(cached.cdnUrl);
+          setGogoHlsUrl(cached.hlsUrl ?? null);
           setCdnLoading(false);
           setCdnNotFound(false);
         }
@@ -700,6 +703,7 @@ export default function WatchAniList() {
       raceCache.current.gogo = undefined;
     }
     setCdnUrl(null);
+    setGogoHlsUrl(null);
     setCdnLoading(true);
     setCdnNotFound(false);
     setGogoSearchResults([]);
@@ -707,7 +711,7 @@ export default function WatchAniList() {
     let cancelled = false;
     fetch(apiUrl(`/api/gogo/cdn-url?slug=${encodeURIComponent(gogoSlug)}&ep=${currentEp}`), { cache: "no-store" })
       .then((r) => r.json())
-      .then((data: { cdnUrl?: string; resolvedSlug?: string; pageTitle?: string | null; streamOk?: boolean }) => {
+      .then((data: { cdnUrl?: string; hlsUrl?: string | null; resolvedSlug?: string; pageTitle?: string | null; streamOk?: boolean }) => {
         if (cancelled) return;
 
         // Save auto-resolved slug from variant probe
@@ -719,21 +723,20 @@ export default function WatchAniList() {
 
         if (data.cdnUrl) {
           setCdnUrl(data.cdnUrl);
+          setGogoHlsUrl(data.hlsUrl ?? null);
           if (data.pageTitle) setSourcePageTitle(data.pageTitle);
-          // Server probed the HLS source URL — if it returned 4xx, skip the iframe
-          // and go straight to the server-switch overlay (user never sees error page)
           if (data.streamOk === false) setGogoStreamError(true);
           return;
         }
 
         // All slug variants exhausted — automatically resolve server-side via title search+scoring.
-        // No user interaction needed: the backend searches GoGo, scores results, and probes the best slug.
         return fetch(apiUrl(`/api/gogo/resolve-slug?title=${encodeURIComponent(title)}&ep=${currentEp}`), { cache: "no-store" })
           .then((r) => r.json())
-          .then((resolveData: { cdnUrl?: string; resolvedSlug?: string; pageTitle?: string | null; streamOk?: boolean }) => {
+          .then((resolveData: { cdnUrl?: string; hlsUrl?: string | null; resolvedSlug?: string; pageTitle?: string | null; streamOk?: boolean }) => {
             if (cancelled) return;
             if (resolveData.cdnUrl) {
               setCdnUrl(resolveData.cdnUrl);
+              setGogoHlsUrl(resolveData.hlsUrl ?? null);
               setCdnNotFound(false);
               if (resolveData.pageTitle) setSourcePageTitle(resolveData.pageTitle);
               if (resolveData.resolvedSlug) {
@@ -1773,16 +1776,22 @@ export default function WatchAniList() {
                   />
                 )}
 
-                {/* GOGO / CUSTOM: embed via iframe (KOTO never uses iframe — avoids cross-origin error pages) */}
-                {(server === "GOGO" || server === "CUSTOM") && (
+                {/* GOGO native HLS — use our own player when the server extracted a direct stream */}
+                {server === "GOGO" && gogoHlsUrl && !gogoStreamError && (
+                  <HlsPlayer
+                    key={`gogo-hls-${animeId}-${currentEp}-${gogoHlsUrl}`}
+                    hlsUrl={gogoHlsUrl}
+                    syncCommand={wtSyncCmd}
+                  />
+                )}
+
+                {/* GOGO iframe fallback (when no HLS URL) / CUSTOM: embed via iframe */}
+                {(server === "CUSTOM" || (server === "GOGO" && !gogoHlsUrl)) && (
                 <iframe
                   ref={iframeRef}
                   key={`${animeId}-${anime.idMal ?? "al"}-${currentEp}-${lang}-${server}-${server === "CUSTOM" ? customUrl : ""}-${server === "GOGO" ? (cdnLoading ? "loading" : (cdnUrl ?? "fallback")) : ""}`}
                   src={(() => {
                     if (server === "CUSTOM") return customUrl ? `/api/proxy?url=${encodeURIComponent(customUrl)}` : "about:blank";
-                    // GOGO — load streaming.php directly (no X-Frame-Options, no frame detection).
-                    // streaming.php wraps megaplay.buzz in its natural context, letting the
-                    // player's internal API calls work correctly.
                     if (!gogoSlug) return "about:blank";
                     if (cdnLoading) return "about:blank";
                     if (cdnUrl) return cdnUrl;
@@ -1895,8 +1904,8 @@ export default function WatchAniList() {
                   </div>
                 )}
 
-                {/* GoGo maybe-broken overlay — shown after 10s of no iframe interaction */}
-                {server === "GOGO" && gogoMaybeBroken && !gogoStreamError && (
+                {/* GoGo maybe-broken overlay — only relevant for iframe fallback, not native HLS */}
+                {server === "GOGO" && gogoMaybeBroken && !gogoStreamError && !gogoHlsUrl && (
                   <div className="absolute inset-0 z-20 flex flex-col items-center justify-center" style={{ background: "rgba(0,0,0,0.94)" }}>
                     {banner && <img src={banner} alt="" className="absolute inset-0 w-full h-full object-cover opacity-[0.06] scale-110 blur-xl" />}
                     <div className="relative z-10 flex flex-col items-center gap-5 px-6 text-center max-w-sm">
@@ -2002,8 +2011,8 @@ export default function WatchAniList() {
                   </button>
                 )}
 
-                {/* iframe-based loading overlay (GOGO / CUSTOM only) */}
-                {(server === "GOGO" || server === "CUSTOM") && !iframeLoaded && !gogoStreamError && (
+                {/* iframe-based loading overlay (GOGO fallback / CUSTOM only — not shown when GOGO has native HLS) */}
+                {(server === "CUSTOM" || (server === "GOGO" && !gogoHlsUrl)) && !iframeLoaded && !gogoStreamError && (
                   <div
                     className="absolute inset-0 z-10 flex flex-col items-center justify-center"
                     style={{ background: "rgba(0,0,0,0.92)" }}

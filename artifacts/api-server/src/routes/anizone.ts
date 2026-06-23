@@ -215,13 +215,24 @@ router.get("/anizone/hls", async (req, res) => {
     return res.status(400).send("invalid u param");
   }
 
+  // Optional ref param: base64url-encoded Referer override (used by GoGo streams)
+  let referer = "https://anizone.to/";
+  const refEncoded = (req.query.ref as string | undefined)?.trim();
+  if (refEncoded) {
+    try {
+      const decoded = Buffer.from(refEncoded, "base64url").toString("utf8");
+      new URL(decoded); // validate
+      referer = decoded;
+    } catch { /* ignore invalid ref, keep default */ }
+  }
+
   try {
     const upstream = await fetch(cdnUrl, {
       headers: {
         "User-Agent": BROWSER_HEADERS["User-Agent"],
         "Accept-Encoding": "identity",
-        Referer: "https://anizone.to/",
-        Origin: "https://anizone.to",
+        Referer: referer,
+        Origin: new URL(referer).origin,
       },
     });
 

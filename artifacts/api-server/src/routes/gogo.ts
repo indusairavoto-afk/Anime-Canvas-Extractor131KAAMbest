@@ -239,28 +239,35 @@ interface ProbedResult {
   slug: string;
   pageTitle: string | null;
   streamOk: boolean;
+  hlsUrl: string | null;
+}
+
+function encodeProxyUrl(url: string): string {
+  return Buffer.from(url).toString("base64url");
+}
+
+function proxyHlsUrl(hlsUrl: string, referer: string): string {
+  return `/api/anizone/hls?u=${encodeProxyUrl(hlsUrl)}&ref=${encodeProxyUrl(referer)}`;
 }
 
 /**
  * Fetch the megaplay.buzz player page, extract the JWPlayer/Playerjs HLS source
  * URL from the inline script, then HEAD-probe that URL.
  *
- * megaplay.buzz always returns HTTP 200 for the player page — even for DMCA'd
- * videos. The "We're Sorry / 410" error is rendered CLIENT-SIDE by JWPlayer after
- * it fetches the video source and gets a 4xx back. So we replicate that probe here:
- * extract the source URL from the JWPlayer setup script and check its status.
- *
- * Returns true  → stream is alive (200/206 on the source URL)
- * Returns false → stream is broken (4xx on the source URL)
- * Returns true  → on any parse/network failure (fail-safe: show the iframe anyway)
+ * Returns { ok, hlsUrl, playerUrl }:
+ *   ok      → stream is alive (200/206) or unknown (fail-safe true)
+ *   hlsUrl  → the raw HLS .m3u8 URL if successfully extracted and alive, else null
+ *   playerUrl → the player page URL (used as Referer when proxying)
  */
-async function probeStreamUrl(playerUrl: string): Promise<boolean> {
+async function probeStreamUrl(playerUrl: string): Promise<{ ok: boolean; hlsUrl: string | null }> {
+  const ERROR_MARKERS = ["We're Sorry", "we're sorry", "Error Code", "copyright violation",
+    "removed due to", "deleted by the owner", "file you are looking for"];
   try {
     const resp = await fetch(playerUrl, {
       headers: { ...BROWSER_HEADERS, Referer: "https://gogoanimes.cv/" },
       signal: AbortSignal.timeout(6000),
     });
-    if (!resp.ok) return false; // player page itself 404'd / 5xx
+    if (!resp.ok) return { ok: false, hlsUrl: null };
 
     const html = await resp.text();
 
@@ -272,21 +279,14 @@ async function probeStreamUrl(playerUrl: string): Promise<boolean> {
     const SOURCE_RE = /[,{(\s]file\s*:\s*["']([^"']{10,})["']/i;
     const match = html.match(SOURCE_RE);
     if (!match?.[1]) {
-      // Can't extract the source URL — fall back to scanning the player page HTML
-      // directly for known error markers before giving up with a fail-safe true.
-      const ERROR_MARKERS = ["We're Sorry", "we're sorry", "Error Code", "copyright violation",
-        "removed due to", "deleted by the owner", "file you are looking for"];
-      if (ERROR_MARKERS.some(m => html.includes(m))) return false;
-      return true; // no error markers — assume working
+      if (ERROR_MARKERS.some(m => html.includes(m))) return { ok: false, hlsUrl: null };
+      return { ok: true, hlsUrl: null };
     }
 
     const sourceUrl = match[1].trim();
     if (!sourceUrl.startsWith("http")) {
-      // Relative / malformed URL — still check for error markers before assuming OK
-      const ERROR_MARKERS = ["We're Sorry", "we're sorry", "Error Code", "copyright violation",
-        "removed due to", "deleted by the owner", "file you are looking for"];
-      if (ERROR_MARKERS.some(m => html.includes(m))) return false;
-      return true;
+      if (ERROR_MARKERS.some(m => html.includes(m))) return { ok: false, hlsUrl: null };
+      return { ok: true, hlsUrl: null };
     }
 
     const probe = await fetch(sourceUrl, {
@@ -295,10 +295,10 @@ async function probeStreamUrl(playerUrl: string): Promise<boolean> {
       signal: AbortSignal.timeout(5000),
     });
 
-    // 200, 206 (partial content for HLS), 302 redirects (follow automatically) → ok
-    return probe.ok || probe.status === 302;
+    const ok = probe.ok || probe.status === 302;
+    return { ok, hlsUrl: ok ? sourceUrl : null };
   } catch {
-    return true; // network timeout or any error → fail-safe
+    return { ok: true, hlsUrl: null }; // network timeout → fail-safe
   }
 }
 
@@ -324,9 +324,11 @@ async function probeCdnUrl(slug: string, ep: string): Promise<ProbedResult | nul
 
     // Probe the HLS source URL from the player page — detects DMCA'd/410 streams
     // before the frontend even loads the iframe, so users never see the error page.
-    const streamOk = await probeStreamUrl(cdnUrl);
+    // Also returns the raw HLS URL so the frontend can drive its own player.
+    const probeResult = await probeStreamUrl(cdnUrl);
+    const proxiedHlsUrl = probeResult.hlsUrl ? proxyHlsUrl(probeResult.hlsUrl, cdnUrl) : null;
 
-    return { cdnUrl, slug, pageTitle, streamOk };
+    return { cdnUrl, slug, pageTitle, streamOk: probeResult.ok, hlsUrl: proxiedHlsUrl };
   } catch {
     return null;
   }
@@ -392,6 +394,7 @@ router.get("/gogo/cdn-url", async (req, res) => {
     if (result) {
       return res.set(NO_CACHE).json({
         cdnUrl: result.cdnUrl,
+        hlsUrl: result.hlsUrl,
         resolvedSlug: result.slug,
         pageTitle: result.pageTitle,
         streamOk: result.streamOk,
@@ -423,6 +426,7 @@ router.get("/gogo/resolve-slug", async (req, res) => {
     if (result) {
       return res.set(NO_CACHE).json({
         cdnUrl: result.cdnUrl,
+        hlsUrl: result.hlsUrl,
         resolvedSlug: result.slug,
         pageTitle: result.pageTitle,
         streamOk: result.streamOk,
@@ -458,6 +462,7 @@ router.get("/gogo/resolve-slug", async (req, res) => {
       if (result) {
         return res.set(NO_CACHE).json({
           cdnUrl: result.cdnUrl,
+          hlsUrl: result.hlsUrl,
           resolvedSlug: result.slug,
           pageTitle: result.pageTitle,
           streamOk: result.streamOk,
