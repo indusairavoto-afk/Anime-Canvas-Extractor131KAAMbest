@@ -338,11 +338,27 @@ function HeroSlide({ anime }: { anime: AniMedia }) {
 }
 
 /* ── Mobile hero: split layout — cover art right, info left ── */
-function MobileHeroCard({ anime, direction, dots }: { anime: AniMedia; direction: number; dots: React.ReactNode }) {
+function MobileHeroCard({
+  anime,
+  direction,
+  dots,
+  onPrev,
+  onNext,
+  slideIndex,
+  slideTotal,
+}: {
+  anime: AniMedia;
+  direction: number;
+  dots: React.ReactNode;
+  onPrev: () => void;
+  onNext: () => void;
+  slideIndex: number;
+  slideTotal: number;
+}) {
   const title = anime.title.english || anime.title.romaji;
   const score = anime.averageScore ? (anime.averageScore / 10).toFixed(1) : null;
   const cover = anime.coverImage?.extraLarge || anime.coverImage?.large || "";
-  const banner = anime.bannerImage || cover;
+  const desc = anime.description ? stripHtml(anime.description).slice(0, 130).trimEnd() + "…" : null;
 
   let currentEp: number | null = null;
   let airingLabel: string | null = null;
@@ -362,93 +378,105 @@ function MobileHeroCard({ anime, direction, dots }: { anime: AniMedia; direction
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        transition={{ duration: 0.38 }}
+        transition={{ duration: 0.35 }}
         className="absolute inset-0 overflow-hidden bg-black"
       >
-        {/* Full-bleed banner — sharp, top-anchored */}
+        {/* ── Cover art as full background ── */}
         <img
-          src={banner}
-          alt=""
+          src={cover}
+          alt={title}
           className="absolute inset-0 w-full h-full object-cover object-top"
-          style={{ filter: "brightness(0.78) saturate(1.1)" }}
+          style={{ filter: "brightness(0.82) saturate(1.08)" }}
         />
 
-        {/* Strong gradient from transparent → black at bottom */}
+        {/* Gradient: subtle at top → heavy black at bottom */}
         <div
           className="absolute inset-0"
           style={{
             background:
-              "linear-gradient(to bottom, rgba(0,0,0,0.08) 0%, rgba(0,0,0,0.12) 35%, rgba(0,0,0,0.72) 62%, rgba(0,0,0,0.97) 80%, #000 100%)",
+              "linear-gradient(to bottom, rgba(0,0,0,0.28) 0%, rgba(0,0,0,0.10) 28%, rgba(0,0,0,0.55) 52%, rgba(0,0,0,0.92) 72%, #000 100%)",
           }}
         />
 
-        {/* Side vignettes so nothing bleeds to edges */}
-        <div className="absolute inset-0" style={{ background: "linear-gradient(to right, rgba(0,0,0,0.35) 0%, transparent 20%, transparent 80%, rgba(0,0,0,0.35) 100%)" }} />
+        {/* ── Top bar: counter + arrows ── */}
+        <div className="absolute top-0 left-0 right-0 flex items-center justify-between px-4 pt-16 pb-2">
+          <span className="text-[10px] font-mono text-white/40 tracking-widest">
+            {String(slideIndex + 1).padStart(2, "0")} / {String(slideTotal).padStart(2, "0")}
+          </span>
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={onPrev}
+              className="w-8 h-8 flex items-center justify-center rounded-full bg-black/40 border border-white/15 text-white/60 active:bg-white/15 transition-colors"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <button
+              onClick={onNext}
+              className="w-8 h-8 flex items-center justify-center rounded-full bg-black/40 border border-white/15 text-white/60 active:bg-white/15 transition-colors"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
 
-        {/* ── Bottom content panel ── */}
+        {/* ── Bottom content ── */}
         <div className="absolute bottom-0 left-0 right-0 px-4 pb-5">
 
-          {/* Trending pill */}
-          <div className="mb-2.5">
-            <span className="text-[9px] font-bold uppercase tracking-[0.2em] text-orange-400 bg-orange-500/15 border border-orange-500/30 px-2.5 py-1 rounded-full">
-              Trending
-            </span>
-          </div>
-
-          {/* Title */}
-          <h1 className="font-extrabold text-[26px] leading-[1.05] text-white mb-2.5 drop-shadow-lg" style={{ letterSpacing: "-0.3px" }}>
-            {title}
-          </h1>
-
-          {/* Meta row: score · format · year · airing */}
-          <div className="flex items-center gap-2.5 mb-3 flex-wrap">
+          {/* Tag row: score · format · year · airing */}
+          <div className="flex items-center gap-2 mb-3 flex-wrap">
             {score && (
-              <span className="flex items-center gap-1 text-[12px] font-bold text-yellow-400">
-                <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" /> {score}
+              <span className="flex items-center gap-1 text-[11px] font-bold text-yellow-400 bg-yellow-400/10 border border-yellow-400/20 px-2 py-0.5 rounded-md">
+                <Star className="w-2.5 h-2.5 fill-yellow-400" /> {score}
               </span>
             )}
             {anime.format && (
-              <span className="text-[10px] font-bold text-white/45 uppercase tracking-wider">
+              <span className="text-[10px] font-bold text-white/70 bg-white/10 border border-white/15 px-2 py-0.5 rounded-md uppercase tracking-wide">
                 {anime.format}
               </span>
             )}
             {anime.seasonYear && (
-              <span className="text-[10px] text-white/35">{anime.seasonYear}</span>
+              <span className="text-[10px] font-semibold text-white/55 bg-white/8 border border-white/12 px-2 py-0.5 rounded-md">
+                {anime.seasonYear}
+              </span>
             )}
             {airingLabel && (
-              <span className="flex items-center gap-1 text-[10px] text-white/45">
+              <span className="flex items-center gap-1 text-[10px] text-orange-300/80 bg-orange-500/10 border border-orange-500/20 px-2 py-0.5 rounded-md">
                 <Clock className="w-2.5 h-2.5" /> {airingLabel}
               </span>
             )}
           </div>
 
-          {/* Genre pills */}
-          {anime.genres.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mb-4">
-              {anime.genres.slice(0, 3).map((g) => (
-                <span key={g} className="text-[10px] text-white/55 px-2.5 py-0.5 rounded-full border border-white/14 bg-white/[0.06]">
-                  {g}
-                </span>
-              ))}
-            </div>
+          {/* Title */}
+          <h1
+            className="font-extrabold text-[26px] leading-[1.06] text-white mb-2 drop-shadow-lg"
+            style={{ letterSpacing: "-0.4px" }}
+          >
+            {title}
+          </h1>
+
+          {/* Description */}
+          {desc && (
+            <p className="text-[12px] text-white/55 leading-relaxed mb-3 line-clamp-2">
+              {desc}
+            </p>
           )}
 
-          {/* CTA row */}
-          <div className="flex gap-2.5 items-center">
+          {/* CTA buttons */}
+          <div className="flex gap-2.5 items-center mb-4">
             <Link href={`/watch/al/${anime.id}/${currentEp ?? 1}`} className="flex-1">
-              <button className="w-full flex items-center justify-center gap-2 bg-white text-black py-3 rounded-xl text-[13px] font-extrabold active:scale-95 transition-transform tracking-wide">
-                <Play className="w-4 h-4 fill-black" /> WATCH
+              <button className="w-full flex items-center justify-center gap-2 bg-white text-black py-[11px] rounded-xl text-[13px] font-extrabold active:scale-95 transition-transform tracking-wide shadow-lg">
+                <Play className="w-4 h-4 fill-black" /> WATCH NOW
               </button>
             </Link>
-            <Link href={`/anime/al/${anime.id}`}>
-              <button className="flex items-center justify-center w-12 h-12 rounded-xl bg-white/10 text-white border border-white/18 active:bg-white/20 transition-colors">
-                <Info className="w-5 h-5" />
+            <Link href={`/anime/al/${anime.id}`} className="flex-1">
+              <button className="w-full flex items-center justify-center gap-2 bg-white/[0.08] text-white py-[11px] rounded-xl text-[13px] font-bold border border-white/20 active:bg-white/20 transition-colors">
+                <Info className="w-4 h-4" /> DETAILS
               </button>
             </Link>
           </div>
 
           {/* Slide dots */}
-          <div className="flex items-center gap-1.5 mt-4">
+          <div className="flex items-center gap-1.5">
             {dots}
           </div>
         </div>
@@ -817,11 +845,15 @@ export default function Home() {
           onTouchEnd={handleTouchEnd}
         >
           {/* ── MOBILE hero ── */}
-          <div className="sm:hidden relative" style={{ height: 490 }}>
+          <div className="sm:hidden relative" style={{ height: 560 }}>
             {currentAnime && (
               <MobileHeroCard
                 anime={currentAnime}
                 direction={direction}
+                onPrev={prev}
+                onNext={next}
+                slideIndex={slide}
+                slideTotal={slides.length}
                 dots={slides.map((_, i) => (
                   <button
                     key={i}
