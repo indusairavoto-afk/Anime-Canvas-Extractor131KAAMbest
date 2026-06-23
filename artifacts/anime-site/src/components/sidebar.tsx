@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Home, Search, Calendar, Users, Bookmark, Trophy, ChevronRight, ChevronDown, BookOpen } from "lucide-react";
 import { useSidebar } from "@/contexts/sidebar-context";
 import { useWatchlist } from "@/hooks/useWatchlist";
+import { useState, useEffect } from "react";
 
 const NAV_ITEMS = [
   { icon: Home, label: "Home", href: "/" },
@@ -13,6 +14,153 @@ const NAV_ITEMS = [
   { icon: Users, label: "Community", href: "/community" },
   { icon: Bookmark, label: "My List", href: "/watchlist" },
 ];
+
+function useAiringCount() {
+  const [count, setCount] = useState<number | null>(null);
+  useEffect(() => {
+    const now = Math.floor(Date.now() / 1000);
+    const dayStart = now - (now % 86400);
+    const dayEnd = dayStart + 86400;
+    fetch("https://graphql.anilist.co", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        query: `{ Page(perPage: 50) { airingSchedules(airingAt_greater: ${dayStart}, airingAt_lesser: ${dayEnd}, notYetAired: false) { id } } }`,
+      }),
+    })
+      .then((r) => r.json())
+      .then((d) => {
+        const n = d?.data?.Page?.airingSchedules?.length ?? 0;
+        setCount(n > 0 ? n : null);
+      })
+      .catch(() => {});
+  }, []);
+  return count;
+}
+
+const SIDE_ITEMS = [
+  { icon: Home,     label: "Home",    href: "/" },
+  { icon: Search,   label: "Browse",  href: "/browse" },
+  { icon: BookOpen, label: "Manga",   href: "/manga" },
+  { icon: Bookmark, label: "My List", href: "/watchlist" },
+];
+
+function MobileBottomNav({
+  isActive,
+  watchlistCount,
+}: {
+  isActive: (href: string) => boolean;
+  watchlistCount: number;
+}) {
+  const airingCount = useAiringCount();
+  const calActive = isActive("/schedule");
+
+  return (
+    <nav
+      className="md:hidden fixed bottom-0 left-0 right-0 z-50 flex items-end"
+      style={{
+        background: "rgba(6,6,6,0.96)",
+        backdropFilter: "blur(24px)",
+        borderTop: "1px solid rgba(255,255,255,0.07)",
+        paddingBottom: "env(safe-area-inset-bottom, 0px)",
+      }}
+    >
+      {/* Left two tabs */}
+      {SIDE_ITEMS.slice(0, 2).map(({ icon: Icon, label, href }) => {
+        const active = isActive(href);
+        return (
+          <Link key={href} href={href} className="flex-1">
+            <div className="relative flex flex-col items-center justify-center pt-2 pb-3 gap-1">
+              {active && (
+                <motion.div
+                  layoutId="mobile-active-bg"
+                  className="absolute inset-x-3 inset-y-0.5 rounded-xl bg-white/[0.07]"
+                  transition={{ type: "spring", stiffness: 420, damping: 36 }}
+                />
+              )}
+              <Icon
+                className={`w-[22px] h-[22px] z-10 transition-colors ${active ? "text-white" : "text-white/28"}`}
+                strokeWidth={active ? 2.1 : 1.5}
+              />
+              <span className={`text-[9px] font-semibold uppercase tracking-widest z-10 transition-colors leading-none ${active ? "text-white" : "text-white/28"}`}>
+                {label}
+              </span>
+            </div>
+          </Link>
+        );
+      })}
+
+      {/* ── Centre Calendar FAB ── */}
+      <div className="flex-1 flex justify-center" style={{ marginBottom: 6 }}>
+        <Link href="/schedule">
+          <div className="relative flex flex-col items-center" style={{ marginTop: -18 }}>
+            <motion.div
+              whileTap={{ scale: 0.88 }}
+              transition={{ type: "spring", stiffness: 500, damping: 28 }}
+              className={`relative w-14 h-14 rounded-full flex items-center justify-center shadow-xl border ${
+                calActive
+                  ? "bg-white border-white/30"
+                  : "bg-zinc-800 border-white/12"
+              }`}
+              style={calActive ? {} : { boxShadow: "0 4px 20px rgba(0,0,0,0.6)" }}
+            >
+              <Calendar
+                className={`w-6 h-6 ${calActive ? "text-black" : "text-white/80"}`}
+                strokeWidth={calActive ? 2.2 : 1.7}
+              />
+              {/* Airing today badge */}
+              {airingCount !== null && (
+                <motion.span
+                  initial={{ scale: 0, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 bg-orange-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center leading-none border border-black/40"
+                >
+                  {airingCount > 99 ? "99+" : airingCount}
+                </motion.span>
+              )}
+            </motion.div>
+            <span className={`text-[9px] font-semibold uppercase tracking-widest mt-1.5 leading-none ${calActive ? "text-white" : "text-white/35"}`}>
+              Calendar
+            </span>
+          </div>
+        </Link>
+      </div>
+
+      {/* Right two tabs */}
+      {SIDE_ITEMS.slice(2).map(({ icon: Icon, label, href }) => {
+        const active = isActive(href);
+        const showBadge = href === "/watchlist" && watchlistCount > 0;
+        return (
+          <Link key={href} href={href} className="flex-1">
+            <div className="relative flex flex-col items-center justify-center pt-2 pb-3 gap-1">
+              {active && (
+                <motion.div
+                  layoutId="mobile-active-bg"
+                  className="absolute inset-x-3 inset-y-0.5 rounded-xl bg-white/[0.07]"
+                  transition={{ type: "spring", stiffness: 420, damping: 36 }}
+                />
+              )}
+              <div className="relative z-10">
+                <Icon
+                  className={`w-[22px] h-[22px] transition-colors ${active ? "text-white" : "text-white/28"}`}
+                  strokeWidth={active ? 2.1 : 1.5}
+                />
+                {showBadge && (
+                  <span className="absolute -top-1.5 -right-1.5 min-w-[14px] h-[14px] px-0.5 bg-white text-black text-[7px] font-bold rounded-full flex items-center justify-center leading-none">
+                    {watchlistCount > 9 ? "9+" : watchlistCount}
+                  </span>
+                )}
+              </div>
+              <span className={`text-[9px] font-semibold uppercase tracking-widest z-10 transition-colors leading-none ${active ? "text-white" : "text-white/28"}`}>
+                {label}
+              </span>
+            </div>
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
 
 export function Sidebar() {
   const [location] = useLocation();
@@ -123,52 +271,8 @@ export function Sidebar() {
         </AnimatePresence>
       </div>
 
-      {/* ── MOBILE: bottom tab bar — 5 primary items ── */}
-      {(() => {
-        const MOBILE_NAV = [
-          { icon: Home, label: "Home", href: "/" },
-          { icon: Search, label: "Browse", href: "/browse" },
-          { icon: Trophy, label: "Rankings", href: "/ranking" },
-          { icon: BookOpen, label: "Manga", href: "/manga" },
-          { icon: Bookmark, label: "My List", href: "/watchlist" },
-        ];
-        return (
-          <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 flex items-stretch" style={{ background: "rgba(8,8,8,0.92)", backdropFilter: "blur(20px)", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-            {MOBILE_NAV.map(({ icon: Icon, label, href }) => {
-              const active = isActive(href);
-              const showBadge = href === "/watchlist" && ids.length > 0;
-              return (
-                <Link key={href} href={href} className="flex-1">
-                  <div className="relative flex flex-col items-center justify-center pt-2.5 pb-3 gap-1.5">
-                    {/* Active pill background */}
-                    {active && (
-                      <motion.div
-                        layoutId="mobile-nav-active"
-                        className="absolute inset-x-2 inset-y-1 rounded-xl bg-white/[0.08]"
-                        transition={{ type: "spring", stiffness: 380, damping: 34 }}
-                      />
-                    )}
-                    <div className="relative z-10">
-                      <Icon
-                        className={`w-5 h-5 transition-colors ${active ? "text-white" : "text-white/30"}`}
-                        strokeWidth={active ? 2 : 1.5}
-                      />
-                      {showBadge && (
-                        <span className="absolute -top-1.5 -right-1.5 bg-white text-black text-[7px] font-bold w-3.5 h-3.5 rounded-full flex items-center justify-center leading-none">
-                          {ids.length > 9 ? "9+" : ids.length}
-                        </span>
-                      )}
-                    </div>
-                    <span className={`text-[9px] font-medium uppercase tracking-widest leading-none z-10 transition-colors ${active ? "text-white" : "text-white/28"}`}>
-                      {label}
-                    </span>
-                  </div>
-                </Link>
-              );
-            })}
-          </nav>
-        );
-      })()}
+      {/* ── MOBILE: smart bottom tab bar ── */}
+      <MobileBottomNav isActive={isActive} watchlistCount={ids.length} />
     </>
   );
 }
