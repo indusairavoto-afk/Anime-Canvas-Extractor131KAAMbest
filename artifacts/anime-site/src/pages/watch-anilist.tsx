@@ -150,7 +150,7 @@ export default function WatchAniList() {
   const [jikanLoading, setJikanLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [lang, setLang] = useState<"SUB" | "DUB">("SUB");
-  const [server, setServer] = useState<"GOGO" | "KOTO" | "ANIZONE" | "MIRURO" | "NEXUS" | "CUSTOM">("GOGO");
+  const [server, setServer] = useState<"GOGO" | "KOTO" | "ANIZONE" | "MIRURO" | "NEXUS" | "ANIMEONSEN" | "CUSTOM">("GOGO");
   const [anizoneSlug, setAnizoneSlug] = useState("");
   const [anizoneSlugInput, setAnizoneSlugInput] = useState("");
   const [anizoneSearching, setAnizoneSearching] = useState(false);
@@ -187,6 +187,10 @@ export default function WatchAniList() {
   const [nexusIframeUrl, setNexusIframeUrl] = useState<string | null>(null);
   const [nexusLoading, setNexusLoading] = useState(false);
   const [nexusError, setNexusError] = useState<string | null>(null);
+  const [animeonsenIframeUrl, setAnimeonsenIframeUrl] = useState<string | null>(null);
+  const [animeonsenLoading, setAnimeonsenLoading] = useState(false);
+  const [animeonsenError, setAnimeonsenError] = useState<string | null>(null);
+  const [animeonsenContentId, setAnimeonsenContentId] = useState<string>("");
   const [anizoneHlsUrl, setAnizoneHlsUrl] = useState<string | null>(null);
   const [anizoneSubtitles, setAnizoneSubtitles] = useState<{ src: string; label: string; srclang: string; isDefault: boolean }[]>([]);
   const [anizoneStreamLoading, setAnizoneStreamLoading] = useState(false);
@@ -209,12 +213,13 @@ export default function WatchAniList() {
     anizone?: { hlsUrl?: string; subtitles?: { src: string; label: string; srclang: string; isDefault: boolean }[] } | null;
     miruro?: { iframeUrl?: string } | null;
     nexus?: { iframeUrl?: string } | null;
+    animeonsen?: { iframeUrl?: string; contentId?: string } | null;
   }>({});
   const [autoDetecting, setAutoDetecting] = useState(false);
   const [autoSwitchMsg, setAutoSwitchMsg] = useState<string | null>(null);
   const [gogoMaybeBroken, setGogoMaybeBroken] = useState(false);
   const [gogoMaybeCountdown, setGogoMaybeCountdown] = useState<number | null>(null);
-  const [serverHealth, setServerHealth] = useState<{ GOGO: "unknown" | "checking" | "ok" | "fail"; KOTO: "unknown" | "checking" | "ok" | "fail"; ANIZONE: "unknown" | "checking" | "ok" | "fail"; MIRURO: "unknown" | "checking" | "ok" | "fail"; NEXUS: "unknown" | "checking" | "ok" | "fail" }>({ GOGO: "unknown", KOTO: "unknown", ANIZONE: "unknown", MIRURO: "unknown", NEXUS: "unknown" });
+  const [serverHealth, setServerHealth] = useState<{ GOGO: "unknown" | "checking" | "ok" | "fail"; KOTO: "unknown" | "checking" | "ok" | "fail"; ANIZONE: "unknown" | "checking" | "ok" | "fail"; MIRURO: "unknown" | "checking" | "ok" | "fail"; NEXUS: "unknown" | "checking" | "ok" | "fail"; ANIMEONSEN: "unknown" | "checking" | "ok" | "fail" }>({ GOGO: "unknown", KOTO: "unknown", ANIZONE: "unknown", MIRURO: "unknown", NEXUS: "unknown", ANIMEONSEN: "unknown" });
   const [sourcePageTitle, setSourcePageTitle] = useState<string | null>(null);
   const [verifyResult, setVerifyResult] = useState<{ correct: boolean; confidence: "high" | "medium" | "low"; reason: string; extractedEpisode: number | null } | null>(null);
   const [newEpNotice, setNewEpNotice] = useState<number | null>(null);
@@ -379,6 +384,10 @@ export default function WatchAniList() {
     setAnizoneSubtitles([]);
     setAnizoneStreamLoading(false);
     setAnizoneStreamError(null);
+    // Reset AnimeonSen state
+    setAnimeonsenIframeUrl(null);
+    setAnimeonsenLoading(false);
+    setAnimeonsenError(null);
   }, [animeId, currentEp, lang, server]);
 
   // Reset auto-detect state whenever the episode or anime changes
@@ -386,7 +395,7 @@ export default function WatchAniList() {
     userPickedRef.current = false;
     raceCache.current = {};
     setAutoDetecting(false);
-    setServerHealth({ GOGO: "unknown", KOTO: "unknown", ANIZONE: "unknown", MIRURO: "unknown", NEXUS: "unknown" });
+    setServerHealth({ GOGO: "unknown", KOTO: "unknown", ANIZONE: "unknown", MIRURO: "unknown", NEXUS: "unknown", ANIMEONSEN: "unknown" });
     setSourcePageTitle(null);
     setVerifyResult(null);
   }, [animeId, currentEp]);
@@ -524,11 +533,11 @@ export default function WatchAniList() {
     let won = false;
     setAutoDetecting(true);
 
-    const preferred = localStorage.getItem(`na_preferred_${animeId}`) as "GOGO" | "KOTO" | "ANIZONE" | "MIRURO" | "NEXUS" | null;
+    const preferred = localStorage.getItem(`na_preferred_${animeId}`) as "GOGO" | "KOTO" | "ANIZONE" | "MIRURO" | "NEXUS" | "ANIMEONSEN" | null;
     // Non-preferred servers wait this long before their fetch fires, giving preferred a head start
     const HEAD_START = preferred ? 800 : 0;
 
-    const tryWin = (srv: "GOGO" | "KOTO" | "ANIZONE" | "MIRURO" | "NEXUS") => {
+    const tryWin = (srv: "GOGO" | "KOTO" | "ANIZONE" | "MIRURO" | "NEXUS" | "ANIMEONSEN") => {
       if (cancelled || won || userPickedRef.current) return;
       won = true;
       localStorage.setItem(`na_preferred_${animeId}`, srv);
@@ -661,6 +670,30 @@ export default function WatchAniList() {
           }
         })
         .catch(() => { if (!cancelled) { raceCache.current.miruro = null; setServerHealth(h => ({ ...h, MIRURO: "fail" })); } });
+    });
+
+    // ANIMEONSEN — search by title, return direct iframe URL (no X-Frame-Options)
+    setServerHealth(h => ({ ...h, ANIMEONSEN: "checking" }));
+    schedule(preferred === "ANIMEONSEN" ? 0 : HEAD_START, () => {
+      const cachedContentId = localStorage.getItem(`na_animeonsen_${animeId}`) ?? "";
+      const params = new URLSearchParams({ ep: String(currentEp), title });
+      if (romajiTitle) params.set("romajiTitle", romajiTitle);
+      if (cachedContentId) params.set("contentId", cachedContentId);
+      fetch(apiUrl(`/api/animeonsen/stream?${params}`))
+        .then(r => r.json())
+        .then((data: { iframeUrl?: string; contentId?: string; error?: string }) => {
+          if (cancelled) return;
+          if (data.iframeUrl) {
+            if (data.contentId) localStorage.setItem(`na_animeonsen_${animeId}`, data.contentId);
+            raceCache.current.animeonsen = { iframeUrl: data.iframeUrl, contentId: data.contentId };
+            setServerHealth(h => ({ ...h, ANIMEONSEN: "ok" }));
+            tryWin("ANIMEONSEN");
+          } else {
+            raceCache.current.animeonsen = null;
+            setServerHealth(h => ({ ...h, ANIMEONSEN: "fail" }));
+          }
+        })
+        .catch(() => { if (!cancelled) { raceCache.current.animeonsen = null; setServerHealth(h => ({ ...h, ANIMEONSEN: "fail" })); } });
     });
 
     // If nothing wins after 15s, stop the spinner and stay on current server
@@ -1178,6 +1211,52 @@ export default function WatchAniList() {
       })
       .catch((e: Error) => { if (!cancelled) setMiruroError(e.message); })
       .finally(() => { if (!cancelled) setMiruroLoading(false); });
+    return () => { cancelled = true; };
+  }, [server, animeId, currentEp]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fetch AnimeonSen iframe URL when server is ANIMEONSEN
+  useEffect(() => {
+    if (server !== "ANIMEONSEN") {
+      setAnimeonsenIframeUrl(null);
+      setAnimeonsenError(null);
+      return;
+    }
+    const cached = raceCache.current.animeonsen;
+    if (cached !== undefined) {
+      if (cached?.iframeUrl) {
+        setAnimeonsenIframeUrl(cached.iframeUrl);
+        if (cached.contentId) setAnimeonsenContentId(cached.contentId);
+        setAnimeonsenLoading(false);
+        setAnimeonsenError(null);
+        raceCache.current.animeonsen = undefined;
+        return;
+      }
+      raceCache.current.animeonsen = undefined;
+    }
+    let cancelled = false;
+    setAnimeonsenIframeUrl(null);
+    setAnimeonsenLoading(true);
+    setAnimeonsenError(null);
+    const cachedContentId = animeonsenContentId || (localStorage.getItem(`na_animeonsen_${animeId}`) ?? "");
+    const params = new URLSearchParams({ ep: String(currentEp), title });
+    if (romajiTitle) params.set("romajiTitle", romajiTitle);
+    if (cachedContentId) params.set("contentId", cachedContentId);
+    fetch(apiUrl(`/api/animeonsen/stream?${params}`))
+      .then((r) => r.json())
+      .then((data: { iframeUrl?: string; contentId?: string; error?: string }) => {
+        if (cancelled) return;
+        if (data.iframeUrl) {
+          if (data.contentId) {
+            setAnimeonsenContentId(data.contentId);
+            localStorage.setItem(`na_animeonsen_${animeId}`, data.contentId);
+          }
+          setAnimeonsenIframeUrl(data.iframeUrl);
+        } else {
+          setAnimeonsenError(data.error ?? "Anime not found on AnimeonSen");
+        }
+      })
+      .catch((e: Error) => { if (!cancelled) setAnimeonsenError(e.message); })
+      .finally(() => { if (!cancelled) setAnimeonsenLoading(false); });
     return () => { cancelled = true; };
   }, [server, animeId, currentEp]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1744,6 +1823,19 @@ export default function WatchAniList() {
                   />
                 )}
 
+                {/* ANIMEONSEN iframe embed — loads animeonsen.xyz watch page directly (no X-Frame-Options) */}
+                {server === "ANIMEONSEN" && animeonsenIframeUrl && (
+                  <iframe
+                    key={`animeonsen-${animeId}-${currentEp}`}
+                    src={animeonsenIframeUrl}
+                    className="w-full h-full"
+                    allowFullScreen
+                    allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
+                    title={`${title} Episode ${currentEp}`}
+                    onLoad={() => setTimeout(() => setIframeLoaded(true), 200)}
+                  />
+                )}
+
                 {/* KOTO native HLS player (bypasses mewcdn cross-origin player) */}
                 {server === "KOTO" && kotoHlsUrl && (
                   <HlsPlayer
@@ -1840,6 +1932,42 @@ export default function WatchAniList() {
                           </p>
                         </>
                       )}
+                    </div>
+                  </div>
+                )}
+
+                {/* ANIMEONSEN loading / error overlay */}
+                {server === "ANIMEONSEN" && !animeonsenIframeUrl && (
+                  <div className="absolute inset-0 z-10 flex flex-col items-center justify-center" style={{ background: "rgba(0,0,0,0.92)" }}>
+                    {banner && <img src={banner} alt="" className="absolute inset-0 w-full h-full object-cover opacity-10 scale-110 blur-sm" />}
+                    <div className="relative z-10 flex flex-col items-center gap-4">
+                      {animeonsenError ? (
+                        <div className="text-center space-y-3">
+                          <p className="text-white/70 text-sm font-semibold tracking-wide">AnimeonSen unavailable</p>
+                          <p className="text-white/30 text-[10px] font-mono max-w-[240px] text-center">{animeonsenError}</p>
+                          <a
+                            href={`https://www.animeonsen.xyz`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-2 text-[11px] font-mono font-bold px-5 py-2.5 border border-green-400 text-green-300 hover:bg-green-400 hover:text-black transition-all uppercase tracking-widest mt-1"
+                          >
+                            Open AnimeonSen →
+                          </a>
+                          <p className="text-white/20 text-[10px] font-mono max-w-[240px] text-center">Or switch to another server below.</p>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="relative w-14 h-14">
+                            <div className="absolute inset-0 rounded-full border-2 border-white/10" />
+                            <div className="absolute inset-0 rounded-full border-2 border-t-green-400 border-r-transparent border-b-transparent border-l-transparent animate-spin" />
+                            <div className="absolute inset-2 rounded-full border border-white/20 border-t-green-400/60 animate-spin" style={{ animationDuration: "0.6s", animationDirection: "reverse" }} />
+                          </div>
+                          <p className="text-white/70 text-sm font-semibold tracking-wide">Searching AnimeonSen…</p>
+                        </>
+                      )}
+                      <p className="text-white/20 text-[11px] font-mono uppercase tracking-widest">
+                        Episode {currentEp} · {lang}
+                      </p>
                     </div>
                   </div>
                 )}
@@ -2141,10 +2269,11 @@ export default function WatchAniList() {
             <div className="flex items-center gap-2 px-4 py-2.5 border-b border-white/[0.06] overflow-x-auto no-scrollbar">
               <span className="text-[9px] font-mono text-white/25 uppercase tracking-widest shrink-0">Server</span>
               {([
-                { key: "GOGO",   label: "GogoAnime", color: "orange" },
-                { key: "KOTO",   label: "AniKoto",   color: "teal"   },
-                { key: "ANIZONE",label: "AniZone",   color: "blue"   },
-                { key: "MIRURO", label: "Miruro",    color: "purple" },
+                { key: "GOGO",        label: "GogoAnime",  color: "orange" },
+                { key: "KOTO",        label: "AniKoto",    color: "teal"   },
+                { key: "ANIZONE",     label: "AniZone",    color: "blue"   },
+                { key: "MIRURO",      label: "Miruro",     color: "purple" },
+                { key: "ANIMEONSEN",  label: "AnimeonSen", color: "green"  },
               ] as const).map(({ key, label, color }) => {
                 const active = server === key;
                 const health = serverHealth[key];
@@ -2154,6 +2283,7 @@ export default function WatchAniList() {
                   teal:   { active: "bg-teal-500/90 text-white",   idle: "bg-white/6 text-white/50" },
                   blue:   { active: "bg-blue-500/90 text-white",   idle: "bg-white/6 text-white/50" },
                   purple: { active: "bg-purple-500/90 text-white", idle: "bg-white/6 text-white/50" },
+                  green:  { active: "bg-green-500/90 text-white",  idle: "bg-white/6 text-white/50" },
                 };
                 const dotClass =
                   health === "ok"       ? "bg-green-400" :
@@ -2339,10 +2469,11 @@ export default function WatchAniList() {
                 ))}
               </div>
               {([
-                { key: "GOGO",    label: "GOGO",    color: "orange", onClick: () => { userPickedRef.current = true; setServer("GOGO"); setCdnNotFound(false); setIframeLoaded(false); setGogoStreamError(false); bridgeLiveRef.current = false; setBridgeLive(false); } },
-                { key: "KOTO",    label: "KOTO",    color: "teal",   onClick: () => { userPickedRef.current = true; setServer("KOTO"); setIframeLoaded(false); } },
-                { key: "ANIZONE", label: "ANIZONE", color: "blue",   onClick: () => { userPickedRef.current = true; setServer("ANIZONE"); setIframeLoaded(false); } },
-                { key: "MIRURO",  label: "MIRURO",  color: "purple", onClick: () => { userPickedRef.current = true; setServer("MIRURO"); setIframeLoaded(false); } },
+                { key: "GOGO",       label: "GOGO",       color: "orange", onClick: () => { userPickedRef.current = true; setServer("GOGO"); setCdnNotFound(false); setIframeLoaded(false); setGogoStreamError(false); bridgeLiveRef.current = false; setBridgeLive(false); } },
+                { key: "KOTO",       label: "KOTO",       color: "teal",   onClick: () => { userPickedRef.current = true; setServer("KOTO"); setIframeLoaded(false); } },
+                { key: "ANIZONE",    label: "ANIZONE",    color: "blue",   onClick: () => { userPickedRef.current = true; setServer("ANIZONE"); setIframeLoaded(false); } },
+                { key: "MIRURO",     label: "MIRURO",     color: "purple", onClick: () => { userPickedRef.current = true; setServer("MIRURO"); setIframeLoaded(false); } },
+                { key: "ANIMEONSEN", label: "ANIMEONSEN", color: "green",  onClick: () => { userPickedRef.current = true; setServer("ANIMEONSEN"); setIframeLoaded(false); } },
               ] as const).map(({ key, label, color, onClick }) => {
                 const active = server === key;
                 const health = serverHealth[key];
@@ -2352,6 +2483,7 @@ export default function WatchAniList() {
                   teal:   { active: "border-teal-400 bg-teal-400 text-black",     idle: "border-teal-400/30 text-teal-400/60 hover:border-teal-400/70 hover:text-teal-400" },
                   blue:   { active: "border-blue-400 bg-blue-400 text-black",     idle: "border-blue-400/30 text-blue-400/60 hover:border-blue-400/70 hover:text-blue-400" },
                   purple: { active: "border-purple-400 bg-purple-400 text-black", idle: "border-purple-400/30 text-purple-400/60 hover:border-purple-400/70 hover:text-purple-400" },
+                  green:  { active: "border-green-400 bg-green-400 text-black",   idle: "border-green-400/30 text-green-400/60 hover:border-green-400/70 hover:text-green-400" },
                 };
                 const dotClass =
                   health === "ok"       ? "bg-green-400" :
@@ -2389,11 +2521,12 @@ export default function WatchAniList() {
                 <div className="w-1.5 h-1.5 rounded-full bg-teal-400/70 animate-bounce [animation-delay:150ms]" />
                 <div className="w-1.5 h-1.5 rounded-full bg-blue-400/70 animate-bounce [animation-delay:300ms]" />
                 <div className="w-1.5 h-1.5 rounded-full bg-purple-400/70 animate-bounce [animation-delay:450ms]" />
+                <div className="w-1.5 h-1.5 rounded-full bg-green-400/70 animate-bounce [animation-delay:600ms]" />
               </div>
               <span className="text-[10px] font-mono text-white/40 uppercase tracking-widest">Auto-detecting best server…</span>
               {(() => {
-                const pref = localStorage.getItem(`na_preferred_${animeId}`) as "GOGO" | "KOTO" | "ANIZONE" | "MIRURO" | null;
-                const color = pref === "GOGO" ? "text-orange-400/50" : pref === "KOTO" ? "text-teal-400/50" : pref === "ANIZONE" ? "text-blue-400/50" : pref === "MIRURO" ? "text-purple-400/50" : null;
+                const pref = localStorage.getItem(`na_preferred_${animeId}`) as "GOGO" | "KOTO" | "ANIZONE" | "MIRURO" | "ANIMEONSEN" | null;
+                const color = pref === "GOGO" ? "text-orange-400/50" : pref === "KOTO" ? "text-teal-400/50" : pref === "ANIZONE" ? "text-blue-400/50" : pref === "MIRURO" ? "text-purple-400/50" : pref === "ANIMEONSEN" ? "text-green-400/50" : null;
                 return pref && color ? (
                   <span className={`text-[9px] font-mono uppercase tracking-widest ml-auto ${color}`}>
                     trying {pref} first
@@ -2481,6 +2614,28 @@ export default function WatchAniList() {
                 <>
                   <div className="w-2 h-2 rounded-full bg-purple-400 shrink-0" />
                   <span className="text-[10px] font-mono text-purple-400/70 uppercase tracking-widest">miruro.bz</span>
+                </>
+              ) : (
+                <>
+                  <div className="w-2 h-2 rounded-full bg-white/20 shrink-0" />
+                  <span className="text-[10px] font-mono text-white/30 uppercase tracking-widest">Not Connected</span>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* ANIMEONSEN status panel */}
+          {!autoDetecting && server === "ANIMEONSEN" && (
+            <div className="border-b border-white/5 px-4 py-2.5 flex items-center gap-2.5">
+              {animeonsenLoading ? (
+                <>
+                  <div className="w-2 h-2 rounded-full bg-green-400/40 animate-pulse shrink-0" />
+                  <span className="text-[10px] font-mono text-white/30 uppercase tracking-widest">Searching…</span>
+                </>
+              ) : animeonsenIframeUrl ? (
+                <>
+                  <div className="w-2 h-2 rounded-full bg-green-400 shrink-0" />
+                  <span className="text-[10px] font-mono text-green-400/70 uppercase tracking-widest">animeonsen.xyz</span>
                 </>
               ) : (
                 <>

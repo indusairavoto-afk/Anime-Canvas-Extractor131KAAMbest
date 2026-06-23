@@ -26,6 +26,7 @@ import atsuRouter from "./atsu";
 import watchlistRouter from "./watchlist";
 import streamReportsRouter from "./stream-reports";
 import watchTogetherRouter from "./watch-together";
+import animeonsenRouter from "./animeonsen";
 
 const router: IRouter = Router();
 
@@ -56,5 +57,6 @@ router.use(atsuRouter);
 router.use(watchlistRouter);
 router.use(streamReportsRouter);
 router.use(watchTogetherRouter);
+router.use(animeonsenRouter);
 
 export default router;
