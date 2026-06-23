@@ -46,7 +46,7 @@ function extractAllCdnUrls(html: string): string[] {
   if (fm2?.[1]) add(fm2[1]);
   const fm3 = html.match(/<iframe[^>]+src=["']([^"']*(?:streaming|embed|gogoplay|embtaku|vidstreaming|gogo-stream)[^"']*)["'][^>]*>/i);
   if (fm3?.[1]) add(fm3[1]);
-  const fm4 = html.match(/<iframe[^>]+src=["']((?:https?:)?\/\/(?!(?:www\.)?gogoanimes)[^"']+)["'][^>]*>/i);
+  const fm4 = html.match(/<iframe[^>]+src=["']((?:https?:)?\/\/(?!(?:www\.)?gogoanime)[^"']+)["'][^>]*>/i);
   if (fm4?.[1]) add(fm4[1]);
 
   return urls;
@@ -57,7 +57,7 @@ async function isCdnWorking(url: string): Promise<boolean> {
   const ERROR_MARKERS = ["We're Sorry", "we're sorry", "Error Code", "copyright violation", "removed due to", "deleted by the owner", "file you are looking for"];
   try {
     const resp = await fetch(url, {
-      headers: { ...BROWSER_HEADERS, Referer: "https://gogoanimes.cv/" },
+      headers: { ...BROWSER_HEADERS, Referer: "https://gogoanime.by/" },
       signal: AbortSignal.timeout(6000),
     });
     if (!resp.ok) return false;
@@ -84,7 +84,7 @@ async function extractInnerPlayerUrl(streamingUrl: string): Promise<string | nul
     const resp = await fetch(cleanUrl, {
       headers: {
         ...BROWSER_HEADERS,
-        Referer: "https://gogoanimes.cv/",
+        Referer: "https://gogoanime.by/",
       },
     });
     if (!resp.ok) return null;
@@ -264,7 +264,7 @@ async function probeStreamUrl(playerUrl: string): Promise<{ ok: boolean; hlsUrl:
     "removed due to", "deleted by the owner", "file you are looking for"];
   try {
     const resp = await fetch(playerUrl, {
-      headers: { ...BROWSER_HEADERS, Referer: "https://gogoanimes.cv/" },
+      headers: { ...BROWSER_HEADERS, Referer: "https://gogoanime.by/" },
       signal: AbortSignal.timeout(6000),
     });
     if (!resp.ok) return { ok: false, hlsUrl: null };
@@ -303,10 +303,10 @@ async function probeStreamUrl(playerUrl: string): Promise<{ ok: boolean; hlsUrl:
 }
 
 async function probeCdnUrl(slug: string, ep: string): Promise<ProbedResult | null> {
-  const pageUrl = `https://gogoanimes.cv/${slug}-episode-${ep}/`;
+  const pageUrl = `https://gogoanime.by/${slug}-episode-${ep}/`;
   try {
     const upstream = await fetch(pageUrl, {
-      headers: { ...BROWSER_HEADERS, Referer: "https://gogoanimes.cv/", Host: "gogoanimes.cv" },
+      headers: { ...BROWSER_HEADERS, Referer: "https://gogoanime.by/", Host: "gogoanime.by" },
     });
     if (!upstream.ok) return null;
     const html = await upstream.text();
@@ -334,12 +334,12 @@ async function probeCdnUrl(slug: string, ep: string): Promise<ProbedResult | nul
   }
 }
 
-/** Search gogoanimes.cv and return scored results. */
+/** Search gogoanime.by and return scored results. */
 async function searchGogo(q: string, limit = 10): Promise<{ slug: string; title: string; thumbnail: string }[]> {
-  const searchUrl = `https://gogoanimes.cv/?s=${encodeURIComponent(q)}`;
+  const searchUrl = `https://gogoanime.by/?s=${encodeURIComponent(q)}`;
   try {
     const upstream = await fetch(searchUrl, {
-      headers: { ...BROWSER_HEADERS, Referer: "https://gogoanimes.cv/", Host: "gogoanimes.cv" },
+      headers: { ...BROWSER_HEADERS, Referer: "https://gogoanime.by/", Host: "gogoanime.by" },
     });
     if (!upstream.ok) return [];
     const html = await upstream.text();
@@ -348,7 +348,7 @@ async function searchGogo(q: string, limit = 10): Promise<{ slug: string; title:
     const seen = new Set<string>();
 
     const blockRe =
-      /<a\s+href="https?:\/\/gogoanimes\.cv\/anime\/([^/"]+)\/"\s+title="([^"]+)"[^>]*>[\s\S]*?<img[^>]+src="([^"]+)"[^>]*>/gi;
+      /<a\s+href="https?:\/\/gogoanime\.by\/anime\/([^/"]+)\/"\s+title="([^"]+)"[^>]*>[\s\S]*?<img[^>]+src="([^"]+)"[^>]*>/gi;
     let m: RegExpExecArray | null;
     while ((m = blockRe.exec(html)) !== null && results.length < limit) {
       const slug = m[1].trim();
@@ -360,7 +360,7 @@ async function searchGogo(q: string, limit = 10): Promise<{ slug: string; title:
     }
 
     if (results.length === 0) {
-      const hrefRe = /href="https?:\/\/gogoanimes\.cv\/anime\/([^/"]+)\/"\s+title="([^"]+)"/gi;
+      const hrefRe = /href="https?:\/\/gogoanime\.by\/anime\/([^/"]+)\/"\s+title="([^"]+)"/gi;
       while ((m = hrefRe.exec(html)) !== null && results.length < limit) {
         const slug = m[1].trim();
         const title = m[2].trim().replace(/\s*\(\d{4}\)\s*$/, "");
@@ -506,9 +506,9 @@ router.get("/gogo/check-slug", async (req, res) => {
   const slug = req.query.slug as string | undefined;
   if (!slug) return res.status(400).json({ error: "slug param required" });
   try {
-    const r = await fetch(`https://gogoanimes.cv/${slug}/`, {
+    const r = await fetch(`https://gogoanime.by/${slug}/`, {
       method: "HEAD",
-      headers: { ...BROWSER_HEADERS, Referer: "https://gogoanimes.cv/", Host: "gogoanimes.cv" },
+      headers: { ...BROWSER_HEADERS, Referer: "https://gogoanime.by/", Host: "gogoanime.by" },
     });
     return res.json({ exists: r.ok, status: r.status });
   } catch (err: unknown) {
