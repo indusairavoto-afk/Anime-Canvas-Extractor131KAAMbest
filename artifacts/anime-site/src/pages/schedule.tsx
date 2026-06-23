@@ -102,10 +102,9 @@ const CountdownCell = memo(function CountdownCell({
   );
 });
 
-/* ── Episode row — stable, never re-mounts from parent ticks ── */
+/* ── Episode row — no entrance animation to prevent ghost stacking ── */
 const EpisodeRow = memo(function EpisodeRow({
   ep,
-  index,
   nowMs,
 }: {
   ep: AiringAnime;
@@ -118,10 +117,7 @@ const EpisodeRow = memo(function EpisodeRow({
 
   return (
     <Link href={`/anime/al/${ep.id}`}>
-      <motion.div
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3, delay: Math.min(index * 0.03, 0.25), ease: [0.4, 0, 0.2, 1] }}
+      <div
         className={`group relative flex items-center gap-3 rounded-xl p-3 border cursor-pointer transition-colors ${
           isAiring
             ? "border-orange-500/30 bg-orange-500/[0.05]"
@@ -198,7 +194,7 @@ const EpisodeRow = memo(function EpisodeRow({
             </div>
           )}
         </div>
-      </motion.div>
+      </div>
     </Link>
   );
 });
@@ -345,13 +341,11 @@ export default function Schedule() {
             <p className="text-white/20 font-mono text-sm">No episodes scheduled</p>
           </div>
         ) : (
-          <AnimatePresence mode="wait">
-            <div key={selectedDay} className="space-y-2">
-              {episodes.map((ep, i) => (
-                <EpisodeRow key={ep.id} ep={ep} index={i} nowMs={nowMs} />
-              ))}
-            </div>
-          </AnimatePresence>
+          <div className="space-y-2">
+            {episodes.map((ep, i) => (
+              <EpisodeRow key={ep.id} ep={ep} index={i} nowMs={nowMs} />
+            ))}
+          </div>
         )}
       </div>
     </div>
