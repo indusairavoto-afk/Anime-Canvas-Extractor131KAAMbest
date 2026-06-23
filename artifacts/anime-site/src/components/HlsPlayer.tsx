@@ -51,6 +51,7 @@ interface Props {
   onEnded?: () => void;
   onFatalError?: () => void;
   onPlayStateChange?: (playing: boolean, time: number) => void;
+  onTimeUpdate?: (time: number) => void;
   syncCommand?: HlsSyncCommand | null;
 }
 
@@ -95,7 +96,7 @@ export function getEpisodeProgressPct(progressKey: string): number | null {
   return pct;
 }
 
-export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, onEnded, onFatalError, onPlayStateChange, syncCommand }: Props) {
+export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, onEnded, onFatalError, onPlayStateChange, onTimeUpdate: onTimeUpdateProp, syncCommand }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -278,6 +279,7 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
     const onPause = () => { setPlaying(false); flushProgress(); onPlayStateChange?.(false, video.currentTime); };
     const onTimeUpdate = () => {
       setCurrentTime(video.currentTime);
+      onTimeUpdateProp?.(video.currentTime);
       if (video.buffered.length > 0) {
         setBuffered(video.buffered.end(video.buffered.length - 1));
       }

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Users, X, Copy, Check, Send, Crown, LogOut, Link2, ChevronDown, ChevronUp } from "lucide-react";
+import { Users, X, Copy, Check, Send, Crown, LogOut, Link2, ChevronDown, ChevronUp, Radio } from "lucide-react";
 import type { WTMember, WTChatMsg, WTStatus } from "@/hooks/useWatchTogether";
 
 interface Props {
@@ -11,10 +11,12 @@ interface Props {
   isHost: boolean;
   user: { id: string; name: string; color: string };
   joinNotice: string | null;
+  syncNotice: string | null;
   onCreateRoom: () => void;
   onJoinRoom: (id: string) => void;
   onLeave: () => void;
   onSendChat: (text: string) => void;
+  onSyncNow: () => void;
 }
 
 function Avatar({ member, size = 28 }: { member: WTMember; size?: number }) {
@@ -54,8 +56,8 @@ function RoomLink({ roomId }: { roomId: string }) {
 }
 
 export function WatchTogetherPanel({
-  status, roomId, members, chat, isHost, user, joinNotice,
-  onCreateRoom, onJoinRoom, onLeave, onSendChat,
+  status, roomId, members, chat, isHost, user, joinNotice, syncNotice,
+  onCreateRoom, onJoinRoom, onLeave, onSendChat, onSyncNow,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [joinInput, setJoinInput] = useState("");
@@ -88,12 +90,29 @@ export function WatchTogetherPanel({
       <AnimatePresence>
         {joinNotice && (
           <motion.div
+            key="join-notice"
             initial={{ opacity: 0, y: -12 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -12 }}
             className="fixed top-16 left-1/2 -translate-x-1/2 z-[100] px-4 py-2 rounded-full bg-white/10 backdrop-blur-xl border border-white/15 text-sm text-white font-medium shadow-xl pointer-events-none"
           >
             👋 {joinNotice}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Sync notice toast */}
+      <AnimatePresence>
+        {syncNotice && (
+          <motion.div
+            key="sync-notice"
+            initial={{ opacity: 0, y: -12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12 }}
+            className="fixed top-16 left-1/2 -translate-x-1/2 z-[100] px-4 py-2 rounded-full bg-blue-500/20 backdrop-blur-xl border border-blue-400/30 text-sm text-blue-200 font-medium shadow-xl pointer-events-none flex items-center gap-2"
+          >
+            <Radio className="w-3.5 h-3.5 text-blue-400" />
+            {syncNotice}
           </motion.div>
         )}
       </AnimatePresence>
@@ -209,6 +228,17 @@ export function WatchTogetherPanel({
                       Room · <span className="text-white/50 font-bold tracking-widest">{roomId}</span>
                       {isHost && <span className="ml-2 text-yellow-400/70">You are host</span>}
                     </p>
+                  </div>
+
+                  {/* Sync Now */}
+                  <div className="px-3 pb-2">
+                    <button
+                      onClick={onSyncNow}
+                      className="w-full flex items-center justify-center gap-2 py-2 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-300 text-[12px] font-semibold hover:bg-blue-500/20 hover:border-blue-400/30 transition-colors"
+                    >
+                      <Radio className="w-3.5 h-3.5" />
+                      Sync Now — pull everyone to my timestamp
+                    </button>
                   </div>
 
                   {/* Members list */}

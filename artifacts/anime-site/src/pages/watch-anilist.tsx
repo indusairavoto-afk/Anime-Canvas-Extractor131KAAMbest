@@ -222,6 +222,7 @@ export default function WatchAniList() {
 
   // ── Watch Together sync command for HlsPlayer ───────────────────────────
   const [wtSyncCmd, setWtSyncCmd] = useState<HlsSyncCommand | null>(null);
+  const playerTimeRef = useRef<number>(0);
 
   const handleWtPlay = useCallback((time: number, fromSelf: boolean) => {
     if (fromSelf) return;
@@ -235,6 +236,10 @@ export default function WatchAniList() {
     if (fromSelf) return;
     setWtSyncCmd({ type: "seek", time, nonce: crypto.randomUUID() });
   }, []);
+  const handleWtSync = useCallback((time: number, fromSelf: boolean) => {
+    if (fromSelf) return;
+    setWtSyncCmd({ type: "seek", time, nonce: crypto.randomUUID() });
+  }, []);
 
   const wt = useWatchTogether({
     animeId,
@@ -242,6 +247,7 @@ export default function WatchAniList() {
     onPlay: handleWtPlay,
     onPause: handleWtPause,
     onSeek: handleWtSeek,
+    onSync: handleWtSync,
   });
 
   const { toggle, isInList } = useWatchlist();
@@ -1713,6 +1719,7 @@ export default function WatchAniList() {
                     progressKey={`al_${animeId}_${currentEp}`}
                     syncCommand={wtSyncCmd}
                     onPlayStateChange={(playing, time) => playing ? wt.sendPlay(time) : wt.sendPause(time)}
+                    onTimeUpdate={(t) => { playerTimeRef.current = t; }}
                   />
                 )}
 
@@ -1741,6 +1748,7 @@ export default function WatchAniList() {
                     onFatalError={() => setKotoHlsUrl(null)}
                     syncCommand={wtSyncCmd}
                     onPlayStateChange={(playing, time) => playing ? wt.sendPlay(time) : wt.sendPause(time)}
+                    onTimeUpdate={(t) => { playerTimeRef.current = t; }}
                   />
                 )}
 
@@ -2222,10 +2230,12 @@ export default function WatchAniList() {
                 isHost={wt.isHost}
                 user={wt.user}
                 joinNotice={wt.joinNotice}
+                syncNotice={wt.syncNotice}
                 onCreateRoom={wt.createRoom}
                 onJoinRoom={wt.joinRoom}
                 onLeave={wt.leaveRoom}
                 onSendChat={wt.sendChat}
+                onSyncNow={() => wt.sendSync(playerTimeRef.current)}
               />
             </div>
             <div className="flex items-center gap-1.5">

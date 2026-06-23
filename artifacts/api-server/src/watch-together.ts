@@ -30,6 +30,7 @@ type ClientMsg =
   | { type: "play"; time: number }
   | { type: "pause"; time: number }
   | { type: "seek"; time: number }
+  | { type: "sync"; time: number }
   | { type: "chat"; text: string }
   | { type: "ping" };
 
@@ -190,6 +191,14 @@ export function attachWatchTogether(server: Server) {
         currentRoom.time = msg.time;
         currentRoom.updatedAt = Date.now();
         broadcastAll(currentRoom, { type: "seek", from: currentUserId, time: msg.time });
+        return;
+      }
+
+      if (msg.type === "sync") {
+        currentRoom.time = msg.time;
+        currentRoom.updatedAt = Date.now();
+        // Broadcast to ALL members including the sender so everyone seeks
+        broadcastAll(currentRoom, { type: "sync", from: currentUserId, time: msg.time });
         return;
       }
 

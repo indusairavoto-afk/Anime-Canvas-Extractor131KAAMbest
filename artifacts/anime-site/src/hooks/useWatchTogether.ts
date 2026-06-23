@@ -24,6 +24,7 @@ interface UseWatchTogetherOptions {
   onPlay?: (time: number, fromSelf: boolean) => void;
   onPause?: (time: number, fromSelf: boolean) => void;
   onSeek?: (time: number, fromSelf: boolean) => void;
+  onSync?: (time: number, fromSelf: boolean) => void;
 }
 
 const COLORS = ["#f97316", "#22c55e", "#3b82f6", "#a855f7", "#ec4899", "#14b8a6", "#eab308", "#ef4444"];
@@ -68,7 +69,7 @@ function getWsUrl(roomId: string) {
 }
 
 export function useWatchTogether(opts: UseWatchTogetherOptions) {
-  const { animeId, episode, onPlay, onPause, onSeek } = opts;
+  const { animeId, episode, onPlay, onPause, onSeek, onSync } = opts;
 
   const [status, setStatus] = useState<WTStatus>("idle");
   const [roomId, setRoomId] = useState<string | null>(null);
@@ -76,6 +77,7 @@ export function useWatchTogether(opts: UseWatchTogetherOptions) {
   const [chat, setChat] = useState<WTChatMsg[]>([]);
   const [hostId, setHostId] = useState<string | null>(null);
   const [joinNotice, setJoinNotice] = useState<string | null>(null);
+  const [syncNotice, setSyncNotice] = useState<string | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
   const userRef = useRef(getOrCreateUser());
@@ -130,6 +132,16 @@ export function useWatchTogether(opts: UseWatchTogetherOptions) {
         onPause?.(msg.time as number, msg.from === userRef.current.id);
       } else if (msg.type === "seek") {
         onSeek?.(msg.time as number, msg.from === userRef.current.id);
+      } else if (msg.type === "sync") {
+        onSync?.(msg.time as number, msg.from === userRef.current.id);
+        const senderName = (msg.from === userRef.current.id)
+          ? "You synced everyone"
+          : (() => {
+              const m = wsRef.current; void m;
+              return "Synced to host time";
+            })();
+        setSyncNotice(senderName);
+        setTimeout(() => setSyncNotice(null), 2500);
       } else if (msg.type === "chat") {
         setChat((prev) => [...prev.slice(-99), msg as unknown as WTChatMsg]);
       }
@@ -178,6 +190,10 @@ export function useWatchTogether(opts: UseWatchTogetherOptions) {
     wsRef.current?.send(JSON.stringify({ type: "seek", time }));
   }, []);
 
+  const sendSync = useCallback((time: number) => {
+    wsRef.current?.send(JSON.stringify({ type: "sync", time }));
+  }, []);
+
   const sendChat = useCallback((text: string) => {
     wsRef.current?.send(JSON.stringify({ type: "chat", text }));
   }, []);
@@ -212,12 +228,14 @@ export function useWatchTogether(opts: UseWatchTogetherOptions) {
     isHost,
     user,
     joinNotice,
+    syncNotice,
     createRoom,
     joinRoom,
     leaveRoom,
     sendPlay,
     sendPause,
     sendSeek,
+    sendSync,
     sendChat,
     setUserName,
   };
