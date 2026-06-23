@@ -1,17 +1,19 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Link, useParams, useLocation } from "wouter";
-import HlsPlayer, { getEpisodeProgressPct } from "@/components/HlsPlayer";
+import HlsPlayer, { getEpisodeProgressPct, type HlsSyncCommand } from "@/components/HlsPlayer";
 import {
   ArrowLeft, Search, Grid3X3, List, Play, Pause, SkipForward, SkipBack,
   RotateCcw, RotateCw, Scissors, Bookmark, BookmarkCheck, ChevronDown, Maximize2, Minimize2,
   MessageSquare, Eye, Flag, CheckCircle2,
-  Volume2, VolumeX, Maximize, Minimize,
+  Volume2, VolumeX, Maximize, Minimize, Users,
 } from "lucide-react";
 import { useWatchlist } from "@/hooks/useWatchlist";
 import { useWatchProgress } from "@/hooks/useWatchProgress";
 import { useContinueWatching } from "@/hooks/useContinueWatching";
 import { apiUrl } from "@/lib/api";
 import { EpisodeRatingMeter } from "@/components/EpisodeRatingMeter";
+import { useWatchTogether } from "@/hooks/useWatchTogether";
+import { WatchTogetherPanel } from "@/components/WatchTogetherPanel";
 
 interface StreamEpisode {
   title: string;
@@ -217,6 +219,30 @@ export default function WatchAniList() {
   const [voteCounts, setVoteCounts] = useState({ skip: 0, timepass: 0, go_for_it: 0, perfection: 0 });
   const [myVote, setMyVote] = useState<string | null>(null);
   const [voteSubmitting, setVoteSubmitting] = useState(false);
+
+  // ── Watch Together sync command for HlsPlayer ───────────────────────────
+  const [wtSyncCmd, setWtSyncCmd] = useState<HlsSyncCommand | null>(null);
+
+  const handleWtPlay = useCallback((time: number, fromSelf: boolean) => {
+    if (fromSelf) return;
+    setWtSyncCmd({ type: "play", time, nonce: crypto.randomUUID() });
+  }, []);
+  const handleWtPause = useCallback((time: number, fromSelf: boolean) => {
+    if (fromSelf) return;
+    setWtSyncCmd({ type: "pause", time, nonce: crypto.randomUUID() });
+  }, []);
+  const handleWtSeek = useCallback((time: number, fromSelf: boolean) => {
+    if (fromSelf) return;
+    setWtSyncCmd({ type: "seek", time, nonce: crypto.randomUUID() });
+  }, []);
+
+  const wt = useWatchTogether({
+    animeId,
+    episode: currentEp,
+    onPlay: handleWtPlay,
+    onPause: handleWtPause,
+    onSeek: handleWtSeek,
+  });
 
   const { toggle, isInList } = useWatchlist();
   const { markWatched, isWatched } = useWatchProgress();
@@ -1685,6 +1711,8 @@ export default function WatchAniList() {
                     subtitles={anizoneSubtitles}
                     title={getEpTitle(currentEp) !== `Episode ${currentEp}` ? `${title} — Ep ${currentEp}: ${getEpTitle(currentEp)}` : `${title} — Episode ${currentEp}`}
                     progressKey={`al_${animeId}_${currentEp}`}
+                    syncCommand={wtSyncCmd}
+                    onPlayStateChange={(playing, time) => playing ? wt.sendPlay(time) : wt.sendPause(time)}
                   />
                 )}
 
@@ -1711,6 +1739,8 @@ export default function WatchAniList() {
                     title={getEpTitle(currentEp) !== `Episode ${currentEp}` ? `${title} — Ep ${currentEp}: ${getEpTitle(currentEp)}` : `${title} — Episode ${currentEp}`}
                     progressKey={`al_${animeId}_${currentEp}`}
                     onFatalError={() => setKotoHlsUrl(null)}
+                    syncCommand={wtSyncCmd}
+                    onPlayStateChange={(playing, time) => playing ? wt.sendPlay(time) : wt.sendPause(time)}
                   />
                 )}
 
@@ -2183,6 +2213,21 @@ export default function WatchAniList() {
 
           {/* Player control bar — desktop only */}
           <div className="hidden md:flex items-center justify-between px-4 py-2.5 border-b border-white/5">
+            <div className="flex items-center gap-1.5">
+              <WatchTogetherPanel
+                status={wt.status}
+                roomId={wt.roomId}
+                members={wt.members}
+                chat={wt.chat}
+                isHost={wt.isHost}
+                user={wt.user}
+                joinNotice={wt.joinNotice}
+                onCreateRoom={wt.createRoom}
+                onJoinRoom={wt.joinRoom}
+                onLeave={wt.leaveRoom}
+                onSendChat={wt.sendChat}
+              />
+            </div>
             <div className="flex items-center gap-1.5">
               <button
                 onClick={() => setTheaterMode(t => !t)}

@@ -24,6 +24,7 @@ import mangadexRouter from "./mangadex";
 import atsuRouter from "./atsu";
 import watchlistRouter from "./watchlist";
 import streamReportsRouter from "./stream-reports";
+import watchTogetherRouter from "./watch-together";
 
 const router: IRouter = Router();
 
@@ -52,5 +53,6 @@ router.use(mangadexRouter);
 router.use(atsuRouter);
 router.use(watchlistRouter);
 router.use(streamReportsRouter);
+router.use(watchTogetherRouter);
 
 export default router;

@@ -37,6 +37,12 @@ interface SubTrack {
   isDefault: boolean;
 }
 
+export type HlsSyncCommand = {
+  type: "play" | "pause" | "seek";
+  time: number;
+  nonce: string;
+};
+
 interface Props {
   hlsUrl: string;
   subtitles?: SubTrack[];
@@ -44,6 +50,8 @@ interface Props {
   progressKey?: string;
   onEnded?: () => void;
   onFatalError?: () => void;
+  onPlayStateChange?: (playing: boolean, time: number) => void;
+  syncCommand?: HlsSyncCommand | null;
 }
 
 interface SavedProgress {
@@ -87,7 +95,7 @@ export function getEpisodeProgressPct(progressKey: string): number | null {
   return pct;
 }
 
-export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, onEnded, onFatalError }: Props) {
+export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, onEnded, onFatalError, onPlayStateChange, syncCommand }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -266,8 +274,8 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
     const video = videoRef.current;
     if (!video) return;
 
-    const onPlay = () => setPlaying(true);
-    const onPause = () => { setPlaying(false); flushProgress(); };
+    const onPlay = () => { setPlaying(true); onPlayStateChange?.(true, video.currentTime); };
+    const onPause = () => { setPlaying(false); flushProgress(); onPlayStateChange?.(false, video.currentTime); };
     const onTimeUpdate = () => {
       setCurrentTime(video.currentTime);
       if (video.buffered.length > 0) {
@@ -304,6 +312,22 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
       video.removeEventListener("ended", onEnded_);
     };
   }, [onEnded, progressKey, flushProgress]);
+
+  // ── External sync command (Watch Together) ───────────────────────────────
+  useEffect(() => {
+    if (!syncCommand) return;
+    const video = videoRef.current;
+    if (!video) return;
+    const { type, time } = syncCommand;
+    if (type === "seek" || type === "play" || type === "pause") {
+      video.currentTime = time;
+    }
+    if (type === "play") {
+      video.play().catch(() => {});
+    } else if (type === "pause") {
+      video.pause();
+    }
+  }, [syncCommand]);
 
   useEffect(() => {
     const onFsChange = () => setFullscreen(!!document.fullscreenElement);
