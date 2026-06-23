@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Link, useParams, useLocation } from "wouter";
 import HlsPlayer, { getEpisodeProgressPct, type HlsSyncCommand } from "@/components/HlsPlayer";
+import DashPlayer from "@/components/DashPlayer";
 import {
   ArrowLeft, Search, Grid3X3, List, Play, Pause, SkipForward, SkipBack,
   RotateCcw, RotateCw, Scissors, Bookmark, BookmarkCheck, ChevronDown, Maximize2, Minimize2,
@@ -188,6 +189,8 @@ export default function WatchAniList() {
   const [nexusLoading, setNexusLoading] = useState(false);
   const [nexusError, setNexusError] = useState<string | null>(null);
   const [animeonsenIframeUrl, setAnimeonsenIframeUrl] = useState<string | null>(null);
+  const [animeonsenStreamUrl, setAnimeonsenStreamUrl] = useState<string | null>(null);
+  const [animeonsenSubtitleUrl, setAnimeonsenSubtitleUrl] = useState<string | null>(null);
   const [animeonsenLoading, setAnimeonsenLoading] = useState(false);
   const [animeonsenError, setAnimeonsenError] = useState<string | null>(null);
   const [animeonsenContentId, setAnimeonsenContentId] = useState<string>("");
@@ -387,6 +390,8 @@ export default function WatchAniList() {
     setAnizoneStreamError(null);
     // Reset AnimeonSen state
     setAnimeonsenIframeUrl(null);
+    setAnimeonsenStreamUrl(null);
+    setAnimeonsenSubtitleUrl(null);
     setAnimeonsenLoading(false);
     setAnimeonsenError(null);
   }, [animeId, currentEp, lang, server]);
@@ -1223,10 +1228,12 @@ export default function WatchAniList() {
     setAnimeonsenIdInput(saved);
   }, [animeId]);
 
-  // Fetch AnimeonSen iframe URL when server is ANIMEONSEN
+  // Fetch AnimeonSen stream URL when server is ANIMEONSEN
   useEffect(() => {
     if (server !== "ANIMEONSEN") {
       setAnimeonsenIframeUrl(null);
+      setAnimeonsenStreamUrl(null);
+      setAnimeonsenSubtitleUrl(null);
       setAnimeonsenError(null);
       return;
     }
@@ -1243,21 +1250,51 @@ export default function WatchAniList() {
         setAnimeonsenLoading(false);
         setAnimeonsenError(null);
         raceCache.current.animeonsen = undefined;
-        return;
+      } else {
+        raceCache.current.animeonsen = undefined;
       }
-      raceCache.current.animeonsen = undefined;
     }
-    // If we already have a content ID (from localStorage or manual input), construct URL directly — no fetch needed
+
+    // Get content ID from local state or localStorage
     const localContentId = animeonsenContentId || (localStorage.getItem(`na_animeonsen_${animeId}`) ?? "");
+
+    // Helper: given a content ID, try client-side API call for direct DASH/HLS stream
+    async function tryFetchStream(contentId: string, cancelled: () => boolean) {
+      try {
+        const resp = await fetch(
+          `https://api.animeonsen.xyz/v4/content/${contentId}/video/${currentEp}`,
+          { credentials: "include", signal: AbortSignal.timeout(6000) }
+        );
+        if (cancelled()) return;
+        if (resp.ok) {
+          const json = await resp.json() as { data?: { uri?: { stream?: string; subtitles?: string } } };
+          const streamUrl = json.data?.uri?.stream ?? null;
+          const subtitleUrl = json.data?.uri?.subtitles ?? null;
+          if (streamUrl && !cancelled()) {
+            setAnimeonsenStreamUrl(streamUrl);
+            if (subtitleUrl) setAnimeonsenSubtitleUrl(subtitleUrl);
+          }
+        }
+      } catch {
+        // CORS blocked or network error — stream unavailable, launch panel still works
+      }
+    }
+
     if (localContentId) {
+      // Construct the watch URL immediately (for the launch panel fallback)
       setAnimeonsenIframeUrl(`https://www.animeonsen.xyz/watch/${localContentId}?episode=${currentEp}`);
       setAnimeonsenLoading(false);
       setAnimeonsenError(null);
-      return;
+      let isCancelled = false;
+      tryFetchStream(localContentId, () => isCancelled);
+      return () => { isCancelled = true; };
     }
-    // No cached ID — search by title
+
+    // No cached ID — search by title via our backend
     let cancelled = false;
     setAnimeonsenIframeUrl(null);
+    setAnimeonsenStreamUrl(null);
+    setAnimeonsenSubtitleUrl(null);
     setAnimeonsenLoading(true);
     setAnimeonsenError(null);
     const params = new URLSearchParams({ ep: String(currentEp), title });
@@ -1266,13 +1303,13 @@ export default function WatchAniList() {
       .then((r) => r.json())
       .then((data: { iframeUrl?: string; contentId?: string; error?: string }) => {
         if (cancelled) return;
-        if (data.iframeUrl) {
-          if (data.contentId) {
-            setAnimeonsenContentId(data.contentId);
-            setAnimeonsenIdInput(data.contentId);
-            localStorage.setItem(`na_animeonsen_${animeId}`, data.contentId);
-          }
+        if (data.iframeUrl && data.contentId) {
+          setAnimeonsenContentId(data.contentId);
+          setAnimeonsenIdInput(data.contentId);
+          localStorage.setItem(`na_animeonsen_${animeId}`, data.contentId);
           setAnimeonsenIframeUrl(data.iframeUrl);
+          // Also try to get the direct stream client-side
+          tryFetchStream(data.contentId, () => cancelled);
         } else {
           setAnimeonsenError(data.error ?? "Anime not found on AnimeonSen");
         }
@@ -1845,8 +1882,19 @@ export default function WatchAniList() {
                   />
                 )}
 
-                {/* ANIMEONSEN — launch panel (player blocks cross-origin iframes) */}
-                {server === "ANIMEONSEN" && animeonsenIframeUrl && (
+                {/* ANIMEONSEN — DASH/HLS inline player (when client-side API fetch succeeds) */}
+                {server === "ANIMEONSEN" && animeonsenStreamUrl && (
+                  <DashPlayer
+                    key={`animeonsen-${animeId}-${currentEp}`}
+                    src={animeonsenStreamUrl}
+                    title={getEpTitle(currentEp) !== `Episode ${currentEp}` ? `${title} — Ep ${currentEp}: ${getEpTitle(currentEp)}` : `${title} — Episode ${currentEp}`}
+                    progressKey={`al_${animeId}_${currentEp}`}
+                    onFatalError={() => setAnimeonsenStreamUrl(null)}
+                  />
+                )}
+
+                {/* ANIMEONSEN — launch panel fallback when DASH stream unavailable */}
+                {server === "ANIMEONSEN" && !animeonsenStreamUrl && animeonsenIframeUrl && (
                   <div className="absolute inset-0 z-10 flex flex-col items-center justify-center" style={{ background: "rgba(0,0,0,0.92)" }}>
                     {banner && <img src={banner} alt="" className="absolute inset-0 w-full h-full object-cover opacity-10 scale-110 blur-md pointer-events-none" />}
                     <div className="relative z-10 flex flex-col items-center gap-5 px-6 text-center max-w-xs">
@@ -1869,7 +1917,7 @@ export default function WatchAniList() {
                         Watch on AnimeonSen
                       </a>
                       <p className="text-white/20 text-[10px] font-mono leading-relaxed max-w-[200px]">
-                        Opens in a new tab — AnimeonSen blocks in-page embedding
+                        Opens in a new tab · visit animeonsen.xyz first if not working
                       </p>
                     </div>
                   </div>
