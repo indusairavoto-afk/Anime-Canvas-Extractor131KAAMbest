@@ -178,25 +178,31 @@ export function useWatchTogether(opts: UseWatchTogetherOptions) {
     roomIdRef.current = null;
   }, []);
 
-  const sendPlay = useCallback((time: number) => {
-    wsRef.current?.send(JSON.stringify({ type: "play", time }));
+  const wsSend = useCallback((data: unknown) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify(data));
+    }
   }, []);
+
+  const sendPlay = useCallback((time: number) => {
+    wsSend({ type: "play", time });
+  }, [wsSend]);
 
   const sendPause = useCallback((time: number) => {
-    wsRef.current?.send(JSON.stringify({ type: "pause", time }));
-  }, []);
+    wsSend({ type: "pause", time });
+  }, [wsSend]);
 
   const sendSeek = useCallback((time: number) => {
-    wsRef.current?.send(JSON.stringify({ type: "seek", time }));
-  }, []);
+    wsSend({ type: "seek", time });
+  }, [wsSend]);
 
   const sendSync = useCallback((time: number) => {
-    wsRef.current?.send(JSON.stringify({ type: "sync", time }));
-  }, []);
+    wsSend({ type: "sync", time });
+  }, [wsSend]);
 
   const sendChat = useCallback((text: string) => {
-    wsRef.current?.send(JSON.stringify({ type: "chat", text }));
-  }, []);
+    wsSend({ type: "chat", text });
+  }, [wsSend]);
 
   const setUserName = useCallback((name: string) => {
     userRef.current = { ...userRef.current, name };
