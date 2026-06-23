@@ -191,6 +191,7 @@ export default function WatchAniList() {
   const [animeonsenLoading, setAnimeonsenLoading] = useState(false);
   const [animeonsenError, setAnimeonsenError] = useState<string | null>(null);
   const [animeonsenContentId, setAnimeonsenContentId] = useState<string>("");
+  const [animeonsenIdInput, setAnimeonsenIdInput] = useState<string>("");
   const [anizoneHlsUrl, setAnizoneHlsUrl] = useState<string | null>(null);
   const [anizoneSubtitles, setAnizoneSubtitles] = useState<{ src: string; label: string; srclang: string; isDefault: boolean }[]>([]);
   const [anizoneStreamLoading, setAnizoneStreamLoading] = useState(false);
@@ -1214,6 +1215,14 @@ export default function WatchAniList() {
     return () => { cancelled = true; };
   }, [server, animeId, currentEp]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Load saved AnimeonSen content ID from localStorage
+  useEffect(() => {
+    if (!animeId) return;
+    const saved = localStorage.getItem(`na_animeonsen_${animeId}`) ?? "";
+    setAnimeonsenContentId(saved);
+    setAnimeonsenIdInput(saved);
+  }, [animeId]);
+
   // Fetch AnimeonSen iframe URL when server is ANIMEONSEN
   useEffect(() => {
     if (server !== "ANIMEONSEN") {
@@ -1221,11 +1230,16 @@ export default function WatchAniList() {
       setAnimeonsenError(null);
       return;
     }
+    // Check raceCache first (set during auto-detect race)
     const cached = raceCache.current.animeonsen;
     if (cached !== undefined) {
       if (cached?.iframeUrl) {
         setAnimeonsenIframeUrl(cached.iframeUrl);
-        if (cached.contentId) setAnimeonsenContentId(cached.contentId);
+        if (cached.contentId) {
+          setAnimeonsenContentId(cached.contentId);
+          setAnimeonsenIdInput(cached.contentId);
+          localStorage.setItem(`na_animeonsen_${animeId}`, cached.contentId);
+        }
         setAnimeonsenLoading(false);
         setAnimeonsenError(null);
         raceCache.current.animeonsen = undefined;
@@ -1233,14 +1247,21 @@ export default function WatchAniList() {
       }
       raceCache.current.animeonsen = undefined;
     }
+    // If we already have a content ID (from localStorage or manual input), construct URL directly — no fetch needed
+    const localContentId = animeonsenContentId || (localStorage.getItem(`na_animeonsen_${animeId}`) ?? "");
+    if (localContentId) {
+      setAnimeonsenIframeUrl(`https://www.animeonsen.xyz/watch/${localContentId}?episode=${currentEp}`);
+      setAnimeonsenLoading(false);
+      setAnimeonsenError(null);
+      return;
+    }
+    // No cached ID — search by title
     let cancelled = false;
     setAnimeonsenIframeUrl(null);
     setAnimeonsenLoading(true);
     setAnimeonsenError(null);
-    const cachedContentId = animeonsenContentId || (localStorage.getItem(`na_animeonsen_${animeId}`) ?? "");
     const params = new URLSearchParams({ ep: String(currentEp), title });
     if (romajiTitle) params.set("romajiTitle", romajiTitle);
-    if (cachedContentId) params.set("contentId", cachedContentId);
     fetch(apiUrl(`/api/animeonsen/stream?${params}`))
       .then((r) => r.json())
       .then((data: { iframeUrl?: string; contentId?: string; error?: string }) => {
@@ -1248,6 +1269,7 @@ export default function WatchAniList() {
         if (data.iframeUrl) {
           if (data.contentId) {
             setAnimeonsenContentId(data.contentId);
+            setAnimeonsenIdInput(data.contentId);
             localStorage.setItem(`na_animeonsen_${animeId}`, data.contentId);
           }
           setAnimeonsenIframeUrl(data.iframeUrl);
@@ -2624,26 +2646,82 @@ export default function WatchAniList() {
             </div>
           )}
 
-          {/* ANIMEONSEN status panel */}
+          {/* ANIMEONSEN status panel + content ID input */}
           {!autoDetecting && server === "ANIMEONSEN" && (
-            <div className="border-b border-white/5 px-4 py-2.5 flex items-center gap-2.5">
-              {animeonsenLoading ? (
-                <>
-                  <div className="w-2 h-2 rounded-full bg-green-400/40 animate-pulse shrink-0" />
-                  <span className="text-[10px] font-mono text-white/30 uppercase tracking-widest">Searching…</span>
-                </>
-              ) : animeonsenIframeUrl ? (
-                <>
-                  <div className="w-2 h-2 rounded-full bg-green-400 shrink-0" />
-                  <span className="text-[10px] font-mono text-green-400/70 uppercase tracking-widest">animeonsen.xyz</span>
-                </>
-              ) : (
-                <>
-                  <div className="w-2 h-2 rounded-full bg-white/20 shrink-0" />
-                  <span className="text-[10px] font-mono text-white/30 uppercase tracking-widest">Not Connected</span>
-                </>
-              )}
-            </div>
+            <>
+              <div className="border-b border-white/5 px-4 py-2.5 flex items-center gap-2.5">
+                {animeonsenLoading ? (
+                  <>
+                    <div className="w-2 h-2 rounded-full bg-green-400/40 animate-pulse shrink-0" />
+                    <span className="text-[10px] font-mono text-white/30 uppercase tracking-widest">Searching…</span>
+                  </>
+                ) : animeonsenIframeUrl ? (
+                  <>
+                    <div className="w-2 h-2 rounded-full bg-green-400 shrink-0" />
+                    <span className="text-[10px] font-mono text-green-400/70 uppercase tracking-widest">animeonsen.xyz · {animeonsenContentId || "matched"}</span>
+                  </>
+                ) : animeonsenError ? (
+                  <>
+                    <div className="w-2 h-2 rounded-full bg-red-400/60 shrink-0" />
+                    <span className="text-[10px] font-mono text-red-400/70 uppercase tracking-widest">Not found — paste content ID below</span>
+                  </>
+                ) : (
+                  <>
+                    <div className="w-2 h-2 rounded-full bg-white/20 shrink-0" />
+                    <span className="text-[10px] font-mono text-white/30 uppercase tracking-widest">Not Connected</span>
+                  </>
+                )}
+              </div>
+              {/* Content ID input — paste ID from animeonsen.xyz/watch/{ID}?episode=N */}
+              <div className="border-b border-white/5 bg-white/[0.02] px-4 py-2.5 flex items-center gap-2">
+                <span className="text-[9px] font-mono text-white/30 uppercase tracking-widest shrink-0 w-14">Content ID</span>
+                <input
+                  value={animeonsenIdInput}
+                  onChange={(e) => setAnimeonsenIdInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      const id = animeonsenIdInput.trim();
+                      if (!id) return;
+                      localStorage.setItem(`na_animeonsen_${animeId}`, id);
+                      setAnimeonsenContentId(id);
+                      setAnimeonsenIframeUrl(`https://www.animeonsen.xyz/watch/${id}?episode=${currentEp}`);
+                      setAnimeonsenError(null);
+                      setAnimeonsenLoading(false);
+                    }
+                  }}
+                  placeholder="Paste ID from animeonsen.xyz/watch/{ID}?episode=…"
+                  className="flex-1 bg-white/5 border border-white/10 px-3 py-1.5 text-xs text-white placeholder-white/15 focus:outline-none focus:border-green-500/40 font-mono"
+                />
+                <button
+                  onClick={() => {
+                    const id = animeonsenIdInput.trim();
+                    if (!id) return;
+                    localStorage.setItem(`na_animeonsen_${animeId}`, id);
+                    setAnimeonsenContentId(id);
+                    setAnimeonsenIframeUrl(`https://www.animeonsen.xyz/watch/${id}?episode=${currentEp}`);
+                    setAnimeonsenError(null);
+                    setAnimeonsenLoading(false);
+                  }}
+                  className="text-[10px] font-mono px-2.5 py-1.5 border border-white/20 text-white/50 hover:border-green-500/50 hover:text-green-400 transition-colors shrink-0"
+                >
+                  Load
+                </button>
+                {animeonsenContentId && (
+                  <button
+                    onClick={() => {
+                      localStorage.removeItem(`na_animeonsen_${animeId}`);
+                      setAnimeonsenContentId("");
+                      setAnimeonsenIdInput("");
+                      setAnimeonsenIframeUrl(null);
+                      setAnimeonsenError(null);
+                    }}
+                    className="text-[10px] font-mono px-2.5 py-1.5 border border-white/10 text-white/30 hover:border-red-500/50 hover:text-red-400 transition-colors shrink-0"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+            </>
           )}
 
           {/* DIRECT panel */}

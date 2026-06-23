@@ -22,10 +22,6 @@ function normalizeTitle(s: string): string {
   return s.toLowerCase().replace(/[^\w\s]/g, "").replace(/\s+/g, " ").trim();
 }
 
-/**
- * Score a search hit against a query.
- * Higher = better match.
- */
 function scoreHit(hit: SearchHit, query: string): number {
   const qNorm = normalizeTitle(query);
   const titles = [
@@ -43,7 +39,6 @@ function scoreHit(hit: SearchHit, query: string): number {
     else if (t.includes(qNorm)) { score = 500; }
     else if (qNorm.includes(t)) { score = 400; }
     else {
-      // word overlap
       const qWords = new Set(qNorm.split(" ").filter(Boolean));
       const tWords = t.split(" ").filter(Boolean);
       const overlap = tWords.filter(w => qWords.has(w)).length;
@@ -54,21 +49,37 @@ function scoreHit(hit: SearchHit, query: string): number {
   return best;
 }
 
-/**
- * Search animeonsen for a given anime title.
- * Tries the given query, then a cleaned-up version without season words.
- * Returns the best-matching content_id or null.
- */
+function buildQueryVariants(rawTitle: string): string[] {
+  const variants: string[] = [rawTitle];
+
+  // Strip season/part info
+  const noSeason = rawTitle.replace(/\s*(season|part)\s*\d+/gi, "").trim();
+  if (noSeason && noSeason !== rawTitle) variants.push(noSeason);
+  const noOrdinal = rawTitle.replace(/\s*\d+(st|nd|rd|th)\s*season/gi, "").trim();
+  if (noOrdinal && noOrdinal !== rawTitle) variants.push(noOrdinal);
+
+  // First 5 words (useful for long titles)
+  const words = rawTitle.trim().split(/\s+/);
+  if (words.length > 5) {
+    variants.push(words.slice(0, 5).join(" "));
+  }
+  // First 3 words
+  if (words.length > 3) {
+    variants.push(words.slice(0, 3).join(" "));
+  }
+  // Without stop words ("of", "the", "a", "an", "in", "on", "at", "to")
+  const stops = new Set(["of", "the", "a", "an", "in", "on", "at", "to", "and"]);
+  const noStops = words.filter(w => !stops.has(w.toLowerCase())).join(" ");
+  if (noStops && noStops !== rawTitle) variants.push(noStops);
+
+  // Deduplicate while preserving order
+  return variants.filter((q, i, arr) => q && arr.indexOf(q) === i);
+}
+
 async function searchContentId(titles: string[]): Promise<{ contentId: string; matchedTitle: string } | null> {
   for (const rawTitle of titles) {
     if (!rawTitle) continue;
-
-    // Also try without season info
-    const queries = [
-      rawTitle,
-      rawTitle.replace(/\s*(season|part)\s*\d+/gi, "").trim(),
-      rawTitle.replace(/\s*\d+(st|nd|rd|th)\s*season/gi, "").trim(),
-    ].filter((q, i, arr) => q && arr.indexOf(q) === i);
+    const queries = buildQueryVariants(rawTitle);
 
     for (const query of queries) {
       if (!query) continue;
@@ -82,7 +93,7 @@ async function searchContentId(titles: string[]): Promise<{ contentId: string; m
             Referer: `${ANIMEONSEN_ORIGIN}/`,
             ...BROWSER_HEADERS,
           },
-          body: JSON.stringify({ q: query, limit: 5 }),
+          body: JSON.stringify({ q: query, limit: 8 }),
           signal: AbortSignal.timeout(8000),
         });
         if (!resp.ok) continue;
@@ -94,11 +105,12 @@ async function searchContentId(titles: string[]): Promise<{ contentId: string; m
           const score = scoreHit(hit, rawTitle);
           if (!best || score > best.score) best = { hit, score };
         }
-        if (best && best.score >= 200) {
+        // Lower threshold to 120 (≥2 matching words) to catch partial matches
+        if (best && best.score >= 120) {
           return { contentId: best.hit.content_id, matchedTitle: best.hit.content_title_en || best.hit.content_title };
         }
       } catch {
-        // continue
+        // continue to next query variant
       }
     }
   }
@@ -109,7 +121,7 @@ async function searchContentId(titles: string[]): Promise<{ contentId: string; m
  * GET /api/animeonsen/stream?title=...&romajiTitle=...&ep=...
  *
  * Searches AnimeonSen for the given title, resolves the content_id,
- * and returns the direct watch URL (embeddable as iframe — no X-Frame-Options).
+ * and returns the direct watch URL (embeddable as iframe).
  */
 router.get("/animeonsen/stream", async (req, res) => {
   const title = (req.query.title as string | undefined)?.trim() ?? "";
