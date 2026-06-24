@@ -118,6 +118,62 @@ async function searchContentId(titles: string[]): Promise<{ contentId: string; m
 }
 
 /**
+ * GET /api/animeonsen/video?contentId=...&ep=...
+ *
+ * Server-side proxy for the AnimeonSen v4 video API.
+ * Returns the direct DASH/HLS stream URL and subtitle URL.
+ * Done server-side to bypass CORS restrictions on api.animeonsen.xyz.
+ */
+router.get("/animeonsen/video", async (req, res) => {
+  const contentId = (req.query.contentId as string | undefined)?.trim() ?? "";
+  const ep = (req.query.ep as string | undefined)?.trim() ?? "1";
+
+  if (!contentId) {
+    res.status(400).json({ error: "contentId is required" });
+    return;
+  }
+  const epNum = parseInt(ep);
+  if (isNaN(epNum) || epNum <= 0) {
+    res.status(400).json({ error: `Invalid ep: "${ep}"` });
+    return;
+  }
+
+  try {
+    const apiResp = await fetch(
+      `https://api.animeonsen.xyz/v4/content/${encodeURIComponent(contentId)}/video/${epNum}`,
+      {
+        headers: {
+          ...BROWSER_HEADERS,
+          Origin: ANIMEONSEN_ORIGIN,
+          Referer: `${ANIMEONSEN_ORIGIN}/`,
+          Accept: "application/json",
+        },
+        signal: AbortSignal.timeout(10000),
+      }
+    );
+
+    if (!apiResp.ok) {
+      res.status(apiResp.status).json({ error: `AnimeonSen API returned ${apiResp.status}` });
+      return;
+    }
+
+    const json = await apiResp.json() as { data?: { uri?: { stream?: string; subtitles?: string } } };
+    const streamUrl = json.data?.uri?.stream ?? null;
+    const subtitleUrl = json.data?.uri?.subtitles ?? null;
+
+    if (!streamUrl) {
+      res.status(404).json({ error: "No stream URL in AnimeonSen response" });
+      return;
+    }
+
+    res.json({ streamUrl, subtitleUrl });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    res.status(502).json({ error: `AnimeonSen proxy error: ${msg}` });
+  }
+});
+
+/**
  * GET /api/animeonsen/stream?title=...&romajiTitle=...&ep=...
  *
  * Searches AnimeonSen for the given title, resolves the content_id,
