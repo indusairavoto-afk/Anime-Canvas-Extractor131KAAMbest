@@ -1258,23 +1258,36 @@ export default function WatchAniList() {
     // Get content ID from local state or localStorage
     const localContentId = animeonsenContentId || (localStorage.getItem(`na_animeonsen_${animeId}`) ?? "");
 
-    // Helper: given a content ID, fetch direct DASH/HLS stream via backend proxy (no CORS)
+    // Helper: given a content ID, try to get a direct DASH/HLS stream URL.
+    // Races client-side (with user's cookies) vs server-side proxy — first win is used.
     async function tryFetchStream(contentId: string, cancelled: () => boolean) {
-      try {
-        const params = new URLSearchParams({ contentId, ep: String(currentEp) });
-        const resp = await fetch(apiUrl(`/api/animeonsen/video?${params}`), {
-          signal: AbortSignal.timeout(10000),
-        });
-        if (cancelled()) return;
-        if (resp.ok) {
-          const json = await resp.json() as { streamUrl?: string; subtitleUrl?: string };
-          if (json.streamUrl && !cancelled()) {
-            setAnimeonsenStreamUrl(json.streamUrl);
-            if (json.subtitleUrl) setAnimeonsenSubtitleUrl(json.subtitleUrl);
-          }
-        }
-      } catch {
-        // Network error — iframe fallback still works
+      // Client-side fetch sends the user's animeonsen session cookie (credentials: "include").
+      // This works when the user IS logged into animeonsen.xyz in their browser.
+      const clientFetch = fetch(
+        `https://api.animeonsen.xyz/v4/content/${encodeURIComponent(contentId)}/video/${currentEp}`,
+        { credentials: "include", signal: AbortSignal.timeout(8000) }
+      ).then(async (r) => {
+        if (!r.ok) return null;
+        const j = await r.json() as { data?: { uri?: { stream?: string; subtitles?: string } } };
+        return j.data?.uri ?? null;
+      }).catch(() => null);
+
+      // Server-side proxy (no cookies, works only for public/unauthenticated content).
+      const params = new URLSearchParams({ contentId, ep: String(currentEp) });
+      const serverFetch = fetch(apiUrl(`/api/animeonsen/video?${params}`), {
+        signal: AbortSignal.timeout(10000),
+      }).then(async (r) => {
+        if (!r.ok) return null;
+        const j = await r.json() as { streamUrl?: string; subtitleUrl?: string };
+        return j.streamUrl ? { stream: j.streamUrl, subtitles: j.subtitleUrl ?? undefined } : null;
+      }).catch(() => null);
+
+      const [clientResult, serverResult] = await Promise.all([clientFetch, serverFetch]);
+      if (cancelled()) return;
+      const result = clientResult ?? serverResult;
+      if (result?.stream) {
+        setAnimeonsenStreamUrl(result.stream);
+        if (result.subtitles) setAnimeonsenSubtitleUrl(result.subtitles);
       }
     }
 
@@ -1893,15 +1906,29 @@ export default function WatchAniList() {
 
                 {/* ANIMEONSEN — iframe embed fallback when DASH stream unavailable */}
                 {server === "ANIMEONSEN" && !animeonsenStreamUrl && animeonsenIframeUrl && (
-                  <iframe
-                    key={`animeonsen-iframe-${animeId}-${currentEp}`}
-                    src={animeonsenIframeUrl}
-                    className="absolute inset-0 w-full h-full border-0"
-                    allow="autoplay; fullscreen; picture-in-picture"
-                    allowFullScreen
-                    title={`${title} Episode ${currentEp}`}
-                    onLoad={() => setTimeout(() => setIframeLoaded(true), 200)}
-                  />
+                  <div className="absolute inset-0">
+                    <iframe
+                      key={`animeonsen-iframe-${animeId}-${currentEp}`}
+                      src={animeonsenIframeUrl}
+                      className="absolute inset-0 w-full h-full border-0"
+                      allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
+                      allowFullScreen
+                      title={`${title} Episode ${currentEp}`}
+                      onLoad={() => setTimeout(() => setIframeLoaded(true), 200)}
+                    />
+                    {/* Login helper — shown floating over the iframe so user can log in if video is blank */}
+                    <div className="absolute top-2 right-2 z-20 flex items-center gap-2 bg-black/70 backdrop-blur-sm px-3 py-1.5 rounded-full border border-white/10 pointer-events-auto">
+                      <span className="text-white/50 text-[10px] font-mono uppercase tracking-widest">If blank:</span>
+                      <a
+                        href="https://www.animeonsen.xyz"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-green-400 text-[10px] font-mono font-bold uppercase tracking-widest hover:text-green-300 transition-colors"
+                      >
+                        Log in to AnimeonSen →
+                      </a>
+                    </div>
+                  </div>
                 )}
 
                 {/* KOTO native HLS player (bypasses mewcdn cross-origin player) */}
