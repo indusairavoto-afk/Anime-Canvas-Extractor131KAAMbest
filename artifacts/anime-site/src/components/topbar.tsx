@@ -118,8 +118,8 @@ export function Topbar() {
 
   const headerBg = useMemo(() =>
     scrolled
-      ? "rgba(10,10,10,0.55)"
-      : "linear-gradient(to bottom, rgba(0,0,0,0.45) 0%, transparent 100%)",
+      ? "rgba(8,8,8,0.60)"
+      : "transparent",
   [scrolled]);
 
   const openModal = useCallback(() => {
