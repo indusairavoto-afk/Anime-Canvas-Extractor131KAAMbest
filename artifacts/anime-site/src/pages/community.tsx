@@ -2,6 +2,7 @@ import { motion } from "framer-motion";
 import { useState } from "react";
 import { Link } from "wouter";
 import { ThumbsUp, MessageCircle, PenLine, X, Pin, Users } from "lucide-react";
+import { useAuth } from "@/contexts/auth-context";
 import {
   useListCommunityPosts,
   getListCommunityPostsQueryKey,
@@ -14,7 +15,10 @@ const CATEGORIES = ["All", "Discussion", "News", "Review", "Recommendation", "Fa
 const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.06 } } };
 const fadeUp = { hidden: { opacity: 0, y: 12 }, show: { opacity: 1, y: 0, transition: { duration: 0.4 } } };
 
+const GENERIC_AVATAR = "https://api.dicebear.com/7.x/avataaars/svg?seed=guest";
+
 export default function Community() {
+  const { user } = useAuth();
   const [category, setCategory] = useState("All");
   const [showForm, setShowForm] = useState(false);
   const [username, setUsername] = useState("");
@@ -170,7 +174,7 @@ export default function Community() {
         ) : (
           <motion.div variants={stagger} initial="hidden" animate="show" className="space-y-2">
             <div className="flex items-center gap-3 border border-white/5 p-4 mb-3">
-              <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=user" alt="" className="w-8 h-8 rounded-full grayscale flex-shrink-0" />
+              <img src={user?.avatarUrl ?? GENERIC_AVATAR} alt="" className="w-8 h-8 rounded-full object-cover flex-shrink-0 bg-zinc-700" />
               <button
                 onClick={() => setShowForm(true)}
                 className="flex-1 text-left text-white/25 text-sm hover:text-white/40 transition-colors"

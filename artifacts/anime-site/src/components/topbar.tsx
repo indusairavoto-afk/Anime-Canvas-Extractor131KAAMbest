@@ -182,10 +182,6 @@ export function Topbar() {
     }
   }, [results, activeIndex, closeModal, handleSelect, handleViewAll]);
 
-  const initials = user
-    ? user.displayName.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2)
-    : null;
-
   return (
     <>
       <header
@@ -230,9 +226,11 @@ export function Topbar() {
 
           {user ? (
             <Link href={`/u/${user.username}`}>
-              <div className="w-8 h-8 rounded-full bg-zinc-700 border border-white/20 flex items-center justify-center text-xs font-bold text-white/80 cursor-pointer hover:bg-zinc-600 transition-colors select-none uppercase">
-                {initials}
-              </div>
+              <img
+                src={user.avatarUrl}
+                alt={user.displayName}
+                className="w-8 h-8 rounded-full border border-white/20 cursor-pointer hover:border-white/40 transition-colors object-cover bg-zinc-700"
+              />
             </Link>
           ) : (
             <Link href="/login">

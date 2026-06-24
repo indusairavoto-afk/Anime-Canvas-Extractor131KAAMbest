@@ -1,6 +1,7 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { Link, useParams } from "wouter";
 import { useState, useEffect } from "react";
+import { useAuth } from "@/contexts/auth-context";
 import { ThumbsUp, Send, Play, Star, LayoutGrid, List, Search, ArrowLeft, Clock, Bookmark, BookmarkCheck, CheckCircle2, ChevronDown } from "lucide-react";
 import {
   useGetEpisode,
@@ -19,12 +20,15 @@ import { useWatchProgress } from "@/hooks/useWatchProgress";
 import { useWatchlist } from "@/hooks/useWatchlist";
 import { VideoPlayer } from "@/components/video-player";
 
+const GENERIC_AVATAR = "https://api.dicebear.com/7.x/avataaars/svg?seed=guest";
+
 export default function Watch() {
   const params = useParams();
   const episodeId = parseInt(params.episodeId ?? "0");
   const queryClient = useQueryClient();
   const { markWatched, isWatched } = useWatchProgress();
   const { toggle, isInList } = useWatchlist();
+  const { user } = useAuth();
 
   const [username, setUsername] = useState("");
   const [comment, setComment] = useState("");
@@ -326,7 +330,7 @@ export default function Watch() {
           </div>
 
           <div className="flex gap-3 mb-6 sm:mb-8">
-            <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=user" alt="" className="w-8 h-8 rounded-full grayscale flex-shrink-0 mt-1" />
+            <img src={user?.avatarUrl ?? GENERIC_AVATAR} alt="" className="w-8 h-8 rounded-full object-cover flex-shrink-0 mt-1 bg-zinc-700" />
             <div className="flex-1 border-b border-white/10">
               <input
                 type="text"

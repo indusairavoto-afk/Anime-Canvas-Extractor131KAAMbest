@@ -171,8 +171,6 @@ export default function ProfilePage() {
     );
   }
 
-  const initials = profile.displayName.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
-
   return (
     <div className="min-h-screen bg-black text-white">
       <div className="max-w-6xl mx-auto px-4 sm:px-8 py-8">
@@ -182,9 +180,11 @@ export default function ProfilePage() {
           <div className="lg:w-64 flex-shrink-0">
             <div className="bg-zinc-900 rounded-2xl p-6 flex flex-col items-center text-center sticky top-20">
               {/* Avatar */}
-              <div className="w-24 h-24 rounded-full bg-zinc-700 flex items-center justify-center text-2xl font-bold text-white/80 mb-4 select-none">
-                {initials}
-              </div>
+              <img
+                src={profile.avatarUrl}
+                alt={profile.displayName}
+                className="w-24 h-24 rounded-full object-cover bg-zinc-700 mb-4 border border-white/10"
+              />
 
               {/* Name + handle */}
               <h1 className="text-lg font-bold text-white">{profile.displayName}</h1>
