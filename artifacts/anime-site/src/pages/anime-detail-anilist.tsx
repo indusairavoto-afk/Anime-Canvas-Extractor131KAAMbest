@@ -315,7 +315,7 @@ export default function AnimeDetailAniList() {
     <>
     <div className="bg-black text-white min-h-screen">
       {/* Banner hero */}
-      <div className="relative h-[40vh] sm:h-[55vh] overflow-hidden">
+      <div className="relative h-[70vh] sm:h-[85vh] overflow-hidden">
         {anime.bannerImage ? (
           <img
             src={anime.bannerImage}
