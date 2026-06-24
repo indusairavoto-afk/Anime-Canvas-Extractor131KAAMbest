@@ -50,7 +50,7 @@ function buildRankingQuery(period: Period) {
 }
 
 async function fetchAniList(query: string): Promise<AniMedia[]> {
-  const res = await fetch("https://graphql.anilist.co", {
+  const res = await fetch("/api/anilist", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ query }),

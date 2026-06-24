@@ -279,7 +279,7 @@ export default function WatchAniList() {
     setJikanEps([]);
     setNewEpNotice(null);
     prevNextAiringEpRef.current = null;
-    fetch("https://graphql.anilist.co", {
+    fetch("/api/anilist", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ query: WATCH_QUERY, variables: { id: animeId } }),
@@ -308,7 +308,7 @@ export default function WatchAniList() {
 
     async function pollForNewEp() {
       try {
-        const r = await fetch("https://graphql.anilist.co", {
+        const r = await fetch("/api/anilist", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ query: WATCH_QUERY, variables: { id: animeId } }),

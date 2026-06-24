@@ -258,7 +258,7 @@ export default function AnimeDetailAniList() {
     if (!anilistId) return;
     setLoading(true);
     setError(false);
-    fetch("https://graphql.anilist.co", {
+    fetch("/api/anilist", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ query: DETAIL_QUERY, variables: { id: anilistId } }),

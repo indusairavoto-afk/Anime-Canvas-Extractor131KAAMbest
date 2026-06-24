@@ -93,12 +93,12 @@ export default function CharacterDetail() {
     setError(false);
 
     Promise.all([
-      fetch("https://graphql.anilist.co", {
+      fetch("/api/anilist", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query: CHAR_QUERY, variables: { id: charId } }),
       }).then((r) => r.json()),
-      fetch("https://graphql.anilist.co", {
+      fetch("/api/anilist", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query: VA_QUERY, variables: { id: charId } }),

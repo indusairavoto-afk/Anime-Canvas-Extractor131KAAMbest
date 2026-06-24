@@ -219,7 +219,7 @@ export default function Schedule() {
 
   useEffect(() => {
     setLoading(true);
-    fetch("https://graphql.anilist.co", {
+    fetch("/api/anilist", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ query: ANILIST_QUERY }),

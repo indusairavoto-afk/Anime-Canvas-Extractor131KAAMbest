@@ -81,7 +81,7 @@ async function fetchManga(
   if (genre) vars.genre = genre;
   if (format) vars.format = format;
 
-  const res = await fetch("https://graphql.anilist.co", {
+  const res = await fetch("/api/anilist", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ query: QUERY, variables: vars }),

@@ -16,7 +16,7 @@ interface AniResult {
 
 async function aniListQuery(q: string, perPage = 12): Promise<AniResult[]> {
   try {
-    const res = await fetch("https://graphql.anilist.co", {
+    const res = await fetch("/api/anilist", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

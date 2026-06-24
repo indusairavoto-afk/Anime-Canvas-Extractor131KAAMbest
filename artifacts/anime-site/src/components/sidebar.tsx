@@ -21,7 +21,7 @@ function useAiringCount() {
     const now = Math.floor(Date.now() / 1000);
     const dayStart = now - (now % 86400);
     const dayEnd = dayStart + 86400;
-    fetch("https://graphql.anilist.co", {
+    fetch("/api/anilist", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

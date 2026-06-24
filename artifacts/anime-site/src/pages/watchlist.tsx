@@ -51,7 +51,7 @@ function WatchlistCard({ animeId, onRemove }: { animeId: number; onRemove: () =>
     if (!localError) return;
     let alive = true;
     setAnilistLoading(true);
-    fetch("https://graphql.anilist.co", {
+    fetch("/api/anilist", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ query: ANILIST_ANIME_QUERY, variables: { id: animeId } }),
@@ -225,7 +225,7 @@ function MangaReadCard({
 
   useEffect(() => {
     let alive = true;
-    fetch("https://graphql.anilist.co", {
+    fetch("/api/anilist", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ query: MANGA_QUERY, variables: { id: mangaId } }),
