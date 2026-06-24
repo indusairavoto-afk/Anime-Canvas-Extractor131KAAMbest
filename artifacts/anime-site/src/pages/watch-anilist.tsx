@@ -195,6 +195,9 @@ export default function WatchAniList() {
   const [animeonsenError, setAnimeonsenError] = useState<string | null>(null);
   const [animeonsenContentId, setAnimeonsenContentId] = useState<string>("");
   const [animeonsenIdInput, setAnimeonsenIdInput] = useState<string>("");
+  // When true, a popup is open establishing Cloudflare clearance — show a connecting overlay
+  const [animeonsenInitializing, setAnimeonsenInitializing] = useState(false);
+  const [animeonsenCountdown, setAnimeonsenCountdown] = useState(0);
   const [anizoneHlsUrl, setAnizoneHlsUrl] = useState<string | null>(null);
   const [anizoneSubtitles, setAnizoneSubtitles] = useState<{ src: string; label: string; srclang: string; isDefault: boolean }[]>([]);
   const [anizoneStreamLoading, setAnizoneStreamLoading] = useState(false);
@@ -1871,8 +1874,21 @@ export default function WatchAniList() {
                   />
                 )}
 
-                {/* ANIMEONSEN — iframe embed fallback when DASH stream unavailable */}
-                {server === "ANIMEONSEN" && !animeonsenStreamUrl && animeonsenIframeUrl && (
+                {/* ANIMEONSEN — "Connecting…" overlay while popup establishes Cloudflare cookies */}
+                {server === "ANIMEONSEN" && animeonsenInitializing && (
+                  <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-4" style={{ background: "rgba(0,0,0,0.93)" }}>
+                    {banner && <img src={banner} alt="" className="absolute inset-0 w-full h-full object-cover opacity-10 scale-110 blur-sm pointer-events-none" />}
+                    <div className="relative z-10 flex flex-col items-center gap-4 text-center px-6">
+                      <div className="w-10 h-10 rounded-full border-2 border-green-400 border-t-transparent animate-spin" />
+                      <p className="text-white text-sm font-semibold tracking-wide">Connecting to AnimeonSen…</p>
+                      <p className="text-white/40 text-[11px] font-mono">A verification window opened — it will close automatically in {animeonsenCountdown}s</p>
+                      <p className="text-white/25 text-[10px] font-mono">(first time only per session)</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* ANIMEONSEN — iframe embed; hidden while popup initializing so CF cookies load first */}
+                {server === "ANIMEONSEN" && !animeonsenStreamUrl && animeonsenIframeUrl && !animeonsenInitializing && (
                   <div className="absolute inset-0">
                     <iframe
                       key={`animeonsen-iframe-${animeId}-${currentEp}`}
@@ -1883,17 +1899,16 @@ export default function WatchAniList() {
                       title={`${title} Episode ${currentEp}`}
                       onLoad={() => setTimeout(() => setIframeLoaded(true), 200)}
                     />
-                    {/* Helper shown if player shows blank — visiting animeonsen.xyz directly first resolves Cloudflare cookies */}
+                    {/* Fallback helper if video is still blank after popup setup */}
                     <div className="absolute top-2 right-2 z-20 flex items-center gap-2 bg-black/70 backdrop-blur-sm px-3 py-1.5 rounded-full border border-white/10 pointer-events-auto">
                       <span className="text-white/50 text-[10px] font-mono uppercase tracking-widest">If blank:</span>
-                      <a
-                        href="https://www.animeonsen.xyz"
-                        target="_blank"
-                        rel="noopener noreferrer"
+                      <button
+                        onClick={() => sessionStorage.removeItem("ao_cf_ready")}
                         className="text-green-400 text-[10px] font-mono font-bold uppercase tracking-widest hover:text-green-300 transition-colors"
+                        title="Click then re-select ANIMEONSEN to re-run setup"
                       >
-                        Open AnimeonSen ↗
-                      </a>
+                        Re-setup ↺
+                      </button>
                     </div>
                   </div>
                 )}
@@ -2535,7 +2550,28 @@ export default function WatchAniList() {
                 { key: "KOTO",       label: "KOTO",       color: "teal",   onClick: () => { userPickedRef.current = true; setServer("KOTO"); setIframeLoaded(false); } },
                 { key: "ANIZONE",    label: "ANIZONE",    color: "blue",   onClick: () => { userPickedRef.current = true; setServer("ANIZONE"); setIframeLoaded(false); } },
                 { key: "MIRURO",     label: "MIRURO",     color: "purple", onClick: () => { userPickedRef.current = true; setServer("MIRURO"); setIframeLoaded(false); } },
-                { key: "ANIMEONSEN", label: "ANIMEONSEN", color: "green",  onClick: () => { userPickedRef.current = true; setServer("ANIMEONSEN"); setIframeLoaded(false); } },
+                { key: "ANIMEONSEN", label: "ANIMEONSEN", color: "green", onClick: () => {
+                  userPickedRef.current = true;
+                  setServer("ANIMEONSEN");
+                  setIframeLoaded(false);
+                  // Only open the CF-clearance popup once per session
+                  if (sessionStorage.getItem("ao_cf_ready")) return;
+                  // MUST be synchronous in click handler — browsers allow window.open here
+                  const popupUrl = animeonsenIframeUrl ?? "https://www.animeonsen.xyz";
+                  const popup = window.open(popupUrl, "ao_cf_init",
+                    "width=640,height=440,left=200,top=150,menubar=no,toolbar=no,location=no,status=no,resizable=no");
+                  if (!popup) return; // popup was blocked — skip
+                  setAnimeonsenInitializing(true);
+                  setAnimeonsenCountdown(6);
+                  const cdInterval = setInterval(() => setAnimeonsenCountdown(c => c - 1), 1000);
+                  setTimeout(() => {
+                    clearInterval(cdInterval);
+                    try { popup.close(); } catch { /* ignore */ }
+                    sessionStorage.setItem("ao_cf_ready", "1");
+                    setAnimeonsenInitializing(false);
+                    setAnimeonsenCountdown(0);
+                  }, 6500);
+                }},
               ] as const).map(({ key, label, color, onClick }) => {
                 const active = server === key;
                 const health = serverHealth[key];
