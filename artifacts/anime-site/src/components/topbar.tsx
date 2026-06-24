@@ -118,8 +118,8 @@ export function Topbar() {
 
   const headerBg = useMemo(() =>
     scrolled
-      ? "rgba(8,8,8,0.60)"
-      : "transparent",
+      ? "rgba(0,0,0,0.92)"
+      : "linear-gradient(to bottom, rgba(0,0,0,0.72) 0%, transparent 100%)",
   [scrolled]);
 
   const openModal = useCallback(() => {
@@ -186,12 +186,7 @@ export function Topbar() {
     <>
       <header
         className="fixed top-0 left-0 right-0 z-50 h-20 flex items-center px-3 sm:px-5 gap-3"
-        style={{
-          background: headerBg,
-          backdropFilter: scrolled ? "blur(16px)" : "none",
-          WebkitBackdropFilter: scrolled ? "blur(16px)" : "none",
-          transition: "background 0.35s ease, backdrop-filter 0.35s ease",
-        }}
+        style={{ background: headerBg, transition: "background 0.35s ease" }}
       >
         <Link href="/" className="flex-shrink-0 flex items-center">
           <div className="h-14 overflow-hidden flex-shrink-0" style={{ width: 210 }}>
@@ -205,7 +200,7 @@ export function Topbar() {
 
         <button
           onClick={openModal}
-          className="hidden sm:flex flex-1 max-w-lg items-center gap-3 px-4 py-2 transition-colors text-left"
+          className="hidden sm:flex flex-1 max-w-lg items-center gap-3 bg-white/[0.04] border border-white/10 px-4 py-2 hover:border-white/25 transition-colors text-left"
         >
           <Search className="w-4 h-4 text-white/30 flex-shrink-0" />
           <span className="flex-1 text-white/25 text-sm">Search anime...</span>
@@ -234,7 +229,7 @@ export function Topbar() {
             </Link>
           ) : (
             <Link href="/login">
-              <button className="flex items-center gap-1.5 text-xs text-white/50 hover:text-white transition-colors px-3 py-1.5">
+              <button className="flex items-center gap-1.5 text-xs text-white/50 hover:text-white transition-colors border border-white/10 hover:border-white/30 px-3 py-1.5 rounded-full">
                 <LogIn className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">Sign in</span>
               </button>

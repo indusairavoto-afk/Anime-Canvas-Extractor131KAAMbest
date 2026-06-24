@@ -315,13 +315,13 @@ export default function AnimeDetailAniList() {
     <>
     <div className="bg-black text-white min-h-screen">
       {/* Banner hero */}
-      <div className="relative h-[70vh] sm:h-[85vh] overflow-hidden">
+      <div className="relative h-[40vh] sm:h-[55vh] overflow-hidden">
         {anime.bannerImage ? (
           <img
             src={anime.bannerImage}
             alt={title}
             className="absolute inset-0 w-full h-full object-cover"
-            style={{ filter: "brightness(0.5) contrast(1.1)" }}
+            style={{ filter: "brightness(0.3) contrast(1.1)" }}
           />
         ) : (
           <div
@@ -330,13 +330,13 @@ export default function AnimeDetailAniList() {
               backgroundImage: `url(${cover})`,
               backgroundSize: "cover",
               backgroundPosition: "center 20%",
-              filter: "brightness(0.35) blur(20px)",
+              filter: "brightness(0.2) blur(20px)",
               transform: "scale(1.1)",
             }}
           />
         )}
-        <div className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-transparent" />
-        <div className="absolute inset-0 bg-gradient-to-r from-black/50 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-r from-black/60 to-transparent" />
         <div className="absolute top-4 sm:top-6 left-4 sm:left-8 lg:left-16">
           <Link href="/browse">
             <button className="flex items-center gap-2 text-white/50 hover:text-white text-xs sm:text-sm font-mono uppercase tracking-widest transition-colors">
