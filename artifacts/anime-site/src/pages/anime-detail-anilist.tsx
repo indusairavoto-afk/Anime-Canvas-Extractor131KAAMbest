@@ -313,9 +313,9 @@ export default function AnimeDetailAniList() {
 
   return (
     <>
-    <div className="bg-black text-white min-h-screen">
+    <div className="bg-black text-white min-h-screen -mt-14">
       {/* Banner hero */}
-      <div className="relative h-[40vh] sm:h-[55vh] overflow-hidden">
+      <div className="relative h-[55vh] sm:h-[70vh] overflow-hidden">
         {anime.bannerImage ? (
           <img
             src={anime.bannerImage}
@@ -337,7 +337,7 @@ export default function AnimeDetailAniList() {
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/30 to-transparent" />
         <div className="absolute inset-0 bg-gradient-to-r from-black/50 to-transparent" />
-        <div className="absolute top-4 sm:top-6 left-4 sm:left-8 lg:left-16">
+        <div className="absolute top-24 sm:top-24 left-4 sm:left-8 lg:left-16">
           <Link href="/browse">
             <button className="flex items-center gap-2 text-white/50 hover:text-white text-xs sm:text-sm font-mono uppercase tracking-widest transition-colors">
               <ArrowLeft className="w-4 h-4" /> Browse
