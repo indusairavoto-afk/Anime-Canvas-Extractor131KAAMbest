@@ -1258,47 +1258,16 @@ export default function WatchAniList() {
     // Get content ID from local state or localStorage
     const localContentId = animeonsenContentId || (localStorage.getItem(`na_animeonsen_${animeId}`) ?? "");
 
-    // Helper: given a content ID, try to get a direct DASH/HLS stream URL.
-    // Races client-side (with user's cookies) vs server-side proxy — first win is used.
-    async function tryFetchStream(contentId: string, cancelled: () => boolean) {
-      // Client-side fetch sends the user's animeonsen session cookie (credentials: "include").
-      // This works when the user IS logged into animeonsen.xyz in their browser.
-      const clientFetch = fetch(
-        `https://api.animeonsen.xyz/v4/content/${encodeURIComponent(contentId)}/video/${currentEp}`,
-        { credentials: "include", signal: AbortSignal.timeout(8000) }
-      ).then(async (r) => {
-        if (!r.ok) return null;
-        const j = await r.json() as { data?: { uri?: { stream?: string; subtitles?: string } } };
-        return j.data?.uri ?? null;
-      }).catch(() => null);
-
-      // Server-side proxy (no cookies, works only for public/unauthenticated content).
-      const params = new URLSearchParams({ contentId, ep: String(currentEp) });
-      const serverFetch = fetch(apiUrl(`/api/animeonsen/video?${params}`), {
-        signal: AbortSignal.timeout(10000),
-      }).then(async (r) => {
-        if (!r.ok) return null;
-        const j = await r.json() as { streamUrl?: string; subtitleUrl?: string };
-        return j.streamUrl ? { stream: j.streamUrl, subtitles: j.subtitleUrl ?? undefined } : null;
-      }).catch(() => null);
-
-      const [clientResult, serverResult] = await Promise.all([clientFetch, serverFetch]);
-      if (cancelled()) return;
-      const result = clientResult ?? serverResult;
-      if (result?.stream) {
-        setAnimeonsenStreamUrl(result.stream);
-        if (result.subtitles) setAnimeonsenSubtitleUrl(result.subtitles);
-      }
-    }
+    // No server-side stream extraction — api.animeonsen.xyz is IP-blocked from Replit servers.
+    // The iframe is the primary player: animeonsen's own player runs in the user's browser
+    // where their IP is valid and Cloudflare passes without login.
 
     if (localContentId) {
-      // Construct the watch URL immediately (for the launch panel fallback)
+      // Content ID already known — set iframe URL immediately, no server call needed
       setAnimeonsenIframeUrl(`https://www.animeonsen.xyz/watch/${localContentId}?episode=${currentEp}`);
       setAnimeonsenLoading(false);
       setAnimeonsenError(null);
-      let isCancelled = false;
-      tryFetchStream(localContentId, () => isCancelled);
-      return () => { isCancelled = true; };
+      return;
     }
 
     // No cached ID — search by title via our backend
@@ -1319,8 +1288,6 @@ export default function WatchAniList() {
           setAnimeonsenIdInput(data.contentId);
           localStorage.setItem(`na_animeonsen_${animeId}`, data.contentId);
           setAnimeonsenIframeUrl(data.iframeUrl);
-          // Also try to get the direct stream client-side
-          tryFetchStream(data.contentId, () => cancelled);
         } else {
           setAnimeonsenError(data.error ?? "Anime not found on AnimeonSen");
         }
@@ -1916,7 +1883,7 @@ export default function WatchAniList() {
                       title={`${title} Episode ${currentEp}`}
                       onLoad={() => setTimeout(() => setIframeLoaded(true), 200)}
                     />
-                    {/* Login helper — shown floating over the iframe so user can log in if video is blank */}
+                    {/* Helper shown if player shows blank — visiting animeonsen.xyz directly first resolves Cloudflare cookies */}
                     <div className="absolute top-2 right-2 z-20 flex items-center gap-2 bg-black/70 backdrop-blur-sm px-3 py-1.5 rounded-full border border-white/10 pointer-events-auto">
                       <span className="text-white/50 text-[10px] font-mono uppercase tracking-widest">If blank:</span>
                       <a
@@ -1925,7 +1892,7 @@ export default function WatchAniList() {
                         rel="noopener noreferrer"
                         className="text-green-400 text-[10px] font-mono font-bold uppercase tracking-widest hover:text-green-300 transition-colors"
                       >
-                        Log in to AnimeonSen →
+                        Open AnimeonSen ↗
                       </a>
                     </div>
                   </div>

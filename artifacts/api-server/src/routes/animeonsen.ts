@@ -52,27 +52,19 @@ function scoreHit(hit: SearchHit, query: string): number {
 function buildQueryVariants(rawTitle: string): string[] {
   const variants: string[] = [rawTitle];
 
-  // Strip season/part info
   const noSeason = rawTitle.replace(/\s*(season|part)\s*\d+/gi, "").trim();
   if (noSeason && noSeason !== rawTitle) variants.push(noSeason);
   const noOrdinal = rawTitle.replace(/\s*\d+(st|nd|rd|th)\s*season/gi, "").trim();
   if (noOrdinal && noOrdinal !== rawTitle) variants.push(noOrdinal);
 
-  // First 5 words (useful for long titles)
   const words = rawTitle.trim().split(/\s+/);
-  if (words.length > 5) {
-    variants.push(words.slice(0, 5).join(" "));
-  }
-  // First 3 words
-  if (words.length > 3) {
-    variants.push(words.slice(0, 3).join(" "));
-  }
-  // Without stop words ("of", "the", "a", "an", "in", "on", "at", "to")
+  if (words.length > 5) variants.push(words.slice(0, 5).join(" "));
+  if (words.length > 3) variants.push(words.slice(0, 3).join(" "));
+
   const stops = new Set(["of", "the", "a", "an", "in", "on", "at", "to", "and"]);
   const noStops = words.filter(w => !stops.has(w.toLowerCase())).join(" ");
   if (noStops && noStops !== rawTitle) variants.push(noStops);
 
-  // Deduplicate while preserving order
   return variants.filter((q, i, arr) => q && arr.indexOf(q) === i);
 }
 
@@ -105,7 +97,6 @@ async function searchContentId(titles: string[]): Promise<{ contentId: string; m
           const score = scoreHit(hit, rawTitle);
           if (!best || score > best.score) best = { hit, score };
         }
-        // Lower threshold to 120 (≥2 matching words) to catch partial matches
         if (best && best.score >= 120) {
           return { contentId: best.hit.content_id, matchedTitle: best.hit.content_title_en || best.hit.content_title };
         }
@@ -118,72 +109,23 @@ async function searchContentId(titles: string[]): Promise<{ contentId: string; m
 }
 
 /**
- * GET /api/animeonsen/video?contentId=...&ep=...
- *
- * Server-side proxy for the AnimeonSen v4 video API.
- * Returns the direct DASH/HLS stream URL and subtitle URL.
- * Done server-side to bypass CORS restrictions on api.animeonsen.xyz.
- */
-router.get("/animeonsen/video", async (req, res) => {
-  const contentId = (req.query.contentId as string | undefined)?.trim() ?? "";
-  const ep = (req.query.ep as string | undefined)?.trim() ?? "1";
-
-  if (!contentId) {
-    res.status(400).json({ error: "contentId is required" });
-    return;
-  }
-  const epNum = parseInt(ep);
-  if (isNaN(epNum) || epNum <= 0) {
-    res.status(400).json({ error: `Invalid ep: "${ep}"` });
-    return;
-  }
-
-  try {
-    const apiResp = await fetch(
-      `https://api.animeonsen.xyz/v4/content/${encodeURIComponent(contentId)}/video/${epNum}`,
-      {
-        headers: {
-          ...BROWSER_HEADERS,
-          Origin: ANIMEONSEN_ORIGIN,
-          Referer: `${ANIMEONSEN_ORIGIN}/`,
-          Accept: "application/json",
-        },
-        signal: AbortSignal.timeout(10000),
-      }
-    );
-
-    if (!apiResp.ok) {
-      res.status(apiResp.status).json({ error: `AnimeonSen API returned ${apiResp.status}` });
-      return;
-    }
-
-    const json = await apiResp.json() as { data?: { uri?: { stream?: string; subtitles?: string } } };
-    const streamUrl = json.data?.uri?.stream ?? null;
-    const subtitleUrl = json.data?.uri?.subtitles ?? null;
-
-    if (!streamUrl) {
-      res.status(404).json({ error: "No stream URL in AnimeonSen response" });
-      return;
-    }
-
-    res.json({ streamUrl, subtitleUrl });
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : "Unknown error";
-    res.status(502).json({ error: `AnimeonSen proxy error: ${msg}` });
-  }
-});
-
-/**
  * GET /api/animeonsen/stream?title=...&romajiTitle=...&ep=...
  *
  * Searches AnimeonSen for the given title, resolves the content_id,
  * and returns the direct watch URL (embeddable as iframe).
+ *
+ * Note: api.animeonsen.xyz is Cloudflare-protected and blocks server-side requests.
+ * The iframe URL is returned so the browser handles video playback directly.
  */
 router.get("/animeonsen/stream", async (req, res) => {
   const title = (req.query.title as string | undefined)?.trim() ?? "";
   const romajiTitle = (req.query.romajiTitle as string | undefined)?.trim() ?? "";
   const ep = (req.query.ep as string | undefined)?.trim() ?? "1";
-  const cachedContentId = (req.query.contentId as string | undefined)?.trim() ?? "";
+
+  if (!title && !romajiTitle) {
+    res.status(400).json({ error: "title or romajiTitle is required" });
+    return;
+  }
 
   const epNum = parseInt(ep);
   if (isNaN(epNum) || epNum <= 0) {
@@ -191,26 +133,18 @@ router.get("/animeonsen/stream", async (req, res) => {
     return;
   }
 
-  // If caller already has a cached content_id, skip search
-  if (cachedContentId) {
-    const iframeUrl = `${ANIMEONSEN_ORIGIN}/watch/${cachedContentId}?episode=${epNum}`;
-    res.json({ iframeUrl, contentId: cachedContentId });
-    return;
-  }
+  const titlesToSearch = [title, romajiTitle].filter(Boolean);
+  const result = await searchContentId(titlesToSearch);
 
-  if (!title && !romajiTitle) {
-    res.status(400).json({ error: "title or romajiTitle required" });
-    return;
-  }
-
-  const result = await searchContentId([title, romajiTitle].filter(Boolean));
   if (!result) {
-    res.status(404).json({ error: "Anime not found on AnimeonSen" });
+    res.status(404).json({ error: "AnimeonSen: title not found", searched: titlesToSearch });
     return;
   }
 
-  const iframeUrl = `${ANIMEONSEN_ORIGIN}/watch/${result.contentId}?episode=${epNum}`;
-  res.json({ iframeUrl, contentId: result.contentId, matchedTitle: result.matchedTitle });
+  const { contentId, matchedTitle } = result;
+  const iframeUrl = `${ANIMEONSEN_ORIGIN}/watch/${contentId}?episode=${epNum}`;
+
+  res.json({ iframeUrl, contentId, matchedTitle, ep: epNum });
 });
 
 export default router;
