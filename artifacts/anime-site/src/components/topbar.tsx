@@ -118,8 +118,8 @@ export function Topbar() {
 
   const headerBg = useMemo(() =>
     scrolled
-      ? "rgba(0,0,0,0.92)"
-      : "linear-gradient(to bottom, rgba(0,0,0,0.72) 0%, transparent 100%)",
+      ? "rgba(10,10,10,0.55)"
+      : "linear-gradient(to bottom, rgba(0,0,0,0.45) 0%, transparent 100%)",
   [scrolled]);
 
   const openModal = useCallback(() => {
@@ -190,7 +190,12 @@ export function Topbar() {
     <>
       <header
         className="fixed top-0 left-0 right-0 z-50 h-20 flex items-center px-3 sm:px-5 gap-3"
-        style={{ background: headerBg, transition: "background 0.35s ease" }}
+        style={{
+          background: headerBg,
+          backdropFilter: scrolled ? "blur(16px)" : "none",
+          WebkitBackdropFilter: scrolled ? "blur(16px)" : "none",
+          transition: "background 0.35s ease, backdrop-filter 0.35s ease",
+        }}
       >
         <Link href="/" className="flex-shrink-0 flex items-center">
           <div className="h-14 overflow-hidden flex-shrink-0" style={{ width: 210 }}>
