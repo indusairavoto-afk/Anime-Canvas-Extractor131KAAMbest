@@ -205,7 +205,7 @@ export function Topbar() {
 
         <button
           onClick={openModal}
-          className="hidden sm:flex flex-1 max-w-lg items-center gap-3 bg-white/[0.04] border border-white/10 px-4 py-2 hover:border-white/25 transition-colors text-left"
+          className="hidden sm:flex flex-1 max-w-lg items-center gap-3 px-4 py-2 transition-colors text-left"
         >
           <Search className="w-4 h-4 text-white/30 flex-shrink-0" />
           <span className="flex-1 text-white/25 text-sm">Search anime...</span>
@@ -234,7 +234,7 @@ export function Topbar() {
             </Link>
           ) : (
             <Link href="/login">
-              <button className="flex items-center gap-1.5 text-xs text-white/50 hover:text-white transition-colors border border-white/10 hover:border-white/30 px-3 py-1.5 rounded-full">
+              <button className="flex items-center gap-1.5 text-xs text-white/50 hover:text-white transition-colors px-3 py-1.5">
                 <LogIn className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">Sign in</span>
               </button>
