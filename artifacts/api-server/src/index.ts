@@ -2,6 +2,7 @@ import http from "http";
 import app from "./app";
 import { logger } from "./lib/logger";
 import { attachWatchTogether } from "./watch-together";
+import { startAutoSync } from "./lib/anilist-sync";
 
 const rawPort = process.env["PORT"];
 
@@ -27,4 +28,5 @@ server.listen(port, (err?: Error) => {
   }
 
   logger.info({ port }, "Server listening");
+  startAutoSync();
 });

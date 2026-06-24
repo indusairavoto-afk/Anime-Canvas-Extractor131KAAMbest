@@ -8,6 +8,7 @@ export const episodeTypeEnum = pgEnum("episode_type", ["sub", "dub"]);
 
 export const animeTable = pgTable("anime", {
   id: serial("id").primaryKey(),
+  anilistId: integer("anilist_id").unique(),
   title: text("title").notNull(),
   japaneseTitle: text("japanese_title"),
   description: text("description").notNull(),
@@ -25,6 +26,7 @@ export const animeTable = pgTable("anime", {
   isTrending: boolean("is_trending").notNull().default(false),
   isFeatured: boolean("is_featured").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
 export const episodeTable = pgTable("episode", {
@@ -172,7 +174,19 @@ export const streamReportTable = pgTable("stream_report", {
 
 export type StreamReport = typeof streamReportTable.$inferSelect;
 
-export const insertAnimeSchema = createInsertSchema(animeTable).omit({ id: true, createdAt: true });
+export const anilistSyncLogTable = pgTable("anilist_sync_log", {
+  id: serial("id").primaryKey(),
+  startedAt: timestamp("started_at").notNull().defaultNow(),
+  finishedAt: timestamp("finished_at"),
+  status: text("status").notNull().default("running"),
+  upserted: integer("upserted").notNull().default(0),
+  errors: integer("errors").notNull().default(0),
+  message: text("message"),
+});
+
+export type AnilistSyncLog = typeof anilistSyncLogTable.$inferSelect;
+
+export const insertAnimeSchema = createInsertSchema(animeTable).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertEpisodeSchema = createInsertSchema(episodeTable).omit({ id: true, createdAt: true });
 export const insertCommentSchema = createInsertSchema(commentTable).omit({ id: true, createdAt: true });
 export const insertCommunityPostSchema = createInsertSchema(communityPostTable).omit({ id: true, createdAt: true });
