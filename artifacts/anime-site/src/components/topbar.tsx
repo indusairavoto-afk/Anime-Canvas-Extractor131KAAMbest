@@ -117,9 +117,7 @@ export function Topbar() {
   }, []);
 
   const headerBg = useMemo(() =>
-    scrolled
-      ? "rgba(0,0,0,0.92)"
-      : "linear-gradient(to bottom, rgba(0,0,0,0.72) 0%, transparent 100%)",
+    scrolled ? "rgba(0,0,0,0.85)" : "transparent",
   [scrolled]);
 
   const openModal = useCallback(() => {
@@ -200,7 +198,7 @@ export function Topbar() {
 
         <button
           onClick={openModal}
-          className="hidden sm:flex flex-1 max-w-lg items-center gap-3 bg-white/[0.04] border border-white/10 px-4 py-2 hover:border-white/25 transition-colors text-left"
+          className="hidden sm:flex flex-1 max-w-lg items-center gap-3 bg-black/40 backdrop-blur-sm rounded-full px-4 py-2 hover:bg-black/55 transition-colors text-left"
         >
           <Search className="w-4 h-4 text-white/30 flex-shrink-0" />
           <span className="flex-1 text-white/25 text-sm">Search anime...</span>
@@ -229,7 +227,7 @@ export function Topbar() {
             </Link>
           ) : (
             <Link href="/login">
-              <button className="flex items-center gap-1.5 text-xs text-white/50 hover:text-white transition-colors border border-white/10 hover:border-white/30 px-3 py-1.5 rounded-full">
+              <button className="flex items-center gap-1.5 text-xs text-white/80 hover:text-white transition-colors bg-black/40 backdrop-blur-sm hover:bg-black/55 px-4 py-2 rounded-full">
                 <LogIn className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">Sign in</span>
               </button>
