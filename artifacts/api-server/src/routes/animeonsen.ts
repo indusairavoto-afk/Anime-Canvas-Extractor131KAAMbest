@@ -386,30 +386,15 @@ html,body{margin:0;padding:0;background:#000;overflow:hidden}
     } catch(e){ return null; }
   }
 
-  function silenceMedia(){
-    try {
-      document.querySelectorAll('video,audio').forEach(function(el){
-        el.muted = true; el.volume = 0;
-        el.style.opacity = '0';
-        el.style.pointerEvents = 'none';
-      });
-    } catch(e){}
-  }
-
   function dispatch(hls){
     if (_dispatched) return;
     _dispatched = true;
-    silenceMedia();
     try { if (window.opener) window.opener.postMessage({type:'ao_hls',hls:hls},'*'); } catch(e){}
     try { window.parent.postMessage({type:'ao_hls',hls:hls},'*'); } catch(e){}
   }
 
-  /* Silence any media that loads after the page renders */
-  var _mo = new MutationObserver(function(){ silenceMedia(); });
+  /* Re-trigger router navigation after DOM is ready */
   document.addEventListener('DOMContentLoaded', function(){
-    _mo.observe(document.body || document.documentElement, {childList:true, subtree:true});
-    silenceMedia();
-    /* Re-trigger router navigation after DOM is ready */
     try {
       var targetPath = '/watch/' + CONTENT_ID + '?episode=' + EP;
       history.replaceState(null, '', targetPath);
