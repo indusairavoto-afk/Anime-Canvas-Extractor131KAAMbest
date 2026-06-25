@@ -327,9 +327,10 @@ router.get("/animeonsen/proxy-watch", async (req, res) => {
   const injectedScript = `
 <base href="https://www.animeonsen.xyz/">
 <style>
-/* Hide all UI immediately — this page is used as an invisible stream extractor */
+/* Hide all UI — used as invisible stream extractor only */
 html,body{visibility:hidden!important;overflow:hidden!important;pointer-events:none!important}
-video,audio{display:none!important;visibility:hidden!important}
+/* Use opacity:0 NOT display:none — video must still initialize to trigger the API call */
+video,audio{opacity:0!important;pointer-events:none!important}
 </style>
 <script>
 (function(){
@@ -338,6 +339,24 @@ video,audio{display:none!important;visibility:hidden!important}
   var CONTENT_ID='${safeContentId}';
   var EP='${safeEp}';
   var _dispatched = false;
+
+  /* --- Spoof window.location so the SPA router navigates to the correct watch page ---
+     The SPA is served from our proxy URL (/api/animeonsen/proxy-watch) but needs to
+     think it's at /watch/{contentId}?episode={ep} so its client-side router renders
+     the video player component and calls the video API. */
+  try {
+    var targetPath = '/watch/' + CONTENT_ID + '?episode=' + EP;
+    history.replaceState(null, '', targetPath);
+    /* Fire popstate so any already-mounted router re-evaluates the location */
+    window.dispatchEvent(new PopStateEvent('popstate', { state: null }));
+    /* Also patch location.href getter as a belt-and-suspenders fallback */
+    try {
+      Object.defineProperty(window, 'location', {
+        configurable: true,
+        get: function(){ return window.location; }
+      });
+    } catch(e){}
+  } catch(e){}
 
   /* --- cookie patch: expose ao.session so the AO player derives its token --- */
   try {
@@ -372,8 +391,9 @@ video,audio{display:none!important;visibility:hidden!important}
   function silenceMedia(){
     try {
       document.querySelectorAll('video,audio').forEach(function(el){
-        el.pause(); el.muted = true; el.volume = 0;
-        el.style.display = 'none';
+        el.muted = true; el.volume = 0;
+        el.style.opacity = '0';
+        el.style.pointerEvents = 'none';
       });
     } catch(e){}
   }
@@ -391,6 +411,13 @@ video,audio{display:none!important;visibility:hidden!important}
   document.addEventListener('DOMContentLoaded', function(){
     _mo.observe(document.body || document.documentElement, {childList:true, subtree:true});
     silenceMedia();
+    /* Re-trigger router navigation after DOM is ready */
+    try {
+      var targetPath = '/watch/' + CONTENT_ID + '?episode=' + EP;
+      history.replaceState(null, '', targetPath);
+      window.dispatchEvent(new PopStateEvent('popstate', { state: null }));
+      window.dispatchEvent(new HashChangeEvent('hashchange'));
+    } catch(e){}
   });
 
   /* --- fetch interceptor --- */

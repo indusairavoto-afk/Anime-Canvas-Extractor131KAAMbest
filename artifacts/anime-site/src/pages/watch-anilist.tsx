@@ -1997,7 +1997,7 @@ export default function WatchAniList() {
                     allow="autoplay"
                     aria-hidden="true"
                     title="stream-loader"
-                    style={{ position: "fixed", left: "-9999px", top: "-9999px", width: "1px", height: "1px", opacity: 0, pointerEvents: "none", border: "none" }}
+                    style={{ position: "fixed", left: "-9999px", top: "-9999px", width: "1280px", height: "720px", opacity: 0, pointerEvents: "none", border: "none" }}
                   />
                 )}
 
