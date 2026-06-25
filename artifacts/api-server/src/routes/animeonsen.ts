@@ -326,12 +326,18 @@ router.get("/animeonsen/proxy-watch", async (req, res) => {
 
   const injectedScript = `
 <base href="https://www.animeonsen.xyz/">
+<style>
+/* Hide all UI immediately — this page is used as an invisible stream extractor */
+html,body{visibility:hidden!important;overflow:hidden!important;pointer-events:none!important}
+video,audio{display:none!important;visibility:hidden!important}
+</style>
 <script>
 (function(){
   var AO_SESSION='${safeSession}';
   var BEARER='${safeBearer}';
   var CONTENT_ID='${safeContentId}';
   var EP='${safeEp}';
+  var _dispatched = false;
 
   /* --- cookie patch: expose ao.session so the AO player derives its token --- */
   try {
@@ -363,16 +369,34 @@ router.get("/animeonsen/proxy-watch", async (req, res) => {
     } catch(e){ return null; }
   }
 
+  function silenceMedia(){
+    try {
+      document.querySelectorAll('video,audio').forEach(function(el){
+        el.pause(); el.muted = true; el.volume = 0;
+        el.style.display = 'none';
+      });
+    } catch(e){}
+  }
+
   function dispatch(hls){
+    if (_dispatched) return;
+    _dispatched = true;
+    silenceMedia();
     try { if (window.opener) window.opener.postMessage({type:'ao_hls',hls:hls},'*'); } catch(e){}
     try { window.parent.postMessage({type:'ao_hls',hls:hls},'*'); } catch(e){}
   }
+
+  /* Silence any media that loads after the page renders */
+  var _mo = new MutationObserver(function(){ silenceMedia(); });
+  document.addEventListener('DOMContentLoaded', function(){
+    _mo.observe(document.body || document.documentElement, {childList:true, subtree:true});
+    silenceMedia();
+  });
 
   /* --- fetch interceptor --- */
   var _fetch = window.fetch;
   window.fetch = function(input, init){
     var url = typeof input === 'string' ? input : (input && input.url ? input.url : String(input));
-    /* inject bearer for api calls if player somehow doesn't have one */
     if (BEARER && url.indexOf('api.animeonsen.xyz') !== -1) {
       init = Object.assign({}, init);
       var hdrs = new Headers(init.headers || {});
@@ -383,17 +407,13 @@ router.get("/animeonsen/proxy-watch", async (req, res) => {
     if (url.indexOf('api.animeonsen.xyz') !== -1 && url.indexOf('/video/') !== -1) {
       p.then(function(r){ return r.clone().json(); })
        .then(function(d){ var hls=parseHls(d); if(hls) dispatch(hls); })
-       .catch(function(err){
-         /* CORS blocked — inform parent so it can fall back */
-         try { if(window.opener) window.opener.postMessage({type:'ao_cors_fail',err:String(err)},'*'); } catch(e){}
-       });
+       .catch(function(){});
     }
     return p;
   };
 
   /* --- XHR interceptor (belt-and-suspenders) --- */
   var _open = XMLHttpRequest.prototype.open;
-  var _setReqHeader = XMLHttpRequest.prototype.setRequestHeader;
   var _send = XMLHttpRequest.prototype.send;
   XMLHttpRequest.prototype.open = function(m, url){ this._aoUrl=url; return _open.apply(this,arguments); };
   XMLHttpRequest.prototype.send = function(){

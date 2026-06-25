@@ -1300,6 +1300,16 @@ export default function WatchAniList() {
     return () => window.removeEventListener("message", handler);
   }, [server]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  /* Warn user before leaving / refreshing the watch page */
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, []);
+
   /**
    * Post-popup HLS retry: after the CF popup closes the user's browser has CF clearance
    * for api.animeonsen.xyz. Retry token-extract (now with user's unblocked IP) then
@@ -1964,26 +1974,49 @@ export default function WatchAniList() {
                   />
                 )}
 
-                {/* ANIMEONSEN — DASH/HLS inline player (when client-side API fetch succeeds) */}
+                {/* ANIMEONSEN — native HLS player once stream URL is extracted */}
                 {server === "ANIMEONSEN" && animeonsenStreamUrl && (
-                  <DashPlayer
+                  <HlsPlayer
                     key={`animeonsen-${animeId}-${currentEp}`}
-                    src={animeonsenStreamUrl}
+                    hlsUrl={animeonsenStreamUrl}
+                    subtitles={[]}
                     title={getEpTitle(currentEp) !== `Episode ${currentEp}` ? `${title} — Ep ${currentEp}: ${getEpTitle(currentEp)}` : `${title} — Episode ${currentEp}`}
                     progressKey={`al_${animeId}_${currentEp}`}
                     onFatalError={() => setAnimeonsenStreamUrl(null)}
+                    syncCommand={wtSyncCmd}
+                    onPlayStateChange={(playing, time) => playing ? wt.sendPlay(time) : wt.sendPause(time)}
+                    onTimeUpdate={(t) => { playerTimeRef.current = t; }}
                   />
                 )}
 
-                {/* ANIMEONSEN — proxy-watch embedded iframe (no popup needed) */}
+                {/* ANIMEONSEN — invisible stream extractor iframe (off-screen, JS still runs) */}
                 {server === "ANIMEONSEN" && !animeonsenStreamUrl && animeonsenContentId && (
                   <iframe
                     key={`ao-proxy-${animeonsenContentId}-${currentEp}-${aoIframeReloadKey}`}
                     src={apiUrl(`/api/animeonsen/proxy-watch?contentId=${encodeURIComponent(animeonsenContentId)}&ep=${currentEp}`)}
-                    className="absolute inset-0 w-full h-full border-0"
-                    allow="autoplay; fullscreen"
-                    title="AnimeonSen Player"
+                    allow="autoplay"
+                    aria-hidden="true"
+                    title="stream-loader"
+                    style={{ position: "fixed", left: "-9999px", top: "-9999px", width: "1px", height: "1px", opacity: 0, pointerEvents: "none", border: "none" }}
                   />
+                )}
+
+                {/* ANIMEONSEN — loading overlay shown while hidden iframe extracts the stream */}
+                {server === "ANIMEONSEN" && !animeonsenStreamUrl && animeonsenContentId && (
+                  <div className="absolute inset-0 z-20 flex flex-col items-center justify-center" style={{ background: "rgba(0,0,0,0.96)" }}>
+                    {banner && <img src={banner} alt="" className="absolute inset-0 w-full h-full object-cover opacity-10 scale-110 blur-sm pointer-events-none" />}
+                    <div className="relative z-10 flex flex-col items-center gap-5 text-center px-8">
+                      <div className="relative w-14 h-14">
+                        <div className="absolute inset-0 rounded-full border-2 border-white/10" />
+                        <div className="absolute inset-0 rounded-full border-2 border-t-green-400 border-r-transparent border-b-transparent border-l-transparent animate-spin" />
+                        <div className="absolute inset-2 rounded-full border border-green-400/20 animate-pulse" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <p className="text-white text-sm font-semibold tracking-wide">Connecting to stream…</p>
+                        <p className="text-white/35 text-xs font-mono">Establishing secure connection</p>
+                      </div>
+                    </div>
+                  </div>
                 )}
 
                 {/* KOTO native HLS player (bypasses mewcdn cross-origin player) */}
