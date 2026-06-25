@@ -1242,9 +1242,24 @@ export default function WatchAniList() {
       return;
     }
 
-    // Browser-side HLS extraction from AnimeonSen's API.
-    // api.animeonsen.xyz is IP-blocked from Replit servers, but the user's browser
-    // can reach it directly with Cloudflare cookies already set from their session.
+    // Server-side HLS extraction via ao.session cookie bypass.
+    // The server fetches the AnimeonSen watch page to obtain ao.session,
+    // derives the Bearer token (base64-decode → shift chars +1), then calls
+    // api.animeonsen.xyz server-side with proper auth — no iframe or CF popup needed.
+    async function tryServerExtract(contentId: string, ep: number): Promise<string | null> {
+      try {
+        const r = await fetch(apiUrl(`/api/animeonsen/video?contentId=${encodeURIComponent(contentId)}&ep=${ep}`));
+        if (!r.ok) return null;
+        const d = await r.json() as { hlsUrl?: string };
+        return d?.hlsUrl ?? null;
+      } catch {
+        return null;
+      }
+    }
+
+    // Browser-side HLS extraction fallback — used only if server-side fails.
+    // api.animeonsen.xyz may be IP-blocked from Replit servers, but the user's
+    // browser can reach it directly with Cloudflare cookies already set.
     async function tryBrowserExtract(contentId: string, ep: number): Promise<string | null> {
       try {
         const r = await fetch(
@@ -1266,6 +1281,16 @@ export default function WatchAniList() {
       }
     }
 
+    // Try server-side first, fall back to browser-side extraction.
+    async function extractHls(contentId: string, ep: number): Promise<string | null> {
+      const serverHls = await tryServerExtract(contentId, ep);
+      if (serverHls) return serverHls;
+      return tryBrowserExtract(contentId, ep);
+    }
+
+    // Cancellation flag — shared across all async branches in this effect run.
+    let cancelled = false;
+
     // Check raceCache first (set during auto-detect race)
     const cached = raceCache.current.animeonsen;
     if (cached !== undefined) {
@@ -1279,10 +1304,10 @@ export default function WatchAniList() {
         setAnimeonsenLoading(false);
         setAnimeonsenError(null);
         raceCache.current.animeonsen = undefined;
-        // Try browser-side HLS extraction in background
+        // Try HLS extraction in background (server-side first, browser fallback)
         if (cached.contentId) {
-          tryBrowserExtract(cached.contentId, currentEp).then(hls => {
-            if (hls) setAnimeonsenStreamUrl(hls);
+          extractHls(cached.contentId, currentEp).then(hls => {
+            if (!cancelled && hls) setAnimeonsenStreamUrl(hls);
           });
         }
       } else {
@@ -1296,15 +1321,14 @@ export default function WatchAniList() {
       setAnimeonsenIframeUrl(`https://www.animeonsen.xyz/watch/${localContentId}?episode=${currentEp}`);
       setAnimeonsenLoading(false);
       setAnimeonsenError(null);
-      // Try browser-side HLS extraction — plays natively without iframe if it works
-      tryBrowserExtract(localContentId, currentEp).then(hls => {
-        if (hls) setAnimeonsenStreamUrl(hls);
+      // Try server-side HLS extraction — plays natively without iframe if it works
+      extractHls(localContentId, currentEp).then(hls => {
+        if (!cancelled && hls) setAnimeonsenStreamUrl(hls);
       });
-      return;
+      return () => { cancelled = true; };
     }
 
     // No cached ID — search by title via our backend
-    let cancelled = false;
     setAnimeonsenIframeUrl(null);
     setAnimeonsenStreamUrl(null);
     setAnimeonsenSubtitleUrl(null);
@@ -1321,8 +1345,8 @@ export default function WatchAniList() {
           setAnimeonsenIdInput(data.contentId);
           localStorage.setItem(`na_animeonsen_${animeId}`, data.contentId);
           setAnimeonsenIframeUrl(data.iframeUrl);
-          // Also try browser-side HLS extraction
-          const hls = await tryBrowserExtract(data.contentId, currentEp);
+          // Try server-side HLS extraction (then browser fallback)
+          const hls = await extractHls(data.contentId, currentEp);
           if (!cancelled && hls) setAnimeonsenStreamUrl(hls);
         } else {
           setAnimeonsenError(data.error ?? "Anime not found on AnimeonSen");

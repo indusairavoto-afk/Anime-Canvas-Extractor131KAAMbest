@@ -109,13 +109,157 @@ async function searchContentId(titles: string[]): Promise<{ contentId: string; m
 }
 
 /**
+ * GET /api/animeonsen/video?contentId=...&ep=...
+ *
+ * Server-side HLS extraction using the ao.session cookie bypass:
+ *   1. Fetch the watch page (www.animeonsen.xyz — not CF-blocked server-side)
+ *      to obtain the ao.session cookie that AnimeonSen sets freely.
+ *   2. Derive the Bearer token: base64-decode the cookie value, then shift
+ *      each character code +1 (reverses the -1 obfuscation in watch.js).
+ *   3. Call api.animeonsen.xyz/v4/content/{id}/video/{ep} with that token.
+ *   4. Return the HLS URL for native playback (no iframe, no CF popup needed).
+ */
+router.get("/animeonsen/video", async (req, res) => {
+  const contentId = (req.query.contentId as string | undefined)?.trim();
+  const ep = (req.query.ep as string | undefined)?.trim() ?? "1";
+
+  if (!contentId) {
+    res.status(400).json({ error: "contentId is required" });
+    return;
+  }
+  const epNum = parseInt(ep);
+  if (isNaN(epNum) || epNum <= 0) {
+    res.status(400).json({ error: `Invalid ep: "${ep}"` });
+    return;
+  }
+
+  try {
+    // Step 1: fetch watch page — www.animeonsen.xyz is accessible server-side
+    const watchUrl = `${ANIMEONSEN_ORIGIN}/watch/${contentId}?episode=${epNum}`;
+    const pageResp = await fetch(watchUrl, {
+      headers: {
+        ...BROWSER_HEADERS,
+        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+        "Accept-Encoding": "gzip, deflate, br",
+      },
+      redirect: "follow",
+      signal: AbortSignal.timeout(12000),
+    });
+
+    if (!pageResp.ok) {
+      res.status(502).json({ error: `Watch page fetch failed: ${pageResp.status}` });
+      return;
+    }
+
+    // Step 2: extract ao.session from Set-Cookie headers.
+    // Try three approaches in order:
+    //   a) Node 18+ Headers.getSetCookie() — returns each Set-Cookie as a separate string
+    //   b) headers.get('set-cookie') — older runtimes may collapse them with comma-join
+    //   c) HTML script-tag inline (some AnimeonSen builds embed the session in the page)
+    let aoSession: string | null = null;
+
+    const extractFromCookieStr = (s: string): string | null => {
+      const m = s.match(/ao\.session=([^;,\s]+)/);
+      return m ? decodeURIComponent(m[1]) : null;
+    };
+
+    // (a) getSetCookie() — preferred, avoids comma-splitting ambiguity
+    const getSetCookieFn = (pageResp.headers as unknown as { getSetCookie?(): string[] }).getSetCookie;
+    if (typeof getSetCookieFn === "function") {
+      for (const header of getSetCookieFn.call(pageResp.headers)) {
+        const v = extractFromCookieStr(header);
+        if (v) { aoSession = v; break; }
+      }
+    }
+
+    // (b) headers.get('set-cookie') fallback — may be a comma-joined string
+    if (!aoSession) {
+      const raw = pageResp.headers.get("set-cookie") ?? "";
+      if (raw) {
+        for (const part of raw.split(/,(?=[^;]*=)/)) {
+          const v = extractFromCookieStr(part);
+          if (v) { aoSession = v; break; }
+        }
+      }
+    }
+
+    // (c) HTML inline fallback
+    if (!aoSession) {
+      const html = await pageResp.text();
+      const inline = html.match(/ao\.session['"]\s*[,=:]\s*['"]([A-Za-z0-9+/=]+)['"]/);
+      if (inline) aoSession = inline[1];
+    }
+
+    if (!aoSession) {
+      res.status(502).json({ error: "ao.session cookie not found in AnimeonSen response" });
+      return;
+    }
+
+    // Step 3: derive Bearer token
+    // watch.js stores the token as: base64(token.chars.map(c => charCode(c) - 1))
+    // Reverse: base64decode → shift each char +1
+    const shifted = Buffer.from(aoSession, "base64").toString("binary");
+    const bearerToken = Array.from(shifted)
+      .map(c => String.fromCharCode(c.charCodeAt(0) + 1))
+      .join("");
+
+    // Step 4: call the streaming API with the derived token
+    const apiEndpoint = `https://api.animeonsen.xyz/v4/content/${contentId}/video/${epNum}`;
+    const apiResp = await fetch(apiEndpoint, {
+      headers: {
+        Authorization: `Bearer ${bearerToken}`,
+        Cookie: `ao.session=${aoSession}`,
+        Origin: ANIMEONSEN_ORIGIN,
+        Referer: `${ANIMEONSEN_ORIGIN}/`,
+        Accept: "application/json, */*;q=0.8",
+        ...BROWSER_HEADERS,
+      },
+      signal: AbortSignal.timeout(10000),
+    });
+
+    if (!apiResp.ok) {
+      const body = await apiResp.text().catch(() => "");
+      res.status(502).json({
+        error: `AnimeonSen API returned ${apiResp.status}`,
+        detail: body.slice(0, 300),
+      });
+      return;
+    }
+
+    type VideoData = {
+      uri?: { streaming?: { hls?: string }; hls?: string };
+      hls?: string;
+      stream?: { hls?: string };
+      data?: { uri?: { streaming?: { hls?: string } } };
+    };
+    const data = (await apiResp.json()) as VideoData;
+    const hlsUrl =
+      data?.uri?.streaming?.hls ??
+      data?.uri?.hls ??
+      data?.hls ??
+      data?.stream?.hls ??
+      data?.data?.uri?.streaming?.hls ??
+      null;
+
+    if (!hlsUrl) {
+      const keys = data && typeof data === "object" ? Object.keys(data) : [];
+      res.status(404).json({ error: "No HLS URL in AnimeonSen API response", keys });
+      return;
+    }
+
+    res.json({ hlsUrl, ep: epNum, contentId });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: `AnimeonSen video extraction failed: ${msg}` });
+  }
+});
+
+/**
  * GET /api/animeonsen/stream?title=...&romajiTitle=...&ep=...
  *
  * Searches AnimeonSen for the given title, resolves the content_id,
- * and returns the direct watch URL (embeddable as iframe).
- *
- * Note: api.animeonsen.xyz is Cloudflare-protected and blocks server-side requests.
- * The iframe URL is returned so the browser handles video playback directly.
+ * and returns both the direct watch iframe URL and (if the ao.session
+ * bypass succeeds) the HLS stream URL for native playback.
  */
 router.get("/animeonsen/stream", async (req, res) => {
   const title = (req.query.title as string | undefined)?.trim() ?? "";

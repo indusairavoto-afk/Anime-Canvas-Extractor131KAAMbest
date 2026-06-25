@@ -1,25 +1,37 @@
 ---
-name: AnimeonSen Cloudflare IP block
-description: api.animeonsen.xyz hard-blocks Replit's server IP; iframe is the only viable embed approach.
+name: AnimeonSen Cloudflare IP block + ao.session bypass
+description: How to get HLS streams from AnimeonSen server-side despite api.animeonsen.xyz being CF-blocked; the ao.session cookie bypass.
 ---
 
 ## Rule
 
-`api.animeonsen.xyz` returns "Sorry, you have been blocked" (Cloudflare hard block) for ALL requests from Replit's server IP — including headless Chromium (playwright-core, CloakBrowser). Server-side stream URL extraction is not possible.
+`api.animeonsen.xyz` was previously considered hard-blocked from Replit IPs. A server-side bypass now exists via the `ao.session` cookie auth scheme used by `watch.js`.
 
-**Why:** Cloudflare blocks the Replit datacenter IP at the network level for api.animeonsen.xyz. This is not a bot-detection issue (stealth patches don't help). Even system Chromium launched from Replit gets blocked when navigating to api.animeonsen.xyz directly.
+## ao.session Bearer Token Bypass
 
-**How to apply:** The only viable approach is iframe embedding of `https://www.animeonsen.xyz/watch/${contentId}?episode=${ep}`. This runs entirely in the user's browser where:
-- Their home/work IP is not blocked
-- Cloudflare JS challenges pass automatically (real browser)
-- No login required — video plays publicly
-- Player JS calls api.animeonsen.xyz from within the iframe's www.animeonsen.xyz context (user's IP)
+`watch.js` decodes `L("QXV0aG9yaXphdGlvbixCZWFyZXIsYW8uc2Vzc2lvbg")` → `"Authorization,Bearer,ao.session"`:
+reads the `ao.session` cookie, base64-decodes it, shifts each char code **+1**, and sends the result as a Bearer token.
 
-**Architecture:**
-- Backend `/api/animeonsen/stream` searches MeiliSearch at `search.animeonsen.xyz` (not CF-blocked) to find the `content_id`
-- Frontend sets `animeonsenIframeUrl = https://www.animeonsen.xyz/watch/${contentId}?episode=${ep}` and shows it as the primary player
-- No server-side stream endpoint needed; `animeonsenStreamUrl` is always null; `animeonsenIframeUrl` is always the display path
+**Server-side steps:**
+1. `GET https://www.animeonsen.xyz/watch/${contentId}?episode=${ep}` — www is **not** CF-blocked from Replit; the response sets `ao.session` freely.
+2. Extract `ao.session` from Set-Cookie (try `getSetCookie()` → `headers.get('set-cookie')` → HTML inline fallback in that order).
+3. `Buffer.from(aoSession, "base64").toString("binary")` → shift each char +1 → `bearerToken`.
+4. `GET https://api.animeonsen.xyz/v4/content/${contentId}/video/${ep}` with `Authorization: Bearer ${bearerToken}` + `Cookie: ao.session=${aoSession}`.
+5. Response contains HLS URL at `data.uri.streaming.hls` (or `uri.hls`, `hls`, `stream.hls`).
 
-**If blank overlay:** Shows "Open AnimeonSen ↗" link — clicking it opens animeonsen.xyz in a new tab, solving any first-visit CF cookie issues for api.animeonsen.xyz subdomain.
+**Why:** The obfuscation is in `watch.js` L() decode → `"Authorization,Bearer,ao.session"`. The cookie value is a -1 shifted, base64-encoded token; reversing gives the actual JWT.
 
-**www.animeonsen.xyz** DOES allow iframe embedding (no X-Frame-Options, no frame-ancestors CSP).
+**How to apply:** Backend endpoint `/api/animeonsen/video?contentId=...&ep=...` implements this. Frontend calls it as `tryServerExtract` first, falls back to `tryBrowserExtract` (user's browser with own CF cookies), then falls back to iframe embed.
+
+## Architecture
+
+- `/api/animeonsen/stream` — unchanged; searches MeiliSearch, returns `iframeUrl` + `contentId`.
+- `/api/animeonsen/video` — new; ao.session bypass → returns `hlsUrl` for native HLS playback.
+- Frontend `extractHls(contentId, ep)`: tries `/api/animeonsen/video` first → `tryBrowserExtract` fallback → iframe last resort.
+- All `extractHls(...).then(...)` calls include `if (!cancelled && hls)` guards to prevent stale episode state.
+
+## Cookie Extraction Order (robustness)
+
+1. `Headers.getSetCookie()` (Node 18+ native fetch) — one string per Set-Cookie header
+2. `headers.get('set-cookie')` split on `,(?=[^;]*=)` — handles comma-joined multi-cookie strings
+3. HTML regex: `/ao\.session['"]\s*[,=:]\s*['"]([A-Za-z0-9+/=]+)['"]/` — inline script fallback
