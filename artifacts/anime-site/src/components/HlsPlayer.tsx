@@ -194,6 +194,8 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
     const video = videoRef.current;
     if (!video || !hlsUrl) return;
 
+    let mounted = true;
+
     setError(null);
     setLoading(true);
     setLevels([]);
@@ -212,6 +214,7 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
       hls.attachMedia(video);
 
       hls.on(Hls.Events.MANIFEST_PARSED, (_, data) => {
+        if (!mounted) return;
         setLevels(data.levels);
         setLoading(false);
 
@@ -232,7 +235,7 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
           }
         }
 
-        video.play().catch(() => {});
+        if (mounted) video.play().catch(() => {});
       });
 
       hls.on(Hls.Events.LEVEL_SWITCHED, (_, data) => {
@@ -249,6 +252,7 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
     } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
       video.src = hlsUrl;
       video.addEventListener("loadedmetadata", () => {
+        if (!mounted) return;
         setLoading(false);
         if (progressKey) {
           const saved = loadProgress(progressKey);
@@ -265,7 +269,10 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
     }
 
     return () => {
+      mounted = false;
       flushProgress();
+      // Pause first to cancel any in-flight play() promise before destroying
+      try { video.pause(); } catch (_) {}
       hlsRef.current?.destroy();
       hlsRef.current = null;
     };
@@ -343,7 +350,7 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
       if (tag === "INPUT" || tag === "TEXTAREA") return;
       const video = videoRef.current;
       if (!video) return;
-      if (e.code === "Space") { e.preventDefault(); video.paused ? video.play() : video.pause(); }
+      if (e.code === "Space") { e.preventDefault(); video.paused ? video.play().catch(() => {}) : video.pause(); }
       if (e.code === "ArrowRight") { e.preventDefault(); video.currentTime = Math.min(video.currentTime + 10, video.duration); }
       if (e.code === "ArrowLeft") { e.preventDefault(); video.currentTime = Math.max(video.currentTime - 10, 0); }
       if (e.code === "KeyM") { video.muted = !video.muted; setMuted(video.muted); }
@@ -363,7 +370,7 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
   const togglePlay = () => {
     const video = videoRef.current;
     if (!video) return;
-    video.paused ? video.play() : video.pause();
+    video.paused ? video.play().catch(() => {}) : video.pause();
   };
 
   const toggleMute = () => {
