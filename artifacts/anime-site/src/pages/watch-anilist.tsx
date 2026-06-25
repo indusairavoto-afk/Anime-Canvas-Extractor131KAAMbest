@@ -1908,8 +1908,21 @@ export default function WatchAniList() {
                   />
                 )}
 
-                {/* ANIMEONSEN — iframe embed (direct, no popup needed) */}
-                {server === "ANIMEONSEN" && !animeonsenStreamUrl && animeonsenIframeUrl && (
+                {/* ANIMEONSEN — "Connecting…" overlay while popup establishes Cloudflare cookies */}
+                {server === "ANIMEONSEN" && animeonsenInitializing && (
+                  <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-4" style={{ background: "rgba(0,0,0,0.93)" }}>
+                    {banner && <img src={banner} alt="" className="absolute inset-0 w-full h-full object-cover opacity-10 scale-110 blur-sm pointer-events-none" />}
+                    <div className="relative z-10 flex flex-col items-center gap-4 text-center px-6">
+                      <div className="w-10 h-10 rounded-full border-2 border-green-400 border-t-transparent animate-spin" />
+                      <p className="text-white text-sm font-semibold tracking-wide">Connecting to AnimeonSen…</p>
+                      <p className="text-white/40 text-[11px] font-mono">A verification window opened — it will close in {animeonsenCountdown}s</p>
+                      <p className="text-white/25 text-[10px] font-mono">(first time only per session)</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* ANIMEONSEN — iframe embed; shown after popup establishes CF cookies */}
+                {server === "ANIMEONSEN" && !animeonsenStreamUrl && animeonsenIframeUrl && !animeonsenInitializing && (
                   <iframe
                     key={`animeonsen-iframe-${animeId}-${currentEp}`}
                     src={animeonsenIframeUrl}
@@ -2564,7 +2577,31 @@ export default function WatchAniList() {
                   userPickedRef.current = true;
                   setServer("ANIMEONSEN");
                   setIframeLoaded(false);
-                  setAnimeonsenInitializing(false);
+                  // Open AnimeonSen in a popup to establish Cloudflare clearance cookies.
+                  // Once the popup is closed (auto after ~6s), the iframe mounts and loads
+                  // with the fresh cf_clearance cookie already set.
+                  if (sessionStorage.getItem("ao_cf_ready")) {
+                    setAnimeonsenInitializing(false);
+                    return;
+                  }
+                  const popupUrl = animeonsenIframeUrl ?? "https://www.animeonsen.xyz";
+                  const popup = window.open(popupUrl, "ao_cf_init",
+                    "width=640,height=440,left=200,top=150,menubar=no,toolbar=no,location=no,status=no,resizable=no");
+                  if (!popup) {
+                    // Popup blocked — skip; iframe may need manual CF solve
+                    setAnimeonsenInitializing(false);
+                    return;
+                  }
+                  setAnimeonsenInitializing(true);
+                  setAnimeonsenCountdown(6);
+                  const cdInterval = setInterval(() => setAnimeonsenCountdown(c => c - 1), 1000);
+                  setTimeout(() => {
+                    clearInterval(cdInterval);
+                    try { popup.close(); } catch { /* ignore */ }
+                    sessionStorage.setItem("ao_cf_ready", "1");
+                    setAnimeonsenInitializing(false);
+                    setAnimeonsenCountdown(0);
+                  }, 6500);
                 }},
               ] as const).map(({ key, label, color, onClick }) => {
                 const active = server === key;
