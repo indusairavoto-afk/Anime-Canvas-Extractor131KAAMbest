@@ -282,6 +282,150 @@ router.get("/animeonsen/video", async (req, res) => {
 });
 
 /**
+ * GET /api/animeonsen/proxy-watch?contentId=...&ep=...
+ *
+ * Fetches the AnimeonSen watch page server-side (www is not IP-blocked),
+ * injects a fetch-interceptor script that:
+ *   1. Patches document.cookie to expose ao.session (so the AO player derives its own token)
+ *   2. Patches window.fetch + XMLHttpRequest to intercept the api.animeonsen.xyz /video/ response
+ *   3. postMessages the HLS URL back to window.opener (our app)
+ *
+ * The popup is opened at this proxy URL. The AO player JS runs in the browser with the
+ * user's IP (not Replit's blocked IP) and calls api.animeonsen.xyz natively.
+ */
+router.get("/animeonsen/proxy-watch", async (req, res) => {
+  const contentId = (req.query.contentId as string | undefined)?.trim();
+  const ep = (req.query.ep as string | undefined)?.trim() ?? "1";
+  if (!contentId) { res.status(400).send("contentId required"); return; }
+
+  const watchUrl = `${ANIMEONSEN_ORIGIN}/watch/${contentId}?episode=${ep}`;
+  let html = "";
+  let aoSession = "";
+  let bearerToken = "";
+
+  try {
+    const result = await fetchBearerToken(contentId);
+    if (result) { aoSession = result.aoSession; bearerToken = result.bearerToken; }
+
+    const pageResp = await fetch(watchUrl, {
+      headers: {
+        ...BROWSER_HEADERS,
+        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      },
+      redirect: "follow",
+      signal: AbortSignal.timeout(15000),
+    });
+    if (pageResp.ok) html = await pageResp.text();
+  } catch { /* fall through to minimal shell */ }
+
+  // Escape values for safe JS string embedding
+  const safeSession = aoSession.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+  const safeBearer = bearerToken.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+  const safeContentId = contentId.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+  const safeEp = ep.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+
+  const injectedScript = `
+<base href="https://www.animeonsen.xyz/">
+<script>
+(function(){
+  var AO_SESSION='${safeSession}';
+  var BEARER='${safeBearer}';
+  var CONTENT_ID='${safeContentId}';
+  var EP='${safeEp}';
+
+  /* --- cookie patch: expose ao.session so the AO player derives its token --- */
+  try {
+    var _cookieDesc = Object.getOwnPropertyDescriptor(Document.prototype,'cookie')
+                   || Object.getOwnPropertyDescriptor(HTMLDocument.prototype,'cookie');
+    if (_cookieDesc && _cookieDesc.get) {
+      Object.defineProperty(document,'cookie',{
+        get: function(){
+          var real = _cookieDesc.get.call(document);
+          if (AO_SESSION && real.indexOf('ao.session') === -1)
+            return (real ? real + '; ' : '') + 'ao.session=' + AO_SESSION;
+          return real;
+        },
+        set: _cookieDesc.set,
+        configurable: true
+      });
+    }
+  } catch(e){}
+
+  function parseHls(data){
+    try {
+      var d = typeof data === 'string' ? JSON.parse(data) : data;
+      return (d && d.uri && d.uri.streaming && d.uri.streaming.hls)
+          || (d && d.uri && d.uri.hls)
+          || (d && d.hls)
+          || (d && d.stream && d.stream.hls)
+          || (d && d.data && d.data.uri && d.data.uri.streaming && d.data.uri.streaming.hls)
+          || null;
+    } catch(e){ return null; }
+  }
+
+  function dispatch(hls){
+    try { if (window.opener) window.opener.postMessage({type:'ao_hls',hls:hls},'*'); } catch(e){}
+    try { window.parent.postMessage({type:'ao_hls',hls:hls},'*'); } catch(e){}
+  }
+
+  /* --- fetch interceptor --- */
+  var _fetch = window.fetch;
+  window.fetch = function(input, init){
+    var url = typeof input === 'string' ? input : (input && input.url ? input.url : String(input));
+    /* inject bearer for api calls if player somehow doesn't have one */
+    if (BEARER && url.indexOf('api.animeonsen.xyz') !== -1) {
+      init = Object.assign({}, init);
+      var hdrs = new Headers(init.headers || {});
+      if (!hdrs.get('authorization')) hdrs.set('Authorization','Bearer '+BEARER);
+      init.headers = hdrs;
+    }
+    var p = _fetch.apply(this, [input, init]);
+    if (url.indexOf('api.animeonsen.xyz') !== -1 && url.indexOf('/video/') !== -1) {
+      p.then(function(r){ return r.clone().json(); })
+       .then(function(d){ var hls=parseHls(d); if(hls) dispatch(hls); })
+       .catch(function(err){
+         /* CORS blocked — inform parent so it can fall back */
+         try { if(window.opener) window.opener.postMessage({type:'ao_cors_fail',err:String(err)},'*'); } catch(e){}
+       });
+    }
+    return p;
+  };
+
+  /* --- XHR interceptor (belt-and-suspenders) --- */
+  var _open = XMLHttpRequest.prototype.open;
+  var _setReqHeader = XMLHttpRequest.prototype.setRequestHeader;
+  var _send = XMLHttpRequest.prototype.send;
+  XMLHttpRequest.prototype.open = function(m, url){ this._aoUrl=url; return _open.apply(this,arguments); };
+  XMLHttpRequest.prototype.send = function(){
+    var url = this._aoUrl || '';
+    if (url.indexOf('api.animeonsen.xyz') !== -1 && url.indexOf('/video/') !== -1) {
+      var self = this;
+      this.addEventListener('load', function(){
+        var hls = parseHls(self.responseText);
+        if (hls) dispatch(hls);
+      });
+    }
+    return _send.apply(this,arguments);
+  };
+})();
+</script>`;
+
+  if (!html) {
+    // Minimal shell — the AO SPA will boot from its own CDN
+    html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>AnimeonSen</title>${injectedScript}</head><body style="margin:0;background:#000"><script src="https://www.animeonsen.xyz/app.js" crossorigin></script></body></html>`;
+  } else {
+    // Inject into real page HTML
+    html = html.replace(/(<head[^>]*>)/i, `$1${injectedScript}`);
+    if (!html.includes(injectedScript)) html = injectedScript + html;
+  }
+
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.setHeader("X-Frame-Options", "ALLOWALL");
+  res.setHeader("Content-Security-Policy", "");
+  res.send(html);
+});
+
+/**
  * GET /api/animeonsen/stream?title=...&romajiTitle=...&ep=...
  *
  * Searches AnimeonSen for the given title, resolves the content_id,
