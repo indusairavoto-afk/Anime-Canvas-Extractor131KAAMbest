@@ -1989,34 +1989,18 @@ export default function WatchAniList() {
                   />
                 )}
 
-                {/* ANIMEONSEN — invisible stream extractor iframe (off-screen, JS still runs) */}
+                {/* ANIMEONSEN — full-size visible iframe inside the player area.
+                    The injected JS still intercepts the api.animeonsen.xyz /video/ call and
+                    postMessages the HLS URL here; once received we swap to the native HlsPlayer. */}
                 {server === "ANIMEONSEN" && !animeonsenStreamUrl && animeonsenContentId && (
                   <iframe
                     key={`ao-proxy-${animeonsenContentId}-${currentEp}-${aoIframeReloadKey}`}
                     src={apiUrl(`/api/animeonsen/proxy-watch?contentId=${encodeURIComponent(animeonsenContentId)}&ep=${currentEp}`)}
-                    allow="autoplay"
-                    aria-hidden="true"
-                    title="stream-loader"
-                    style={{ position: "fixed", left: "-9999px", top: "-9999px", width: "1280px", height: "720px", opacity: 0, pointerEvents: "none", border: "none" }}
+                    allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
+                    allowFullScreen
+                    title="AnimeonSen Player"
+                    style={{ position: "absolute", inset: 0, width: "100%", height: "100%", border: "none", background: "#000" }}
                   />
-                )}
-
-                {/* ANIMEONSEN — loading overlay shown while hidden iframe extracts the stream */}
-                {server === "ANIMEONSEN" && !animeonsenStreamUrl && animeonsenContentId && (
-                  <div className="absolute inset-0 z-20 flex flex-col items-center justify-center" style={{ background: "rgba(0,0,0,0.96)" }}>
-                    {banner && <img src={banner} alt="" className="absolute inset-0 w-full h-full object-cover opacity-10 scale-110 blur-sm pointer-events-none" />}
-                    <div className="relative z-10 flex flex-col items-center gap-5 text-center px-8">
-                      <div className="relative w-14 h-14">
-                        <div className="absolute inset-0 rounded-full border-2 border-white/10" />
-                        <div className="absolute inset-0 rounded-full border-2 border-t-green-400 border-r-transparent border-b-transparent border-l-transparent animate-spin" />
-                        <div className="absolute inset-2 rounded-full border border-green-400/20 animate-pulse" />
-                      </div>
-                      <div className="space-y-1.5">
-                        <p className="text-white text-sm font-semibold tracking-wide">Connecting to stream…</p>
-                        <p className="text-white/35 text-xs font-mono">Establishing secure connection</p>
-                      </div>
-                    </div>
-                  </div>
                 )}
 
                 {/* KOTO native HLS player (bypasses mewcdn cross-origin player) */}

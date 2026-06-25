@@ -327,10 +327,8 @@ router.get("/animeonsen/proxy-watch", async (req, res) => {
   const injectedScript = `
 <base href="https://www.animeonsen.xyz/">
 <style>
-/* Hide all UI — used as invisible stream extractor only */
-html,body{visibility:hidden!important;overflow:hidden!important;pointer-events:none!important}
-/* Use opacity:0 NOT display:none — video must still initialize to trigger the API call */
-video,audio{opacity:0!important;pointer-events:none!important}
+/* Minimal reset — player renders normally; only global chrome is suppressed */
+html,body{margin:0;padding:0;background:#000;overflow:hidden}
 </style>
 <script>
 (function(){
