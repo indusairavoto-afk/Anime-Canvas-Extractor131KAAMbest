@@ -401,6 +401,19 @@ html,body{margin:0;padding:0;background:#000;overflow:hidden}
       window.dispatchEvent(new PopStateEvent('popstate', { state: null }));
       window.dispatchEvent(new HashChangeEvent('hashchange'));
     } catch(e){}
+
+    /* Block the detail/hamburger menu button (top-left corner).
+       A transparent div sits on top of that area and absorbs all clicks. */
+    try {
+      var blocker = document.createElement('div');
+      blocker.setAttribute('style',
+        'position:fixed;top:0;left:0;width:100px;height:80px;' +
+        'z-index:2147483647;pointer-events:all;cursor:default;background:transparent;'
+      );
+      blocker.addEventListener('click', function(e){ e.preventDefault(); e.stopPropagation(); });
+      blocker.addEventListener('mousedown', function(e){ e.preventDefault(); e.stopPropagation(); });
+      document.body.appendChild(blocker);
+    } catch(e){}
   });
 
   /* --- fetch interceptor --- */
