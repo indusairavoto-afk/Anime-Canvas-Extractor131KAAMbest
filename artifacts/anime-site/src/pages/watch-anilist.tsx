@@ -2015,22 +2015,24 @@ export default function WatchAniList() {
 
                 {/* ANIMEONSEN loading / error overlay */}
                 {server === "ANIMEONSEN" && !animeonsenIframeUrl && (
-                  <div className="absolute inset-0 z-10 flex flex-col items-center justify-center" style={{ background: "rgba(0,0,0,0.92)" }}>
+                  <div className="absolute inset-0 z-20 flex flex-col items-center justify-center" style={{ background: "rgba(0,0,0,0.92)" }}>
                     {banner && <img src={banner} alt="" className="absolute inset-0 w-full h-full object-cover opacity-10 scale-110 blur-sm" />}
                     <div className="relative z-10 flex flex-col items-center gap-4">
                       {animeonsenError ? (
                         <div className="text-center space-y-3">
-                          <p className="text-white/70 text-sm font-semibold tracking-wide">AnimeonSen unavailable</p>
-                          <p className="text-white/30 text-[10px] font-mono max-w-[240px] text-center">{animeonsenError}</p>
+                          <div className="w-10 h-10 rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center mx-auto">
+                            <span className="text-red-400 text-lg">✕</span>
+                          </div>
+                          <p className="text-white/80 text-sm font-semibold tracking-wide">Not available on AnimeonSen</p>
+                          <p className="text-white/30 text-[10px] font-mono max-w-[260px] text-center">This title isn't in AnimeonSen's catalog. Try GOGO, KOTO, or MIRURO instead.</p>
                           <a
                             href={`https://www.animeonsen.xyz`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex items-center gap-2 text-[11px] font-mono font-bold px-5 py-2.5 border border-green-400 text-green-300 hover:bg-green-400 hover:text-black transition-all uppercase tracking-widest mt-1"
+                            className="inline-flex items-center gap-2 text-[11px] font-mono font-bold px-5 py-2.5 border border-green-400/40 text-green-300/60 hover:border-green-400 hover:text-green-300 transition-all uppercase tracking-widest mt-1"
                           >
-                            Open AnimeonSen →
+                            Browse AnimeonSen →
                           </a>
-                          <p className="text-white/20 text-[10px] font-mono max-w-[240px] text-center">Or switch to another server below.</p>
                         </div>
                       ) : (
                         <>
