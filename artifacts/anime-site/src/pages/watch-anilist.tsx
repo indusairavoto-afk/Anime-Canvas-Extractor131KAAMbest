@@ -1290,18 +1290,10 @@ export default function WatchAniList() {
   useEffect(() => {
     const handler = (evt: MessageEvent) => {
       if (evt.data?.type === "ao_hls" && evt.data?.hls && server === "ANIMEONSEN") {
-        console.log("[AO] received HLS from proxy popup:", evt.data.hls);
+        console.log("[AO] received HLS from proxy iframe:", evt.data.hls);
         setAnimeonsenStreamUrl(evt.data.hls);
-        // Close the proxy popup now that we have the URL
-        try { aoProxyPopupRef.current?.close(); } catch { /* ignore */ }
-        setAnimeonsenInitializing(false);
-        setAnimeonsenCountdown(0);
         sessionStorage.setItem("ao_cf_ready", "1");
         setAoCfReady(true);
-      }
-      if (evt.data?.type === "ao_cors_fail") {
-        console.warn("[AO] proxy popup got CORS block:", evt.data.err);
-        // CORS blocked even from browser — keep the popup open, let user watch there
       }
     };
     window.addEventListener("message", handler);
@@ -1983,55 +1975,15 @@ export default function WatchAniList() {
                   />
                 )}
 
-                {/* ANIMEONSEN — popup still running: countdown overlay */}
-                {server === "ANIMEONSEN" && animeonsenInitializing && (
-                  <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-4" style={{ background: "rgba(0,0,0,0.93)" }}>
-                    {banner && <img src={banner} alt="" className="absolute inset-0 w-full h-full object-cover opacity-10 scale-110 blur-sm pointer-events-none" />}
-                    <div className="relative z-10 flex flex-col items-center gap-4 text-center px-6">
-                      <div className="w-10 h-10 rounded-full border-2 border-green-400 border-t-transparent animate-spin" />
-                      <p className="text-white text-sm font-semibold tracking-wide">Connecting to AnimeonSen…</p>
-                      <p className="text-white/40 text-[11px] font-mono">Verification window will close in {animeonsenCountdown}s</p>
-                      <p className="text-white/25 text-[10px] font-mono">(first time only per session)</p>
-                    </div>
-                  </div>
-                )}
-
-                {/* ANIMEONSEN — waiting for proxy popup to deliver HLS */}
-                {server === "ANIMEONSEN" && !animeonsenStreamUrl && animeonsenIframeUrl && !animeonsenInitializing && (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-4" style={{ background: "rgba(0,0,0,0.92)" }}>
-                    {banner && <img src={banner} alt="" className="absolute inset-0 w-full h-full object-cover opacity-10 scale-110 blur-sm pointer-events-none" />}
-                    <div className="relative z-10 flex flex-col items-center gap-5 text-center px-8">
-                      <div className="w-10 h-10 rounded-full border-2 border-green-400 border-t-transparent animate-spin" />
-                      <p className="text-white text-sm font-semibold tracking-wide">Loading AnimeonSen…</p>
-                      <p className="text-white/40 text-xs">A small window will open to fetch the stream.<br/>It will close automatically once the video is ready.</p>
-                      <button
-                        onClick={() => {
-                          if (!animeonsenContentId) return;
-                          const proxyUrl = apiUrl(`/api/animeonsen/proxy-watch?contentId=${encodeURIComponent(animeonsenContentId)}&ep=${currentEp}`);
-                          const popup = window.open(proxyUrl, "ao_proxy",
-                            "width=720,height=500,left=120,top=80,menubar=no,toolbar=no,location=no,status=no,resizable=yes");
-                          if (!popup) return;
-                          aoProxyPopupRef.current = popup;
-                          setAnimeonsenInitializing(true);
-                          setAnimeonsenCountdown(20);
-                          const cd = setInterval(() => setAnimeonsenCountdown(c => {
-                            if (c <= 1) {
-                              clearInterval(cd);
-                              // Timeout — close popup, fall back to iframe
-                              try { popup.close(); } catch { /* ignore */ }
-                              setAnimeonsenInitializing(false);
-                              setAoIframeReloadKey(k => k + 1);
-                              setAoHlsRetry(c2 => c2 + 1);
-                            }
-                            return c - 1;
-                          }), 1000);
-                        }}
-                        className="bg-green-500/20 border border-green-500/60 text-green-300 text-xs font-semibold px-4 py-2 rounded-full hover:bg-green-500/30 transition-colors"
-                      >
-                        Open stream window →
-                      </button>
-                    </div>
-                  </div>
+                {/* ANIMEONSEN — proxy-watch embedded iframe (no popup needed) */}
+                {server === "ANIMEONSEN" && !animeonsenStreamUrl && animeonsenContentId && (
+                  <iframe
+                    key={`ao-proxy-${animeonsenContentId}-${currentEp}-${aoIframeReloadKey}`}
+                    src={apiUrl(`/api/animeonsen/proxy-watch?contentId=${encodeURIComponent(animeonsenContentId)}&ep=${currentEp}`)}
+                    className="absolute inset-0 w-full h-full border-0"
+                    allow="autoplay; fullscreen"
+                    title="AnimeonSen Player"
+                  />
                 )}
 
                 {/* KOTO native HLS player (bypasses mewcdn cross-origin player) */}
@@ -2135,7 +2087,7 @@ export default function WatchAniList() {
                 )}
 
                 {/* ANIMEONSEN loading / error overlay */}
-                {server === "ANIMEONSEN" && !animeonsenIframeUrl && (
+                {server === "ANIMEONSEN" && !animeonsenContentId && (
                   <div className="absolute inset-0 z-20 flex flex-col items-center justify-center" style={{ background: "rgba(0,0,0,0.92)" }}>
                     {banner && <img src={banner} alt="" className="absolute inset-0 w-full h-full object-cover opacity-10 scale-110 blur-sm" />}
                     <div className="relative z-10 flex flex-col items-center gap-4">
