@@ -1240,6 +1240,31 @@ export default function WatchAniList() {
       setAnimeonsenError(null);
       return;
     }
+
+    // Browser-side HLS extraction from AnimeonSen's API.
+    // api.animeonsen.xyz is IP-blocked from Replit servers, but the user's browser
+    // can reach it directly with Cloudflare cookies already set from their session.
+    async function tryBrowserExtract(contentId: string, ep: number): Promise<string | null> {
+      try {
+        const r = await fetch(
+          `https://api.animeonsen.xyz/v4/content/${contentId}/video/${ep}`,
+          { credentials: "include", headers: { Accept: "application/json" } }
+        );
+        if (!r.ok) return null;
+        const d = await r.json();
+        return (
+          d?.uri?.streaming?.hls ||
+          d?.uri?.hls ||
+          d?.hls ||
+          d?.stream?.hls ||
+          d?.data?.uri?.streaming?.hls ||
+          null
+        );
+      } catch {
+        return null;
+      }
+    }
+
     // Check raceCache first (set during auto-detect race)
     const cached = raceCache.current.animeonsen;
     if (cached !== undefined) {
@@ -1253,23 +1278,27 @@ export default function WatchAniList() {
         setAnimeonsenLoading(false);
         setAnimeonsenError(null);
         raceCache.current.animeonsen = undefined;
+        // Try browser-side HLS extraction in background
+        if (cached.contentId) {
+          tryBrowserExtract(cached.contentId, currentEp).then(hls => {
+            if (hls) setAnimeonsenStreamUrl(hls);
+          });
+        }
       } else {
         raceCache.current.animeonsen = undefined;
       }
     }
 
-    // Get content ID from local state or localStorage
     const localContentId = animeonsenContentId || (localStorage.getItem(`na_animeonsen_${animeId}`) ?? "");
 
-    // No server-side stream extraction — api.animeonsen.xyz is IP-blocked from Replit servers.
-    // The iframe is the primary player: animeonsen's own player runs in the user's browser
-    // where their IP is valid and Cloudflare passes without login.
-
     if (localContentId) {
-      // Content ID already known — set iframe URL immediately, no server call needed
       setAnimeonsenIframeUrl(`https://www.animeonsen.xyz/watch/${localContentId}?episode=${currentEp}`);
       setAnimeonsenLoading(false);
       setAnimeonsenError(null);
+      // Try browser-side HLS extraction — plays natively without iframe if it works
+      tryBrowserExtract(localContentId, currentEp).then(hls => {
+        if (hls) setAnimeonsenStreamUrl(hls);
+      });
       return;
     }
 
@@ -1284,13 +1313,16 @@ export default function WatchAniList() {
     if (romajiTitle) params.set("romajiTitle", romajiTitle);
     fetch(apiUrl(`/api/animeonsen/stream?${params}`))
       .then((r) => r.json())
-      .then((data: { iframeUrl?: string; contentId?: string; error?: string }) => {
+      .then(async (data: { iframeUrl?: string; contentId?: string; error?: string }) => {
         if (cancelled) return;
         if (data.iframeUrl && data.contentId) {
           setAnimeonsenContentId(data.contentId);
           setAnimeonsenIdInput(data.contentId);
           localStorage.setItem(`na_animeonsen_${animeId}`, data.contentId);
           setAnimeonsenIframeUrl(data.iframeUrl);
+          // Also try browser-side HLS extraction
+          const hls = await tryBrowserExtract(data.contentId, currentEp);
+          if (!cancelled && hls) setAnimeonsenStreamUrl(hls);
         } else {
           setAnimeonsenError(data.error ?? "Anime not found on AnimeonSen");
         }
@@ -1876,43 +1908,17 @@ export default function WatchAniList() {
                   />
                 )}
 
-                {/* ANIMEONSEN — "Connecting…" overlay while popup establishes Cloudflare cookies */}
-                {server === "ANIMEONSEN" && animeonsenInitializing && (
-                  <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-4" style={{ background: "rgba(0,0,0,0.93)" }}>
-                    {banner && <img src={banner} alt="" className="absolute inset-0 w-full h-full object-cover opacity-10 scale-110 blur-sm pointer-events-none" />}
-                    <div className="relative z-10 flex flex-col items-center gap-4 text-center px-6">
-                      <div className="w-10 h-10 rounded-full border-2 border-green-400 border-t-transparent animate-spin" />
-                      <p className="text-white text-sm font-semibold tracking-wide">Connecting to AnimeonSen…</p>
-                      <p className="text-white/40 text-[11px] font-mono">A verification window opened — it will close automatically in {animeonsenCountdown}s</p>
-                      <p className="text-white/25 text-[10px] font-mono">(first time only per session)</p>
-                    </div>
-                  </div>
-                )}
-
-                {/* ANIMEONSEN — iframe embed; hidden while popup initializing so CF cookies load first */}
-                {server === "ANIMEONSEN" && !animeonsenStreamUrl && animeonsenIframeUrl && !animeonsenInitializing && (
-                  <div className="absolute inset-0">
-                    <iframe
-                      key={`animeonsen-iframe-${animeId}-${currentEp}`}
-                      src={animeonsenIframeUrl}
-                      className="absolute inset-0 w-full h-full border-0"
-                      allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
-                      allowFullScreen
-                      title={`${title} Episode ${currentEp}`}
-                      onLoad={() => setTimeout(() => setIframeLoaded(true), 200)}
-                    />
-                    {/* Fallback helper if video is still blank after popup setup */}
-                    <div className="absolute top-2 right-2 z-20 flex items-center gap-2 bg-black/70 backdrop-blur-sm px-3 py-1.5 rounded-full border border-white/10 pointer-events-auto">
-                      <span className="text-white/50 text-[10px] font-mono uppercase tracking-widest">If blank:</span>
-                      <button
-                        onClick={() => sessionStorage.removeItem("ao_cf_ready")}
-                        className="text-green-400 text-[10px] font-mono font-bold uppercase tracking-widest hover:text-green-300 transition-colors"
-                        title="Click then re-select ANIMEONSEN to re-run setup"
-                      >
-                        Re-setup ↺
-                      </button>
-                    </div>
-                  </div>
+                {/* ANIMEONSEN — iframe embed (direct, no popup needed) */}
+                {server === "ANIMEONSEN" && !animeonsenStreamUrl && animeonsenIframeUrl && (
+                  <iframe
+                    key={`animeonsen-iframe-${animeId}-${currentEp}`}
+                    src={animeonsenIframeUrl}
+                    className="absolute inset-0 w-full h-full border-0"
+                    allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
+                    allowFullScreen
+                    title={`${title} Episode ${currentEp}`}
+                    onLoad={() => setTimeout(() => setIframeLoaded(true), 200)}
+                  />
                 )}
 
                 {/* KOTO native HLS player (bypasses mewcdn cross-origin player) */}
@@ -2558,23 +2564,7 @@ export default function WatchAniList() {
                   userPickedRef.current = true;
                   setServer("ANIMEONSEN");
                   setIframeLoaded(false);
-                  // Only open the CF-clearance popup once per session
-                  if (sessionStorage.getItem("ao_cf_ready")) return;
-                  // MUST be synchronous in click handler — browsers allow window.open here
-                  const popupUrl = animeonsenIframeUrl ?? "https://www.animeonsen.xyz";
-                  const popup = window.open(popupUrl, "ao_cf_init",
-                    "width=640,height=440,left=200,top=150,menubar=no,toolbar=no,location=no,status=no,resizable=no");
-                  if (!popup) return; // popup was blocked — skip
-                  setAnimeonsenInitializing(true);
-                  setAnimeonsenCountdown(6);
-                  const cdInterval = setInterval(() => setAnimeonsenCountdown(c => c - 1), 1000);
-                  setTimeout(() => {
-                    clearInterval(cdInterval);
-                    try { popup.close(); } catch { /* ignore */ }
-                    sessionStorage.setItem("ao_cf_ready", "1");
-                    setAnimeonsenInitializing(false);
-                    setAnimeonsenCountdown(0);
-                  }, 6500);
+                  setAnimeonsenInitializing(false);
                 }},
               ] as const).map(({ key, label, color, onClick }) => {
                 const active = server === key;
