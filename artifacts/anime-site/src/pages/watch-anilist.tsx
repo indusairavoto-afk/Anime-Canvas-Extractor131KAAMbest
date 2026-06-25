@@ -1292,10 +1292,17 @@ export default function WatchAniList() {
           localStorage.setItem(`na_animeonsen_${animeId}`, data.contentId);
           setAnimeonsenIframeUrl(data.iframeUrl);
         } else {
+          // Title not in catalog — show AnimeonSen homepage so user can browse manually
+          setAnimeonsenIframeUrl("https://www.animeonsen.xyz");
           setAnimeonsenError(data.error ?? "Anime not found on AnimeonSen");
         }
       })
-      .catch((e: Error) => { if (!cancelled) setAnimeonsenError(e.message); })
+      .catch((e: Error) => {
+        if (!cancelled) {
+          setAnimeonsenIframeUrl("https://www.animeonsen.xyz");
+          setAnimeonsenError(e.message);
+        }
+      })
       .finally(() => { if (!cancelled) setAnimeonsenLoading(false); });
     return () => { cancelled = true; };
   }, [server, animeId, currentEp]); // eslint-disable-line react-hooks/exhaustive-deps
