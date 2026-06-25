@@ -1922,58 +1922,46 @@ export default function WatchAniList() {
                   </div>
                 )}
 
-                {/* ANIMEONSEN — CF not yet established: ask user to click to open setup popup */}
-                {server === "ANIMEONSEN" && !animeonsenStreamUrl && !animeonsenInitializing && !aoCfReady && animeonsenIframeUrl && (
-                  <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-5" style={{ background: "rgba(0,0,0,0.88)" }}>
-                    {banner && <img src={banner} alt="" className="absolute inset-0 w-full h-full object-cover opacity-10 scale-110 blur-sm pointer-events-none" />}
-                    <div className="relative z-10 flex flex-col items-center gap-4 text-center px-6 max-w-xs">
-                      <div className="w-12 h-12 rounded-full bg-green-500/20 border border-green-500/40 flex items-center justify-center">
-                        <svg className="w-6 h-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                {/* ANIMEONSEN — iframe embed: loads immediately; CF managed challenge auto-solves in iframe context */}
+                {server === "ANIMEONSEN" && !animeonsenStreamUrl && animeonsenIframeUrl && !animeonsenInitializing && (
+                  <>
+                    <iframe
+                      key={`animeonsen-iframe-${animeId}-${currentEp}`}
+                      src={animeonsenIframeUrl}
+                      className="absolute inset-0 w-full h-full border-0"
+                      allow="autoplay; fullscreen; picture-in-picture; encrypted-media; clipboard-write"
+                      allowFullScreen
+                      title={`${title} Episode ${currentEp}`}
+                      onLoad={() => setTimeout(() => setIframeLoaded(true), 200)}
+                    />
+                    {/* Fallback: if still blank after load, offer CF setup popup */}
+                    {!aoCfReady && (
+                      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 pointer-events-auto">
+                        <button
+                          onClick={() => {
+                            const popupUrl = animeonsenIframeUrl ?? "https://www.animeonsen.xyz";
+                            const popup = window.open(popupUrl, "ao_cf_init",
+                              "width=680,height=480,left=160,top=100,menubar=no,toolbar=no,location=yes,status=no,resizable=yes");
+                            if (!popup) { window.open(popupUrl, "_blank"); return; }
+                            setAnimeonsenInitializing(true);
+                            setAnimeonsenCountdown(8);
+                            const cd = setInterval(() => setAnimeonsenCountdown(c => c - 1), 1000);
+                            setTimeout(() => {
+                              clearInterval(cd);
+                              try { popup.close(); } catch { /* ignore */ }
+                              sessionStorage.setItem("ao_cf_ready", "1");
+                              setAoCfReady(true);
+                              setAnimeonsenInitializing(false);
+                              setAnimeonsenCountdown(0);
+                            }, 8500);
+                          }}
+                          className="bg-black/80 backdrop-blur-sm border border-green-500/50 text-green-400 text-[11px] font-mono px-3 py-1.5 rounded-full hover:bg-green-500/20 transition-colors"
+                        >
+                          Video blank? Click to fix →
+                        </button>
                       </div>
-                      <p className="text-white font-semibold text-sm">One-time setup required</p>
-                      <p className="text-white/50 text-xs leading-relaxed">Click below to open AnimeonSen in a small window. It will verify your browser and close automatically in ~6 seconds.</p>
-                      <button
-                        onClick={() => {
-                          const popupUrl = animeonsenIframeUrl ?? "https://www.animeonsen.xyz";
-                          const popup = window.open(popupUrl, "ao_cf_init",
-                            "width=640,height=440,left=200,top=150,menubar=no,toolbar=no,location=no,status=no,resizable=no");
-                          if (!popup) {
-                            // Popup was blocked — open in new tab and ask user to come back
-                            window.open(popupUrl, "_blank");
-                            return;
-                          }
-                          setAnimeonsenInitializing(true);
-                          setAnimeonsenCountdown(6);
-                          const cdInterval = setInterval(() => setAnimeonsenCountdown(c => c - 1), 1000);
-                          setTimeout(() => {
-                            clearInterval(cdInterval);
-                            try { popup.close(); } catch { /* ignore */ }
-                            sessionStorage.setItem("ao_cf_ready", "1");
-                            setAoCfReady(true);
-                            setAnimeonsenInitializing(false);
-                            setAnimeonsenCountdown(0);
-                          }, 6500);
-                        }}
-                        className="mt-1 px-5 py-2.5 rounded-full bg-green-500 hover:bg-green-400 text-black font-bold text-sm transition-colors"
-                      >
-                        Connect to AnimeonSen
-                      </button>
-                      <p className="text-white/25 text-[10px] font-mono">Only needed once per browser session</p>
-                    </div>
-                  </div>
-                )}
-
-                {/* ANIMEONSEN — iframe embed; shown after CF setup is done */}
-                {server === "ANIMEONSEN" && !animeonsenStreamUrl && animeonsenIframeUrl && !animeonsenInitializing && aoCfReady && (
-                  <iframe
-                    key={`animeonsen-iframe-${animeId}-${currentEp}`}
-                    src={animeonsenIframeUrl}
-                    className="absolute inset-0 w-full h-full border-0"
-                    allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
-                    allowFullScreen
-                    title={`${title} Episode ${currentEp}`}
-                    onLoad={() => setTimeout(() => setIframeLoaded(true), 200)}
-                  />
+                    )}
+                  </>
                 )}
 
                 {/* KOTO native HLS player (bypasses mewcdn cross-origin player) */}
