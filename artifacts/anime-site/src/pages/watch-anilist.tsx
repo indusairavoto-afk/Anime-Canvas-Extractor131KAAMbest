@@ -201,6 +201,8 @@ export default function WatchAniList() {
   const [aoCfReady, setAoCfReady] = useState(() => !!sessionStorage.getItem("ao_cf_ready"));
   // Incrementing this triggers the post-popup HLS retry useEffect
   const [aoHlsRetry, setAoHlsRetry] = useState(0);
+  // Incrementing this forces the AnimeonSen iframe to remount after CF popup clears cookies
+  const [aoIframeReloadKey, setAoIframeReloadKey] = useState(0);
   const [anizoneHlsUrl, setAnizoneHlsUrl] = useState<string | null>(null);
   const [anizoneSubtitles, setAnizoneSubtitles] = useState<{ src: string; label: string; srclang: string; isDefault: boolean }[]>([]);
   const [anizoneStreamLoading, setAnizoneStreamLoading] = useState(false);
@@ -1242,18 +1244,23 @@ export default function WatchAniList() {
   const tryTokenExtract = useCallback(async (contentId: string, ep: number): Promise<string | null> => {
     try {
       const tr = await fetch(apiUrl(`/api/animeonsen/token?contentId=${encodeURIComponent(contentId)}`));
-      if (!tr.ok) return null;
+      if (!tr.ok) { console.warn("[AO] token endpoint failed:", tr.status); return null; }
       const { bearerToken } = await tr.json() as { bearerToken?: string };
-      if (!bearerToken) return null;
+      if (!bearerToken) { console.warn("[AO] no bearerToken in response"); return null; }
+      console.log("[AO] got token, calling api.animeonsen.xyz…");
       type VideoData = { uri?: { streaming?: { hls?: string }; hls?: string }; hls?: string; stream?: { hls?: string }; data?: { uri?: { streaming?: { hls?: string } } } };
       const vr = await fetch(
         `https://api.animeonsen.xyz/v4/content/${contentId}/video/${ep}`,
         { headers: { Authorization: `Bearer ${bearerToken}`, Accept: "application/json" } }
       );
+      console.log("[AO] api.animeonsen.xyz status:", vr.status);
       if (!vr.ok) return null;
       const d = await vr.json() as VideoData;
-      return d?.uri?.streaming?.hls ?? d?.uri?.hls ?? d?.hls ?? d?.stream?.hls ?? d?.data?.uri?.streaming?.hls ?? null;
-    } catch {
+      const hls = d?.uri?.streaming?.hls ?? d?.uri?.hls ?? d?.hls ?? d?.stream?.hls ?? d?.data?.uri?.streaming?.hls ?? null;
+      console.log("[AO] HLS URL:", hls, "| full keys:", Object.keys(d));
+      return hls;
+    } catch (e) {
+      console.error("[AO] tryTokenExtract error:", e);
       return null;
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1965,7 +1972,7 @@ export default function WatchAniList() {
                 {server === "ANIMEONSEN" && !animeonsenStreamUrl && animeonsenIframeUrl && !animeonsenInitializing && (
                   <>
                     <iframe
-                      key={`animeonsen-iframe-${animeId}-${currentEp}`}
+                      key={`animeonsen-iframe-${animeId}-${currentEp}-${aoIframeReloadKey}`}
                       src={animeonsenIframeUrl}
                       className="absolute inset-0 w-full h-full border-0"
                       allow="autoplay; fullscreen; picture-in-picture; encrypted-media; clipboard-write"
@@ -1983,7 +1990,7 @@ export default function WatchAniList() {
                               "width=680,height=480,left=160,top=100,menubar=no,toolbar=no,location=yes,status=no,resizable=yes");
                             if (!popup) { window.open(popupUrl, "_blank"); return; }
                             setAnimeonsenInitializing(true);
-                            setAnimeonsenCountdown(8);
+                            setAnimeonsenCountdown(12);
                             const cd = setInterval(() => setAnimeonsenCountdown(c => c - 1), 1000);
                             setTimeout(() => {
                               clearInterval(cd);
@@ -1992,10 +1999,12 @@ export default function WatchAniList() {
                               setAoCfReady(true);
                               setAnimeonsenInitializing(false);
                               setAnimeonsenCountdown(0);
-                              // Popup established CF clearance for api.animeonsen.xyz.
-                              // Trigger the retry useEffect so we can get HLS now.
+                              // Popup established CF clearance cookies for animeonsen.xyz and api.animeonsen.xyz.
+                              // 1. Force iframe remount so it loads fresh with the clearance cookies now set.
+                              setAoIframeReloadKey(k => k + 1);
+                              // 2. Also retry HLS extraction — browser credentials now include CF clearance.
                               setAoHlsRetry(c => c + 1);
-                            }, 8500);
+                            }, 12000);
                           }}
                           className="bg-black/80 backdrop-blur-sm border border-green-500/50 text-green-400 text-[11px] font-mono px-3 py-1.5 rounded-full hover:bg-green-500/20 transition-colors"
                         >
