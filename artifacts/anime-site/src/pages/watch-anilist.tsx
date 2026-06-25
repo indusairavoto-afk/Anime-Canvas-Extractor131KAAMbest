@@ -199,6 +199,8 @@ export default function WatchAniList() {
   const [animeonsenInitializing, setAnimeonsenInitializing] = useState(false);
   const [animeonsenCountdown, setAnimeonsenCountdown] = useState(0);
   const [aoCfReady, setAoCfReady] = useState(() => !!sessionStorage.getItem("ao_cf_ready"));
+  // Incrementing this triggers the post-popup HLS retry useEffect
+  const [aoHlsRetry, setAoHlsRetry] = useState(0);
   const [anizoneHlsUrl, setAnizoneHlsUrl] = useState<string | null>(null);
   const [anizoneSubtitles, setAnizoneSubtitles] = useState<{ src: string; label: string; srclang: string; isDefault: boolean }[]>([]);
   const [anizoneStreamLoading, setAnizoneStreamLoading] = useState(false);
@@ -1232,6 +1234,59 @@ export default function WatchAniList() {
     setAnimeonsenIdInput(saved);
   }, [animeId]);
 
+  /**
+   * Server derives the ao.session Bearer token (www is not IP-blocked), browser
+   * makes the actual api.animeonsen.xyz call (user's IP is not blocked either).
+   * This is the working bypass for the CF iframe + server IP block problem.
+   */
+  const tryTokenExtract = useCallback(async (contentId: string, ep: number): Promise<string | null> => {
+    try {
+      const tr = await fetch(apiUrl(`/api/animeonsen/token?contentId=${encodeURIComponent(contentId)}`));
+      if (!tr.ok) return null;
+      const { bearerToken } = await tr.json() as { bearerToken?: string };
+      if (!bearerToken) return null;
+      type VideoData = { uri?: { streaming?: { hls?: string }; hls?: string }; hls?: string; stream?: { hls?: string }; data?: { uri?: { streaming?: { hls?: string } } } };
+      const vr = await fetch(
+        `https://api.animeonsen.xyz/v4/content/${contentId}/video/${ep}`,
+        { headers: { Authorization: `Bearer ${bearerToken}`, Accept: "application/json" } }
+      );
+      if (!vr.ok) return null;
+      const d = await vr.json() as VideoData;
+      return d?.uri?.streaming?.hls ?? d?.uri?.hls ?? d?.hls ?? d?.stream?.hls ?? d?.data?.uri?.streaming?.hls ?? null;
+    } catch {
+      return null;
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Browser-side HLS extraction using its own CF session cookies — fallback after token extract */
+  const tryBrowserExtract = useCallback(async (contentId: string, ep: number): Promise<string | null> => {
+    try {
+      const r = await fetch(
+        `https://api.animeonsen.xyz/v4/content/${contentId}/video/${ep}`,
+        { credentials: "include", headers: { Accept: "application/json" } }
+      );
+      if (!r.ok) return null;
+      const d = await r.json();
+      return d?.uri?.streaming?.hls || d?.uri?.hls || d?.hls || d?.stream?.hls || d?.data?.uri?.streaming?.hls || null;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  /**
+   * Post-popup HLS retry: after the CF popup closes the user's browser has CF clearance
+   * for api.animeonsen.xyz. Retry token-extract (now with user's unblocked IP) then
+   * browser-direct as fallback. On success, switches to native HLS player.
+   */
+  useEffect(() => {
+    if (aoHlsRetry === 0 || !animeonsenContentId || server !== "ANIMEONSEN") return;
+    let alive = true;
+    tryTokenExtract(animeonsenContentId, currentEp)
+      .then(hls => hls ?? tryBrowserExtract(animeonsenContentId, currentEp))
+      .then(hls => { if (alive && hls) setAnimeonsenStreamUrl(hls); });
+    return () => { alive = false; };
+  }, [aoHlsRetry]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Fetch AnimeonSen stream URL when server is ANIMEONSEN
   useEffect(() => {
     if (server !== "ANIMEONSEN") {
@@ -1242,50 +1297,10 @@ export default function WatchAniList() {
       return;
     }
 
-    // Server-side HLS extraction via ao.session cookie bypass.
-    // The server fetches the AnimeonSen watch page to obtain ao.session,
-    // derives the Bearer token (base64-decode → shift chars +1), then calls
-    // api.animeonsen.xyz server-side with proper auth — no iframe or CF popup needed.
-    async function tryServerExtract(contentId: string, ep: number): Promise<string | null> {
-      try {
-        const r = await fetch(apiUrl(`/api/animeonsen/video?contentId=${encodeURIComponent(contentId)}&ep=${ep}`));
-        if (!r.ok) return null;
-        const d = await r.json() as { hlsUrl?: string };
-        return d?.hlsUrl ?? null;
-      } catch {
-        return null;
-      }
-    }
-
-    // Browser-side HLS extraction fallback — used only if server-side fails.
-    // api.animeonsen.xyz may be IP-blocked from Replit servers, but the user's
-    // browser can reach it directly with Cloudflare cookies already set.
-    async function tryBrowserExtract(contentId: string, ep: number): Promise<string | null> {
-      try {
-        const r = await fetch(
-          `https://api.animeonsen.xyz/v4/content/${contentId}/video/${ep}`,
-          { credentials: "include", headers: { Accept: "application/json" } }
-        );
-        if (!r.ok) return null;
-        const d = await r.json();
-        return (
-          d?.uri?.streaming?.hls ||
-          d?.uri?.hls ||
-          d?.hls ||
-          d?.stream?.hls ||
-          d?.data?.uri?.streaming?.hls ||
-          null
-        );
-      } catch {
-        return null;
-      }
-    }
-
-    // Try server-side first, fall back to browser-side extraction.
+    // Token-based extraction: server derives JWT from ao.session, browser calls the API.
+    // Cascade: tryTokenExtract → tryBrowserExtract (fallback with user's own CF cookies).
     async function extractHls(contentId: string, ep: number): Promise<string | null> {
-      const serverHls = await tryServerExtract(contentId, ep);
-      if (serverHls) return serverHls;
-      return tryBrowserExtract(contentId, ep);
+      return (await tryTokenExtract(contentId, ep)) ?? (await tryBrowserExtract(contentId, ep));
     }
 
     // Cancellation flag — shared across all async branches in this effect run.
@@ -1977,6 +1992,9 @@ export default function WatchAniList() {
                               setAoCfReady(true);
                               setAnimeonsenInitializing(false);
                               setAnimeonsenCountdown(0);
+                              // Popup established CF clearance for api.animeonsen.xyz.
+                              // Trigger the retry useEffect so we can get HLS now.
+                              setAoHlsRetry(c => c + 1);
                             }, 8500);
                           }}
                           className="bg-black/80 backdrop-blur-sm border border-green-500/50 text-green-400 text-[11px] font-mono px-3 py-1.5 rounded-full hover:bg-green-500/20 transition-colors"

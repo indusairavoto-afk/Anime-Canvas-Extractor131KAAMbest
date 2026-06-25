@@ -109,15 +109,105 @@ async function searchContentId(titles: string[]): Promise<{ contentId: string; m
 }
 
 /**
+ * Shared helper: fetch the AnimeonSen watch page (server-accessible), extract the
+ * ao.session cookie, and derive the Bearer token via watch.js's obfuscation scheme:
+ *   bearer = base64_decode(ao.session).chars.map(c => charCode(c) + 1).join("")
+ *
+ * The derived token is a valid JWT that the browser also uses — but we return it so
+ * the *browser* (not the server) can call api.animeonsen.xyz, bypassing the IP block.
+ */
+async function fetchBearerToken(contentId: string): Promise<{ bearerToken: string; aoSession: string } | null> {
+  try {
+    const watchUrl = `${ANIMEONSEN_ORIGIN}/watch/${contentId}?episode=1`;
+    const pageResp = await fetch(watchUrl, {
+      headers: {
+        ...BROWSER_HEADERS,
+        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+        "Accept-Encoding": "gzip, deflate, br",
+      },
+      redirect: "follow",
+      signal: AbortSignal.timeout(12000),
+    });
+    if (!pageResp.ok) return null;
+
+    // Extract ao.session — try three methods in order of reliability
+    let aoSession: string | null = null;
+
+    const extractFromCookieStr = (s: string): string | null => {
+      const m = s.match(/ao\.session=([^;,\s]+)/);
+      return m ? decodeURIComponent(m[1]) : null;
+    };
+
+    // 1. Node 18+ Headers.getSetCookie() — one header per entry, no splitting ambiguity
+    const getSetCookieFn = (pageResp.headers as unknown as { getSetCookie?(): string[] }).getSetCookie;
+    if (typeof getSetCookieFn === "function") {
+      for (const h of getSetCookieFn.call(pageResp.headers)) {
+        const v = extractFromCookieStr(h);
+        if (v) { aoSession = v; break; }
+      }
+    }
+
+    // 2. headers.get('set-cookie') — may be comma-joined across entries
+    if (!aoSession) {
+      const raw = pageResp.headers.get("set-cookie") ?? "";
+      if (raw) {
+        for (const part of raw.split(/,(?=[^;]*=)/)) {
+          const v = extractFromCookieStr(part);
+          if (v) { aoSession = v; break; }
+        }
+      }
+    }
+
+    // 3. HTML inline fallback — some builds embed the session in a script tag
+    if (!aoSession) {
+      const html = await pageResp.text();
+      const inline = html.match(/ao\.session['"]\s*[,=:]\s*['"]([A-Za-z0-9+/=]+)['"]/);
+      if (inline) aoSession = inline[1];
+    }
+
+    if (!aoSession) return null;
+
+    // Derive Bearer token: base64_decode(ao.session) → shift each char code +1
+    // (reverses the -1 obfuscation used in watch.js to store the JWT in the cookie)
+    const shifted = Buffer.from(aoSession, "base64").toString("binary");
+    const bearerToken = Array.from(shifted)
+      .map(c => String.fromCharCode(c.charCodeAt(0) + 1))
+      .join("");
+
+    return { bearerToken, aoSession };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * GET /api/animeonsen/token?contentId=...
+ *
+ * Returns the Bearer token derived from the ao.session cookie so the browser
+ * can call api.animeonsen.xyz directly (from the user's unblocked IP).
+ * This is the working bypass: server handles token derivation, browser makes
+ * the actual video API call where it won't be IP-blocked.
+ */
+router.get("/animeonsen/token", async (req, res) => {
+  const contentId = (req.query.contentId as string | undefined)?.trim();
+  if (!contentId) {
+    res.status(400).json({ error: "contentId is required" });
+    return;
+  }
+  const result = await fetchBearerToken(contentId);
+  if (!result) {
+    res.status(502).json({ error: "Could not obtain ao.session from AnimeonSen" });
+    return;
+  }
+  res.json({ bearerToken: result.bearerToken });
+});
+
+/**
  * GET /api/animeonsen/video?contentId=...&ep=...
  *
- * Server-side HLS extraction using the ao.session cookie bypass:
- *   1. Fetch the watch page (www.animeonsen.xyz — not CF-blocked server-side)
- *      to obtain the ao.session cookie that AnimeonSen sets freely.
- *   2. Derive the Bearer token: base64-decode the cookie value, then shift
- *      each character code +1 (reverses the -1 obfuscation in watch.js).
- *   3. Call api.animeonsen.xyz/v4/content/{id}/video/{ep} with that token.
- *   4. Return the HLS URL for native playback (no iframe, no CF popup needed).
+ * Attempts full server-side HLS extraction using the ao.session Bearer token.
+ * api.animeonsen.xyz is IP-blocked from Replit servers so this returns 502 in practice;
+ * the /token endpoint + browser-side call is the working path. Kept for completeness.
  */
 router.get("/animeonsen/video", async (req, res) => {
   const contentId = (req.query.contentId as string | undefined)?.trim();
@@ -134,76 +224,13 @@ router.get("/animeonsen/video", async (req, res) => {
   }
 
   try {
-    // Step 1: fetch watch page — www.animeonsen.xyz is accessible server-side
-    const watchUrl = `${ANIMEONSEN_ORIGIN}/watch/${contentId}?episode=${epNum}`;
-    const pageResp = await fetch(watchUrl, {
-      headers: {
-        ...BROWSER_HEADERS,
-        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-        "Accept-Encoding": "gzip, deflate, br",
-      },
-      redirect: "follow",
-      signal: AbortSignal.timeout(12000),
-    });
-
-    if (!pageResp.ok) {
-      res.status(502).json({ error: `Watch page fetch failed: ${pageResp.status}` });
+    const tokenResult = await fetchBearerToken(contentId);
+    if (!tokenResult) {
+      res.status(502).json({ error: "Could not obtain ao.session from AnimeonSen watch page" });
       return;
     }
+    const { bearerToken, aoSession } = tokenResult;
 
-    // Step 2: extract ao.session from Set-Cookie headers.
-    // Try three approaches in order:
-    //   a) Node 18+ Headers.getSetCookie() — returns each Set-Cookie as a separate string
-    //   b) headers.get('set-cookie') — older runtimes may collapse them with comma-join
-    //   c) HTML script-tag inline (some AnimeonSen builds embed the session in the page)
-    let aoSession: string | null = null;
-
-    const extractFromCookieStr = (s: string): string | null => {
-      const m = s.match(/ao\.session=([^;,\s]+)/);
-      return m ? decodeURIComponent(m[1]) : null;
-    };
-
-    // (a) getSetCookie() — preferred, avoids comma-splitting ambiguity
-    const getSetCookieFn = (pageResp.headers as unknown as { getSetCookie?(): string[] }).getSetCookie;
-    if (typeof getSetCookieFn === "function") {
-      for (const header of getSetCookieFn.call(pageResp.headers)) {
-        const v = extractFromCookieStr(header);
-        if (v) { aoSession = v; break; }
-      }
-    }
-
-    // (b) headers.get('set-cookie') fallback — may be a comma-joined string
-    if (!aoSession) {
-      const raw = pageResp.headers.get("set-cookie") ?? "";
-      if (raw) {
-        for (const part of raw.split(/,(?=[^;]*=)/)) {
-          const v = extractFromCookieStr(part);
-          if (v) { aoSession = v; break; }
-        }
-      }
-    }
-
-    // (c) HTML inline fallback
-    if (!aoSession) {
-      const html = await pageResp.text();
-      const inline = html.match(/ao\.session['"]\s*[,=:]\s*['"]([A-Za-z0-9+/=]+)['"]/);
-      if (inline) aoSession = inline[1];
-    }
-
-    if (!aoSession) {
-      res.status(502).json({ error: "ao.session cookie not found in AnimeonSen response" });
-      return;
-    }
-
-    // Step 3: derive Bearer token
-    // watch.js stores the token as: base64(token.chars.map(c => charCode(c) - 1))
-    // Reverse: base64decode → shift each char +1
-    const shifted = Buffer.from(aoSession, "base64").toString("binary");
-    const bearerToken = Array.from(shifted)
-      .map(c => String.fromCharCode(c.charCodeAt(0) + 1))
-      .join("");
-
-    // Step 4: call the streaming API with the derived token
     const apiEndpoint = `https://api.animeonsen.xyz/v4/content/${contentId}/video/${epNum}`;
     const apiResp = await fetch(apiEndpoint, {
       headers: {
@@ -258,8 +285,7 @@ router.get("/animeonsen/video", async (req, res) => {
  * GET /api/animeonsen/stream?title=...&romajiTitle=...&ep=...
  *
  * Searches AnimeonSen for the given title, resolves the content_id,
- * and returns both the direct watch iframe URL and (if the ao.session
- * bypass succeeds) the HLS stream URL for native playback.
+ * and returns the direct watch iframe URL for fallback playback.
  */
 router.get("/animeonsen/stream", async (req, res) => {
   const title = (req.query.title as string | undefined)?.trim() ?? "";

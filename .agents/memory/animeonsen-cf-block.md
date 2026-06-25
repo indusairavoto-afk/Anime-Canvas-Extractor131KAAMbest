@@ -1,37 +1,51 @@
 ---
-name: AnimeonSen Cloudflare IP block + ao.session bypass
-description: How to get HLS streams from AnimeonSen server-side despite api.animeonsen.xyz being CF-blocked; the ao.session cookie bypass.
+name: AnimeonSen Cloudflare bypass — token relay approach
+description: Working bypass for the CF iframe block + server IP block; server derives JWT, browser makes API call.
 ---
 
 ## Rule
 
-`api.animeonsen.xyz` was previously considered hard-blocked from Replit IPs. A server-side bypass now exists via the `ao.session` cookie auth scheme used by `watch.js`.
+`api.animeonsen.xyz` is hard IP-blocked from Replit servers even with auth headers (confirmed 403 from curl).
+`www.animeonsen.xyz` is NOT blocked — page fetches work fine and return `ao.session` cookie freely.
 
-## ao.session Bearer Token Bypass
+## Working Bypass: Token Relay
 
-`watch.js` decodes `L("QXV0aG9yaXphdGlvbixCZWFyZXIsYW8uc2Vzc2lvbg")` → `"Authorization,Bearer,ao.session"`:
-reads the `ao.session` cookie, base64-decodes it, shifts each char code **+1**, and sends the result as a Bearer token.
+**Key insight:** Server CAN get `ao.session` from www (not blocked), and CAN derive the Bearer token. But
+the SERVER cannot call api.animeonsen.xyz (IP blocked). The BROWSER can call it fine.
 
-**Server-side steps:**
-1. `GET https://www.animeonsen.xyz/watch/${contentId}?episode=${ep}` — www is **not** CF-blocked from Replit; the response sets `ao.session` freely.
-2. Extract `ao.session` from Set-Cookie (try `getSetCookie()` → `headers.get('set-cookie')` → HTML inline fallback in that order).
-3. `Buffer.from(aoSession, "base64").toString("binary")` → shift each char +1 → `bearerToken`.
-4. `GET https://api.animeonsen.xyz/v4/content/${contentId}/video/${ep}` with `Authorization: Bearer ${bearerToken}` + `Cookie: ao.session=${aoSession}`.
-5. Response contains HLS URL at `data.uri.streaming.hls` (or `uri.hls`, `hls`, `stream.hls`).
+**Flow:**
+1. Browser calls `/api/animeonsen/token?contentId=...` (our server).
+2. Server fetches `www.animeonsen.xyz/watch/{contentId}?episode=1` → gets `ao.session` cookie.
+3. Server derives Bearer: `base64_decode(ao.session).chars.map(c => charCode+1).join("")` → valid JWT.
+4. Server returns `{ bearerToken }` to browser.
+5. Browser calls `api.animeonsen.xyz/v4/content/{id}/video/{ep}` with `Authorization: Bearer {token}`.
+6. Response contains HLS URL at `data.uri.streaming.hls` (also check `uri.hls`, `hls`, `stream.hls`).
+7. HLS URL fed into native HLS player — no iframe, no CF popup.
 
-**Why:** The obfuscation is in `watch.js` L() decode → `"Authorization,Bearer,ao.session"`. The cookie value is a -1 shifted, base64-encoded token; reversing gives the actual JWT.
+**Why it works:** `www.animeonsen.xyz` serves the page (and cookie) freely from any IP. Token derivation
+is reversible since watch.js obfuscates by shifting chars -1 then base64. api.animeonsen.xyz checks
+the JWT auth rather than IP when the request comes from a real browser.
 
-**How to apply:** Backend endpoint `/api/animeonsen/video?contentId=...&ep=...` implements this. Frontend calls it as `tryServerExtract` first, falls back to `tryBrowserExtract` (user's browser with own CF cookies), then falls back to iframe embed.
+## Cookie Extraction Order (robustness in Node 20)
 
-## Architecture
+1. `Headers.getSetCookie()` — one string per Set-Cookie, no comma-splitting ambiguity
+2. `headers.get('set-cookie')` split on `/,(?=[^;]*=)/` — comma-joined fallback
+3. HTML regex `/ao\.session['"]\s*[,=:]\s*['"]([A-Za-z0-9+/=]+)['"]/` — inline script fallback
 
-- `/api/animeonsen/stream` — unchanged; searches MeiliSearch, returns `iframeUrl` + `contentId`.
-- `/api/animeonsen/video` — new; ao.session bypass → returns `hlsUrl` for native HLS playback.
-- Frontend `extractHls(contentId, ep)`: tries `/api/animeonsen/video` first → `tryBrowserExtract` fallback → iframe last resort.
-- All `extractHls(...).then(...)` calls include `if (!cancelled && hls)` guards to prevent stale episode state.
+## Frontend Architecture
 
-## Cookie Extraction Order (robustness)
+- `tryTokenExtract(contentId, ep)` — `useCallback` at component level; calls `/api/animeonsen/token` then browser API call.
+- `tryBrowserExtract(contentId, ep)` — `useCallback`; browser direct with `credentials: "include"` (own CF cookies).
+- `extractHls(contentId, ep)` — inner helper in main useEffect: `tryTokenExtract → tryBrowserExtract`.
+- `aoHlsRetry` state — incremented when popup closes; separate `useEffect` retries extraction.
+- Popup `setTimeout` calls `setAoHlsRetry(c => c + 1)` after `setAoCfReady(true)` to retry with fresh CF cookies.
 
-1. `Headers.getSetCookie()` (Node 18+ native fetch) — one string per Set-Cookie header
-2. `headers.get('set-cookie')` split on `,(?=[^;]*=)` — handles comma-joined multi-cookie strings
-3. HTML regex: `/ao\.session['"]\s*[,=:]\s*['"]([A-Za-z0-9+/=]+)['"]/` — inline script fallback
+## API Endpoints
+
+- `/api/animeonsen/token?contentId=` — returns `{ bearerToken }` (JWT derived from ao.session).
+- `/api/animeonsen/video?contentId=&ep=` — kept for completeness but always 403 (server IP blocked by CF).
+- `/api/animeonsen/stream?title=&romajiTitle=&ep=` — searches MeiliSearch, returns `{ iframeUrl, contentId }`.
+
+## Fallback Chain
+
+`tryTokenExtract` → `tryBrowserExtract` → iframe embed (CF popup button if blank) → popup retry with `aoHlsRetry`
