@@ -1,0 +1,43 @@
+2026-06-26T05:47:40.495851556Z ==> Downloading cache...
+2026-06-26T05:47:40.530751566Z ==> Cloning from https://github.com/indusairavoto-afk/Anime-Canvas-Extractor131KAAMbest
+2026-06-26T05:47:43.969131338Z ==> Checking out commit a8f4892a502be538773d031dd7f6d8e35b51430f in branch main
+2026-06-26T05:47:49.891643848Z ==> Downloaded 134MB in 3s. Extraction took 5s.
+2026-06-26T05:47:55.804463661Z ==> Using Node.js version 24.14.1 (default)
+2026-06-26T05:47:55.804478021Z ==> Docs on specifying a Node.js version: https://render.com/docs/node-version
+2026-06-26T05:47:55.849637425Z ==> Running build command 'npx --yes pnpm@10 install && npx pnpm@10 --filter @workspace/api-server run build'...
+2026-06-26T05:47:58.930948169Z 
+2026-06-26T05:47:58.930976919Z > @workspace/api-server@0.0.0 build /opt/render/project/src/artifacts/api-server
+2026-06-26T05:47:58.930984479Z > node ./build.mjs
+2026-06-26T05:47:58.93098847Z 
+2026-06-26T05:47:59.484768463Z 
+2026-06-26T05:47:59.484804534Z   dist/index.mjs                       2.5mb ⚠️
+2026-06-26T05:47:59.484810394Z   dist/pino-worker.mjs               153.4kb
+2026-06-26T05:47:59.484813554Z   dist/pino-file.mjs                 142.1kb
+2026-06-26T05:47:59.484816604Z   dist/pino-pretty.mjs               114.6kb
+2026-06-26T05:47:59.484819774Z   dist/thread-stream-worker.mjs        7.3kb
+2026-06-26T05:47:59.484822704Z   dist/index.mjs.map                   4.3mb
+2026-06-26T05:47:59.484825704Z   dist/pino-worker.mjs.map           256.9kb
+2026-06-26T05:47:59.484828734Z   dist/pino-file.mjs.map             229.0kb
+2026-06-26T05:47:59.484831944Z   dist/pino-pretty.mjs.map           204.0kb
+2026-06-26T05:47:59.484835055Z   dist/thread-stream-worker.mjs.map   12.0kb
+2026-06-26T05:47:59.484837955Z 
+2026-06-26T05:47:59.484841205Z ⚡ Done in 498ms
+2026-06-26T05:48:00.759987571Z ==> Uploading build...
+2026-06-26T05:48:13.253015862Z ==> Uploaded in 8.1s. Compression took 4.4s
+2026-06-26T05:48:13.313062612Z ==> Build successful 🎉
+2026-06-26T05:48:15.731117145Z ==> Deploying...
+2026-06-26T05:48:15.845057579Z ==> Setting WEB_CONCURRENCY=1 by default, based on available CPUs in the instance
+2026-06-26T05:48:43.698097428Z ==> Running 'node artifacts/api-server/dist/index.mjs'
+2026-06-26T05:48:45.601944742Z {"level":30,"time":1782452925601,"pid":70,"hostname":"srv-d8mjr5btqb8s73c6c7g0-hibernate-7c4c9fbfb4-w6hjv","msg":"watch-together WebSocket attached"}
+2026-06-26T05:48:45.700337385Z {"level":30,"time":1782452925603,"pid":70,"hostname":"srv-d8mjr5btqb8s73c6c7g0-hibernate-7c4c9fbfb4-w6hjv","port":10000,"msg":"Server listening"}
+2026-06-26T05:48:45.799829943Z {"level":30,"time":1782452925709,"pid":70,"hostname":"srv-d8mjr5btqb8s73c6c7g0-hibernate-7c4c9fbfb4-w6hjv","req":{"id":1,"method":"HEAD","url":"/"},"res":{"statusCode":404},"responseTime":5,"msg":"request completed"}
+2026-06-26T05:48:45.799855954Z {"level":40,"time":1782452925797,"pid":70,"hostname":"srv-d8mjr5btqb8s73c6c7g0-hibernate-7c4c9fbfb4-w6hjv","err":{"type":"_DrizzleQueryError","message":"Failed query: select count(*) from \"anime\"\nparams: : getaddrinfo ENOTFOUND dpg-d8mj86m7r5hc739rsbd0-a","stack":"Error: Failed query: select count(*) from \"anime\"\nparams: \n    at NodePgPreparedQuery.queryWithCache (file:///opt/render/project/src/artifacts/api-server/dist/index.mjs:48073:15)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async file:///opt/render/project/src/artifacts/api-server/dist/index.mjs:48306:22\n    at async runAndSchedule (file:///opt/render/project/src/artifacts/api-server/dist/index.mjs:67216:21)\ncaused by: Error: getaddrinfo ENOTFOUND dpg-d8mj86m7r5hc739rsbd0-a\n    at file:///opt/render/project/src/artifacts/api-server/dist/index.mjs:32702:15\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async file:///opt/render/project/src/artifacts/api-server/dist/index.mjs:48313:18\n    at async NodePgPreparedQuery.queryWithCache (file:///opt/render/project/src/artifacts/api-server/dist/index.mjs:48071:16)\n    at async file:///opt/render/project/src/artifacts/api-server/dist/index.mjs:48306:22\n    at async runAndSchedule (file:///opt/render/project/src/artifacts/api-server/dist/index.mjs:67216:21)","query":"select count(*) from \"anime\"","params":[]},"msg":"AniList auto-sync: initial check failed"}
+2026-06-26T05:48:46.631134656Z ==> Your service is live 🎉
+2026-06-26T05:48:46.686860698Z {"level":30,"time":1782452926685,"pid":70,"hostname":"srv-d8mjr5btqb8s73c6c7g0-hibernate-7c4c9fbfb4-w6hjv","req":{"id":2,"method":"GET","url":"/"},"res":{"statusCode":404},"responseTime":1,"msg":"request completed"}
+2026-06-26T05:48:46.715137192Z ==> 
+2026-06-26T05:48:46.716993156Z ==> ///////////////////////////////////////////////////////////
+2026-06-26T05:48:46.718876612Z ==> 
+2026-06-26T05:48:46.72121022Z ==> Available at your primary URL https://nnanime-mxkt.onrender.com
+2026-06-26T05:48:46.723012923Z ==> 
+2026-06-26T05:48:46.72460134Z ==> ///////////////////////////////////////////////////////////
+2026-06-26T05:49:38.557259293Z {"level":30,"time":1782452978556,"pid":70,"hostname":"srv-d8mjr5btqb8s73c6c7g0-hibernate-7c4c9fbfb4-w6hjv","req":{"id":3,"method":"HEAD","url":"/"},"res":{"statusCode":404},"responseTime":0,"msg":"request completed"}
