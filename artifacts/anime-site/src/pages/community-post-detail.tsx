@@ -10,6 +10,7 @@ import {
   useCreatePostComment,
   useDeleteCommunityPost,
   useDeleteComment,
+  useLikeCommunityPost,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/auth-context";
@@ -24,6 +25,7 @@ export default function CommunityPostDetail() {
   const [comment, setComment] = useState("");
   const [confirmDeletePost, setConfirmDeletePost] = useState(false);
   const [confirmDeleteCommentId, setConfirmDeleteCommentId] = useState<number | null>(null);
+  const [liked, setLiked] = useState(false);
 
   const { data: post, isLoading } = useGetCommunityPost(id, {
     query: { enabled: !!id, queryKey: getGetCommunityPostQueryKey(id) },
@@ -34,6 +36,7 @@ export default function CommunityPostDetail() {
   const createComment = useCreatePostComment();
   const deletePost = useDeleteCommunityPost();
   const deleteComment = useDeleteComment();
+  const likePost = useLikeCommunityPost();
 
   const handleSubmit = () => {
     if (!user || !comment.trim()) return;
@@ -49,13 +52,23 @@ export default function CommunityPostDetail() {
     );
   };
 
+  const handleLike = () => {
+    if (liked) return;
+    setLiked(true);
+    likePost.mutate(
+      { id },
+      {
+        onSuccess: (data) => queryClient.setQueryData(getGetCommunityPostQueryKey(id), data),
+        onError: () => setLiked(false),
+      }
+    );
+  };
+
   const handleDeletePost = () => {
     if (!user || !post) return;
     deletePost.mutate(
       { id, data: { username: user.username } },
-      {
-        onSuccess: () => navigate("/community"),
-      }
+      { onSuccess: () => navigate("/community") }
     );
   };
 
@@ -74,6 +87,7 @@ export default function CommunityPostDetail() {
   };
 
   const isMyPost = !!(user && post && user.username === post.username);
+  const displayLikes = (post?.likes ?? 0) + (liked ? 1 : 0);
 
   if (isLoading) {
     return (
@@ -102,7 +116,7 @@ export default function CommunityPostDetail() {
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
           <div className="flex items-center justify-between mb-8">
             <Link href="/community">
-              <button className="flex items-center gap-2 text-white/40 hover:text-white text-xs font-mono uppercase tracking-widest transition-colors" data-testid="button-back">
+              <button className="flex items-center gap-2 text-white/40 hover:text-white text-xs font-mono uppercase tracking-widest transition-colors">
                 <ArrowLeft className="w-3.5 h-3.5" /> Community
               </button>
             </Link>
@@ -110,7 +124,6 @@ export default function CommunityPostDetail() {
               <button
                 onClick={() => setConfirmDeletePost(true)}
                 className="flex items-center gap-1.5 text-white/25 hover:text-red-400 transition-colors text-xs font-mono uppercase tracking-widest"
-                title="Delete this post"
               >
                 <Trash2 className="w-3.5 h-3.5" /> Delete Post
               </button>
@@ -132,11 +145,33 @@ export default function CommunityPostDetail() {
             <div className="border-t border-white/5 pt-8">
               <p className="text-white/75 leading-relaxed whitespace-pre-wrap">{post.content}</p>
             </div>
+
+            {/* GIF display */}
             {post.imageUrl && (
-              <img src={post.imageUrl} alt="" className="mt-8 w-full grayscale hover:grayscale-0 transition-all duration-500 border border-white/10" />
+              <div className="mt-8 border border-white/10 overflow-hidden">
+                <img
+                  src={post.imageUrl}
+                  alt=""
+                  className="w-full max-h-96 object-contain bg-zinc-950"
+                />
+              </div>
             )}
+
             <div className="flex items-center gap-6 mt-8 pt-6 border-t border-white/5 text-xs font-mono text-white/30 uppercase tracking-widest">
-              <span className="flex items-center gap-1.5"><ThumbsUp className="w-3 h-3" />{post.likes}</span>
+              <button
+                onClick={handleLike}
+                disabled={liked}
+                className={`flex items-center gap-1.5 transition-all group ${liked ? "text-white cursor-default" : "hover:text-white/70 cursor-pointer"}`}
+                title="Like this post"
+              >
+                <motion.div
+                  animate={liked ? { scale: [1, 1.4, 1] } : {}}
+                  transition={{ duration: 0.3 }}
+                >
+                  <ThumbsUp className={`w-3.5 h-3.5 ${liked ? "fill-white" : "group-hover:fill-white/20"}`} />
+                </motion.div>
+                {displayLikes}
+              </button>
               <span className="flex items-center gap-1.5"><MessageCircle className="w-3 h-3" />{post.commentCount} comments</span>
             </div>
           </article>
@@ -158,7 +193,6 @@ export default function CommunityPostDetail() {
                   onChange={(e) => setComment(e.target.value)}
                   rows={3}
                   className="w-full bg-transparent text-white text-sm placeholder:text-white/25 focus:outline-none resize-none border-b border-white/10 pb-2"
-                  data-testid="input-comment"
                 />
                 <div className="flex justify-end">
                   <motion.button
@@ -167,7 +201,6 @@ export default function CommunityPostDetail() {
                     onClick={handleSubmit}
                     disabled={createComment.isPending || !comment.trim()}
                     className="flex items-center gap-2 bg-white text-black px-6 py-2.5 text-xs font-bold uppercase tracking-widest hover:bg-white/90 transition-colors disabled:opacity-40"
-                    data-testid="button-submit-comment"
                   >
                     <Send className="w-3.5 h-3.5" />
                     {createComment.isPending ? "Posting..." : "Reply"}
@@ -192,7 +225,6 @@ export default function CommunityPostDetail() {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: i * 0.04 }}
                     className="group/comment flex gap-4 border-b border-white/5 pb-5"
-                    data-testid={`comment-${c.id}`}
                   >
                     <img src={c.avatarUrl} alt={c.username} className="w-8 h-8 rounded-full grayscale flex-shrink-0 mt-0.5" />
                     <div className="flex-1">
@@ -203,7 +235,6 @@ export default function CommunityPostDetail() {
                           <button
                             onClick={() => setConfirmDeleteCommentId(c.id)}
                             className="ml-auto p-1 text-white/20 hover:text-red-400 transition-colors opacity-0 group-hover/comment:opacity-100"
-                            title="Delete comment"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -236,7 +267,7 @@ export default function CommunityPostDetail() {
               className="bg-zinc-950 border border-white/10 p-8 max-w-sm w-full"
             >
               <h3 className="font-serif text-xl text-white mb-2">Delete Post?</h3>
-              <p className="text-white/50 text-sm mb-6">This will permanently remove the post and all its replies. This cannot be undone.</p>
+              <p className="text-white/50 text-sm mb-6">This will permanently remove the post and all its replies.</p>
               <div className="flex gap-3 justify-end">
                 <button onClick={() => setConfirmDeletePost(false)}
                   className="px-5 py-2 text-xs font-mono uppercase tracking-widest text-white/50 hover:text-white border border-white/10 hover:border-white/30 transition-colors">

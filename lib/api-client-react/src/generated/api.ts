@@ -888,6 +888,76 @@ export const useCreateCommunityPost = <TError = ErrorType<unknown>,
       return useMutation(getCreateCommunityPostMutationOptions(options));
     }
 
+export const getLikeCommunityPostUrl = (id: number,) => {
+
+
+
+
+  return `/api/community/${id}/like`
+}
+
+/**
+ * @summary Like a community post
+ */
+export const likeCommunityPost = async (id: number, options?: RequestInit): Promise<CommunityPost> => {
+
+  return customFetch<CommunityPost>(getLikeCommunityPostUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getLikeCommunityPostMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof likeCommunityPost>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof likeCommunityPost>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['likeCommunityPost'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof likeCommunityPost>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  likeCommunityPost(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type LikeCommunityPostMutationResult = NonNullable<Awaited<ReturnType<typeof likeCommunityPost>>>
+
+    export type LikeCommunityPostMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Like a community post
+ */
+export const useLikeCommunityPost = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof likeCommunityPost>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof likeCommunityPost>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getLikeCommunityPostMutationOptions(options));
+    }
+
 export const getDeleteCommunityPostUrl = (id: number,) => {
 
 

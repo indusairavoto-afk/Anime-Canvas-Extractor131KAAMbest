@@ -118,6 +118,23 @@ router.get("/community/:id/comments", async (req, res) => {
   }
 });
 
+router.post("/community/:id/like", voteLimiter, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid post id" }); return; }
+    const [row] = await db
+      .update(communityPostTable)
+      .set({ likes: sql`${communityPostTable.likes} + 1` })
+      .where(eq(communityPostTable.id, id))
+      .returning();
+    if (!row) { res.status(404).json({ error: "Post not found" }); return; }
+    res.json(toPostResponse(row));
+  } catch (err) {
+    req.log.error(err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 router.delete("/community/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);

@@ -230,6 +230,27 @@ export const CreateCommunityPostBody = zod.object({
 
 
 /**
+ * @summary Like a community post
+ */
+export const LikeCommunityPostParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const LikeCommunityPostResponse = zod.object({
+  "id": zod.number(),
+  "username": zod.string(),
+  "avatarUrl": zod.string(),
+  "title": zod.string(),
+  "content": zod.string(),
+  "category": zod.string(),
+  "imageUrl": zod.string().nullish(),
+  "likes": zod.number(),
+  "commentCount": zod.number(),
+  "createdAt": zod.string()
+})
+
+
+/**
  * @summary Delete a community post (owner only)
  */
 export const DeleteCommunityPostParams = zod.object({

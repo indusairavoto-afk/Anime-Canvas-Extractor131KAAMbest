@@ -267,6 +267,25 @@ paths:
               schema:
                 $ref: "#/components/schemas/CommunityPost"
 
+  /community/{id}/like:
+    post:
+      operationId: likeCommunityPost
+      tags: [community]
+      summary: Like a community post
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Post liked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommunityPost"
+
   /community/{id}:
     delete:
       operationId: deleteCommunityPost
