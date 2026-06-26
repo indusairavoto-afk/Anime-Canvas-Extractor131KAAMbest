@@ -29,6 +29,7 @@ import watchTogetherRouter from "./watch-together";
 import animeonsenRouter from "./animeonsen";
 import anilistRouter from "./anilist";
 import syncRouter from "./sync";
+import aninekoRouter from "./anineko";
 
 const router: IRouter = Router();
 
@@ -62,5 +63,6 @@ router.use(watchTogetherRouter);
 router.use(animeonsenRouter);
 router.use(anilistRouter);
 router.use(syncRouter);
+router.use(aninekoRouter);
 
 export default router;

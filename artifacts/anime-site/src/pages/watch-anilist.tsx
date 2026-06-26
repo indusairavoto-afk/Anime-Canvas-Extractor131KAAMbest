@@ -151,7 +151,7 @@ export default function WatchAniList() {
   const [jikanLoading, setJikanLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [lang, setLang] = useState<"SUB" | "DUB">("SUB");
-  const [server, setServer] = useState<"GOGO" | "KOTO" | "ANIZONE" | "MIRURO" | "NEXUS" | "ANIMEONSEN" | "CUSTOM">("GOGO");
+  const [server, setServer] = useState<"GOGO" | "KOTO" | "ANIZONE" | "MIRURO" | "NEXUS" | "ANIMEONSEN" | "ANINEKO" | "CUSTOM">("GOGO");
   const [anizoneSlug, setAnizoneSlug] = useState("");
   const [anizoneSlugInput, setAnizoneSlugInput] = useState("");
   const [anizoneSearching, setAnizoneSearching] = useState(false);
@@ -195,6 +195,11 @@ export default function WatchAniList() {
   const [animeonsenLoading, setAnimeonsenLoading] = useState(false);
   const [animeonsenError, setAnimeonsenError] = useState<string | null>(null);
   const [animeonsenContentId, setAnimeonsenContentId] = useState<string>("");
+  const [aninekoSlug, setAninekoSlug] = useState("");
+  const [aninekoSlugInput, setAninekoSlugInput] = useState("");
+  const [aninekoIframeUrl, setAninekoIframeUrl] = useState<string | null>(null);
+  const [aninekoLoading, setAninekoLoading] = useState(false);
+  const [aninekoError, setAninekoError] = useState<string | null>(null);
   const [animeonsenIdInput, setAnimeonsenIdInput] = useState<string>("");
   // When true, a popup is open establishing Cloudflare clearance — show a connecting overlay
   const [animeonsenInitializing, setAnimeonsenInitializing] = useState(false);
@@ -227,12 +232,13 @@ export default function WatchAniList() {
     miruro?: { iframeUrl?: string } | null;
     nexus?: { iframeUrl?: string } | null;
     animeonsen?: { iframeUrl?: string; contentId?: string } | null;
+    anineko?: { iframeUrl?: string; slug?: string } | null;
   }>({});
   const [autoDetecting, setAutoDetecting] = useState(false);
   const [autoSwitchMsg, setAutoSwitchMsg] = useState<string | null>(null);
   const [gogoMaybeBroken, setGogoMaybeBroken] = useState(false);
   const [gogoMaybeCountdown, setGogoMaybeCountdown] = useState<number | null>(null);
-  const [serverHealth, setServerHealth] = useState<{ GOGO: "unknown" | "checking" | "ok" | "fail"; KOTO: "unknown" | "checking" | "ok" | "fail"; ANIZONE: "unknown" | "checking" | "ok" | "fail"; MIRURO: "unknown" | "checking" | "ok" | "fail"; NEXUS: "unknown" | "checking" | "ok" | "fail"; ANIMEONSEN: "unknown" | "checking" | "ok" | "fail" }>({ GOGO: "unknown", KOTO: "unknown", ANIZONE: "unknown", MIRURO: "unknown", NEXUS: "unknown", ANIMEONSEN: "unknown" });
+  const [serverHealth, setServerHealth] = useState<{ GOGO: "unknown" | "checking" | "ok" | "fail"; KOTO: "unknown" | "checking" | "ok" | "fail"; ANIZONE: "unknown" | "checking" | "ok" | "fail"; MIRURO: "unknown" | "checking" | "ok" | "fail"; NEXUS: "unknown" | "checking" | "ok" | "fail"; ANIMEONSEN: "unknown" | "checking" | "ok" | "fail"; ANINEKO: "unknown" | "checking" | "ok" | "fail" }>({ GOGO: "unknown", KOTO: "unknown", ANIZONE: "unknown", MIRURO: "unknown", NEXUS: "unknown", ANIMEONSEN: "unknown", ANINEKO: "unknown" });
   const [sourcePageTitle, setSourcePageTitle] = useState<string | null>(null);
   const [verifyResult, setVerifyResult] = useState<{ correct: boolean; confidence: "high" | "medium" | "low"; reason: string; extractedEpisode: number | null } | null>(null);
   const [newEpNotice, setNewEpNotice] = useState<number | null>(null);
@@ -403,6 +409,10 @@ export default function WatchAniList() {
     setAnimeonsenSubtitleUrl(null);
     setAnimeonsenLoading(false);
     setAnimeonsenError(null);
+    // Reset AniNeko state
+    setAninekoIframeUrl(null);
+    setAninekoLoading(false);
+    setAninekoError(null);
   }, [animeId, currentEp, lang, server]);
 
   // Reset auto-detect state whenever the episode or anime changes
@@ -410,7 +420,7 @@ export default function WatchAniList() {
     userPickedRef.current = false;
     raceCache.current = {};
     setAutoDetecting(false);
-    setServerHealth({ GOGO: "unknown", KOTO: "unknown", ANIZONE: "unknown", MIRURO: "unknown", NEXUS: "unknown", ANIMEONSEN: "unknown" });
+    setServerHealth({ GOGO: "unknown", KOTO: "unknown", ANIZONE: "unknown", MIRURO: "unknown", NEXUS: "unknown", ANIMEONSEN: "unknown", ANINEKO: "unknown" });
     setSourcePageTitle(null);
     setVerifyResult(null);
   }, [animeId, currentEp]);
@@ -548,11 +558,11 @@ export default function WatchAniList() {
     let won = false;
     setAutoDetecting(true);
 
-    const preferred = localStorage.getItem(`na_preferred_${animeId}`) as "GOGO" | "KOTO" | "ANIZONE" | "MIRURO" | "NEXUS" | "ANIMEONSEN" | null;
+    const preferred = localStorage.getItem(`na_preferred_${animeId}`) as "GOGO" | "KOTO" | "ANIZONE" | "MIRURO" | "NEXUS" | "ANIMEONSEN" | "ANINEKO" | null;
     // Non-preferred servers wait this long before their fetch fires, giving preferred a head start
     const HEAD_START = preferred ? 800 : 0;
 
-    const tryWin = (srv: "GOGO" | "KOTO" | "ANIZONE" | "MIRURO" | "NEXUS" | "ANIMEONSEN") => {
+    const tryWin = (srv: "GOGO" | "KOTO" | "ANIZONE" | "MIRURO" | "NEXUS" | "ANIMEONSEN" | "ANINEKO") => {
       if (cancelled || won || userPickedRef.current) return;
       won = true;
       localStorage.setItem(`na_preferred_${animeId}`, srv);
@@ -709,6 +719,31 @@ export default function WatchAniList() {
           }
         })
         .catch(() => { if (!cancelled) { raceCache.current.animeonsen = null; setServerHealth(h => ({ ...h, ANIMEONSEN: "fail" })); } });
+    });
+
+    // ANINEKO — searches anineko.to by title, returns direct watch page URL (no X-Frame-Options)
+    setServerHealth(h => ({ ...h, ANINEKO: "checking" }));
+    const cachedAninekoSlug = localStorage.getItem(`na_anineko_${animeId}`) ?? "";
+    schedule(preferred === "ANINEKO" ? 0 : HEAD_START, () => {
+      const params = new URLSearchParams({ ep: String(currentEp), title });
+      if (romajiTitle) params.set("romajiTitle", romajiTitle);
+      if (cachedAninekoSlug) params.set("slug", cachedAninekoSlug);
+      fetch(apiUrl(`/api/anineko/find?${params}`))
+        .then(r => r.json())
+        .then((data: { slug?: string; watchUrl?: string; embedUrl?: string; error?: string }) => {
+          if (cancelled) return;
+          const iframeUrl = data.watchUrl ?? null;
+          if (iframeUrl) {
+            if (data.slug) localStorage.setItem(`na_anineko_${animeId}`, data.slug);
+            raceCache.current.anineko = { iframeUrl, slug: data.slug };
+            setServerHealth(h => ({ ...h, ANINEKO: "ok" }));
+            tryWin("ANINEKO");
+          } else {
+            raceCache.current.anineko = null;
+            setServerHealth(h => ({ ...h, ANINEKO: "fail" }));
+          }
+        })
+        .catch(() => { if (!cancelled) { raceCache.current.anineko = null; setServerHealth(h => ({ ...h, ANINEKO: "fail" })); } });
     });
 
     // If nothing wins after 15s, stop the spinner and stay on current server
@@ -1226,6 +1261,61 @@ export default function WatchAniList() {
       })
       .catch((e: Error) => { if (!cancelled) setMiruroError(e.message); })
       .finally(() => { if (!cancelled) setMiruroLoading(false); });
+    return () => { cancelled = true; };
+  }, [server, animeId, currentEp]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load saved AniNeko slug from localStorage
+  useEffect(() => {
+    if (!animeId) return;
+    const saved = localStorage.getItem(`na_anineko_${animeId}`) ?? "";
+    setAninekoSlug(saved);
+    setAninekoSlugInput(saved);
+  }, [animeId]);
+
+  // Fetch AniNeko iframe URL when server is ANINEKO
+  useEffect(() => {
+    if (server !== "ANINEKO") {
+      setAninekoIframeUrl(null);
+      setAninekoError(null);
+      return;
+    }
+    const cached = raceCache.current.anineko;
+    if (cached !== undefined) {
+      if (cached?.iframeUrl) {
+        if (cached.slug) { setAninekoSlug(cached.slug); setAninekoSlugInput(cached.slug); }
+        setAninekoIframeUrl(cached.iframeUrl);
+        setAninekoLoading(false);
+        setAninekoError(null);
+        raceCache.current.anineko = undefined;
+        return;
+      }
+      raceCache.current.anineko = undefined;
+    }
+    let cancelled = false;
+    setAninekoIframeUrl(null);
+    setAninekoLoading(true);
+    setAninekoError(null);
+    const params = new URLSearchParams({ ep: String(currentEp), title });
+    if (romajiTitle) params.set("romajiTitle", romajiTitle);
+    const slug = localStorage.getItem(`na_anineko_${animeId}`) ?? aninekoSlug;
+    if (slug) params.set("slug", slug);
+    fetch(apiUrl(`/api/anineko/find?${params}`))
+      .then(r => r.json())
+      .then((data: { slug?: string; watchUrl?: string; error?: string }) => {
+        if (cancelled) return;
+        if (data.watchUrl) {
+          if (data.slug) {
+            setAninekoSlug(data.slug);
+            setAninekoSlugInput(data.slug);
+            localStorage.setItem(`na_anineko_${animeId}`, data.slug);
+          }
+          setAninekoIframeUrl(data.watchUrl);
+        } else {
+          setAninekoError(data.error ?? "Anime not found on AniNeko");
+        }
+      })
+      .catch((e: Error) => { if (!cancelled) setAninekoError(e.message); })
+      .finally(() => { if (!cancelled) setAninekoLoading(false); });
     return () => { cancelled = true; };
   }, [server, animeId, currentEp]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -2177,6 +2267,58 @@ export default function WatchAniList() {
                   </div>
                 )}
 
+                {/* ANINEKO — embed direct watch page (SSR PHP, no X-Frame-Options on watch pages) */}
+                {server === "ANINEKO" && aninekoIframeUrl && (
+                  <iframe
+                    ref={iframeRef}
+                    key={`anineko-${animeId}-${currentEp}`}
+                    src={aninekoIframeUrl}
+                    allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
+                    allowFullScreen
+                    title="AniNeko Player"
+                    style={{ position: "absolute", inset: 0, width: "100%", height: "100%", border: "none", background: "#000" }}
+                    onLoad={() => setTimeout(() => setIframeLoaded(true), 300)}
+                  />
+                )}
+
+                {/* ANINEKO loading / error overlay */}
+                {server === "ANINEKO" && !aninekoIframeUrl && (
+                  <div className="absolute inset-0 z-10 flex flex-col items-center justify-center" style={{ background: "rgba(0,0,0,0.92)" }}>
+                    {banner && <img src={banner} alt="" className="absolute inset-0 w-full h-full object-cover opacity-10 scale-110 blur-sm" />}
+                    <div className="relative z-10 flex flex-col items-center gap-4">
+                      {aninekoError ? (
+                        <div className="text-center space-y-3">
+                          <div className="w-10 h-10 rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center mx-auto">
+                            <span className="text-red-400 text-lg">✕</span>
+                          </div>
+                          <p className="text-white/80 text-sm font-semibold tracking-wide">Not found on AniNeko</p>
+                          <p className="text-white/30 text-[10px] font-mono max-w-[260px] text-center">{aninekoError}</p>
+                          <a
+                            href={`https://anineko.to/browser?keyword=${encodeURIComponent(title)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-2 text-[11px] font-mono font-bold px-5 py-2.5 border border-pink-400/40 text-pink-300/60 hover:border-pink-400 hover:text-pink-300 transition-all uppercase tracking-widest mt-1"
+                          >
+                            Browse AniNeko →
+                          </a>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="relative w-14 h-14">
+                            <div className="absolute inset-0 rounded-full border-2 border-white/10" />
+                            <div className="absolute inset-0 rounded-full border-2 border-t-pink-400 border-r-transparent border-b-transparent border-l-transparent animate-spin" />
+                            <div className="absolute inset-2 rounded-full border border-white/20 border-t-pink-400/60 animate-spin" style={{ animationDuration: "0.6s", animationDirection: "reverse" }} />
+                          </div>
+                          <p className="text-white/70 text-sm font-semibold tracking-wide">Searching AniNeko…</p>
+                        </>
+                      )}
+                      <p className="text-white/20 text-[11px] font-mono uppercase tracking-widest">
+                        Episode {currentEp} · {lang}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 {/* KOTO loading / error overlay — only shown when no URL at all */}
                 {server === "KOTO" && !kotoHlsUrl && !kotoPlayerUrl && (
                   <div className="absolute inset-0 z-10 flex flex-col items-center justify-center" style={{ background: "rgba(0,0,0,0.92)" }}>
@@ -2443,6 +2585,7 @@ export default function WatchAniList() {
                 { key: "ANIZONE",     label: "AniZone",    color: "blue"   },
                 { key: "MIRURO",      label: "Miruro",     color: "purple" },
                 { key: "ANIMEONSEN",  label: "AnimeonSen", color: "green"  },
+                { key: "ANINEKO",     label: "AniNeko",    color: "pink"   },
               ] as const).map(({ key, label, color }) => {
                 const active = server === key;
                 const health = serverHealth[key];
@@ -2453,6 +2596,7 @@ export default function WatchAniList() {
                   blue:   { active: "bg-blue-500/90 text-white",   idle: "bg-white/6 text-white/50" },
                   purple: { active: "bg-purple-500/90 text-white", idle: "bg-white/6 text-white/50" },
                   green:  { active: "bg-green-500/90 text-white",  idle: "bg-white/6 text-white/50" },
+                  pink:   { active: "bg-pink-500/90 text-white",   idle: "bg-white/6 text-white/50" },
                 };
                 const dotClass =
                   health === "ok"       ? "bg-green-400" :
@@ -2649,6 +2793,7 @@ export default function WatchAniList() {
                   // If CF already done this session, just switch — the "Connect" overlay handles first-time setup
                   if (aoCfReady) setAnimeonsenInitializing(false);
                 }},
+                { key: "ANINEKO", label: "ANINEKO", color: "pink", onClick: () => { userPickedRef.current = true; setServer("ANINEKO"); setIframeLoaded(false); } },
               ] as const).map(({ key, label, color, onClick }) => {
                 const active = server === key;
                 const health = serverHealth[key];
@@ -2659,6 +2804,7 @@ export default function WatchAniList() {
                   blue:   { active: "border-blue-400 bg-blue-400 text-black",     idle: "border-blue-400/30 text-blue-400/60 hover:border-blue-400/70 hover:text-blue-400" },
                   purple: { active: "border-purple-400 bg-purple-400 text-black", idle: "border-purple-400/30 text-purple-400/60 hover:border-purple-400/70 hover:text-purple-400" },
                   green:  { active: "border-green-400 bg-green-400 text-black",   idle: "border-green-400/30 text-green-400/60 hover:border-green-400/70 hover:text-green-400" },
+                  pink:   { active: "border-pink-400 bg-pink-400 text-black",     idle: "border-pink-400/30 text-pink-400/60 hover:border-pink-400/70 hover:text-pink-400" },
                 };
                 const dotClass =
                   health === "ok"       ? "bg-green-400" :
