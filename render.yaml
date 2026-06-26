@@ -13,11 +13,11 @@ services:
     plan: free
     buildCommand: >-
       npx --yes pnpm@10 install --frozen-lockfile &&
-      npx pnpm@10 --filter @workspace/anime-site run build &&
-      npx pnpm@10 --filter @workspace/api-server run build
+      npx --yes pnpm@10 --filter @workspace/anime-site run build &&
+      npx --yes pnpm@10 --filter @workspace/api-server run build
     startCommand: >-
-      npx pnpm@10 --filter @workspace/db run push-force &&
-      npx pnpm@10 --filter @workspace/api-server run start
+      npx --yes pnpm@10 --filter @workspace/db run push &&
+      npx --yes pnpm@10 --filter @workspace/api-server run start
     healthCheckPath: /api/healthz
     envVars:
       - key: NODE_ENV
