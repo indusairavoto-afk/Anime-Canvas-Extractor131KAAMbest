@@ -1,4 +1,5 @@
 import { Link, useLocation } from "wouter";
+import { apiUrl } from "@/lib/api";
 import { Search, Bell, X, ArrowRight, LogIn } from "lucide-react";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -16,7 +17,7 @@ interface AniResult {
 
 async function aniListQuery(q: string, perPage = 12): Promise<AniResult[]> {
   try {
-    const res = await fetch("/api/anilist", {
+    const res = await fetch(apiUrl("/api/anilist"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

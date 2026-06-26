@@ -1,4 +1,5 @@
 import { motion, AnimatePresence } from "framer-motion";
+import { apiUrl } from "@/lib/api";
 import { Link } from "wouter";
 import { BookmarkX, Play, Star, CheckCircle2, Clock, BookOpen, Tv, Check, Minus, Plus } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
@@ -51,7 +52,7 @@ function WatchlistCard({ animeId, onRemove }: { animeId: number; onRemove: () =>
     if (!localError) return;
     let alive = true;
     setAnilistLoading(true);
-    fetch("/api/anilist", {
+    fetch(apiUrl("/api/anilist"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ query: ANILIST_ANIME_QUERY, variables: { id: animeId } }),
@@ -225,7 +226,7 @@ function MangaReadCard({
 
   useEffect(() => {
     let alive = true;
-    fetch("/api/anilist", {
+    fetch(apiUrl("/api/anilist"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ query: MANGA_QUERY, variables: { id: mangaId } }),

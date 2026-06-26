@@ -1,5 +1,6 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect, useCallback } from "react";
+import { apiUrl } from "@/lib/api";
 import { Link } from "wouter";
 import { Search, X, Star, Loader2, ChevronDown, BookOpen, Bookmark, BookmarkCheck } from "lucide-react";
 import { useMangaList, type ReadStatus } from "@/hooks/useMangaList";
@@ -81,7 +82,7 @@ async function fetchManga(
   if (genre) vars.genre = genre;
   if (format) vars.format = format;
 
-  const res = await fetch("/api/anilist", {
+  const res = await fetch(apiUrl("/api/anilist"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ query: QUERY, variables: vars }),

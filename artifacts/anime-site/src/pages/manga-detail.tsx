@@ -79,7 +79,7 @@ query ($id: Int!) {
 }`;
 
 async function fetchMangaDetail(id: number): Promise<AniManga | null> {
-  const res = await fetch("/api/anilist", {
+  const res = await fetch(apiUrl("/api/anilist"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ query: QUERY, variables: { id } }),

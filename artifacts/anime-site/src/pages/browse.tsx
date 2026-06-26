@@ -1,4 +1,5 @@
 import { motion, AnimatePresence } from "framer-motion";
+import { apiUrl } from "@/lib/api";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Link } from "wouter";
 import { Search, SlidersHorizontal, X, Star, Loader2, ChevronDown, ArrowRight } from "lucide-react";
@@ -87,7 +88,7 @@ async function fetchAnime(
   if (genre) variables.genre = genre;
   if (format) variables.format = format;
 
-  const res = await fetch("/api/anilist", {
+  const res = await fetch(apiUrl("/api/anilist"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ query: QUERY, variables }),

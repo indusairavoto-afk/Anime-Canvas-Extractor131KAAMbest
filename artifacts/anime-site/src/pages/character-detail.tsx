@@ -1,4 +1,5 @@
 import { motion } from "framer-motion";
+import { apiUrl } from "@/lib/api";
 import { useParams, Link } from "wouter";
 import { useState, useEffect } from "react";
 import { ArrowLeft, User, Mic } from "lucide-react";
@@ -93,12 +94,12 @@ export default function CharacterDetail() {
     setError(false);
 
     Promise.all([
-      fetch("/api/anilist", {
+      fetch(apiUrl("/api/anilist"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query: CHAR_QUERY, variables: { id: charId } }),
       }).then((r) => r.json()),
-      fetch("/api/anilist", {
+      fetch(apiUrl("/api/anilist"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query: VA_QUERY, variables: { id: charId } }),

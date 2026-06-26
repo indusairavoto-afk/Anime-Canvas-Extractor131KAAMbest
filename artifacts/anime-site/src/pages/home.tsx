@@ -1,4 +1,5 @@
 import React from "react";
+import { apiUrl } from "@/lib/api";
 import { motion, AnimatePresence } from "framer-motion";
 import { Link } from "wouter";
 import { Play, Star, Clock, ChevronRight, TrendingUp, ChevronLeft, X, History, CalendarClock, Info } from "lucide-react";
@@ -216,7 +217,7 @@ const AIRING_QUERY = (airedBefore: number, airedAfter: number) => `{
 async function fetchRecentAiring(): Promise<AiringEpisodeEntry[]> {
   const now = Math.floor(Date.now() / 1000);
   const weekAgo = now - 7 * 24 * 3600;
-  const res = await fetch("/api/anilist", {
+  const res = await fetch(apiUrl("/api/anilist"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ query: AIRING_QUERY(now, weekAgo) }),
@@ -305,7 +306,7 @@ function stripHtml(html: string): string {
 }
 
 async function fetchAniList(query: string): Promise<AniMedia[]> {
-  const res = await fetch("/api/anilist", {
+  const res = await fetch(apiUrl("/api/anilist"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ query }),

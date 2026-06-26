@@ -1,4 +1,5 @@
 import { Link, useLocation } from "wouter";
+import { apiUrl } from "@/lib/api";
 import { motion, AnimatePresence } from "framer-motion";
 import { Home, Search, Calendar, Users, Bookmark, Trophy, ChevronRight, ChevronDown, BookOpen } from "lucide-react";
 import { useSidebar } from "@/contexts/sidebar-context";
@@ -21,7 +22,7 @@ function useAiringCount() {
     const now = Math.floor(Date.now() / 1000);
     const dayStart = now - (now % 86400);
     const dayEnd = dayStart + 86400;
-    fetch("/api/anilist", {
+    fetch(apiUrl("/api/anilist"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

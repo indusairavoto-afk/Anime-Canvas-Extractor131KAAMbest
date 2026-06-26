@@ -1,5 +1,6 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect, memo } from "react";
+import { apiUrl } from "@/lib/api";
 import { Link } from "wouter";
 import { Clock, Play, Star, Calendar, Loader2, Radio } from "lucide-react";
 
@@ -219,7 +220,7 @@ export default function Schedule() {
 
   useEffect(() => {
     setLoading(true);
-    fetch("/api/anilist", {
+    fetch(apiUrl("/api/anilist"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ query: ANILIST_QUERY }),

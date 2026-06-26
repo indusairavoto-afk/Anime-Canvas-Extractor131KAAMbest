@@ -335,7 +335,7 @@ export default function WatchAniList() {
     setJikanEps([]);
     setNewEpNotice(null);
     prevNextAiringEpRef.current = null;
-    fetch("/api/anilist", {
+    fetch(apiUrl("/api/anilist"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ query: WATCH_QUERY, variables: { id: animeId } }),
@@ -364,7 +364,7 @@ export default function WatchAniList() {
 
     async function pollForNewEp() {
       try {
-        const r = await fetch("/api/anilist", {
+        const r = await fetch(apiUrl("/api/anilist"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ query: WATCH_QUERY, variables: { id: animeId } }),
@@ -1837,7 +1837,7 @@ export default function WatchAniList() {
       clearInterval(interval);
       // Fire-and-forget leave
       navigator.sendBeacon?.(
-        "/api/viewers/leave",
+        apiUrl("/api/viewers/leave"),
         new Blob(
           [JSON.stringify({ animeId, episode: currentEp, sessionId: sid })],
           { type: "application/json" }
