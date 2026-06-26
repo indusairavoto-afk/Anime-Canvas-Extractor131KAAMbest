@@ -27,14 +27,24 @@ router.get("/episodes/:id/comments", async (req, res) => {
 router.post("/episodes/:id/comments", async (req, res) => {
   try {
     const episodeId = parseInt(req.params.id);
+    if (isNaN(episodeId)) { res.status(400).json({ error: "Invalid episode id" }); return; }
     const { username, content, parentId } = req.body;
+    if (!username || typeof username !== "string" || username.trim().length === 0) {
+      res.status(400).json({ error: "username is required" }); return;
+    }
+    if (!content || typeof content !== "string" || content.trim().length === 0) {
+      res.status(400).json({ error: "content cannot be empty" }); return;
+    }
+    if (content.trim().length > 2000) {
+      res.status(400).json({ error: "content must be under 2000 characters" }); return;
+    }
     const [row] = await db
       .insert(commentTable)
       .values({
         episodeId,
-        username,
-        content,
-        avatarUrl: randomAvatar(username),
+        username: username.trim(),
+        content: content.trim(),
+        avatarUrl: randomAvatar(username.trim()),
         parentId: parentId ?? null,
         likes: 0,
       })

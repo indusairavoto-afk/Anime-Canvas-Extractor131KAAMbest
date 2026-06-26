@@ -47,18 +47,38 @@ router.get("/community", async (req, res) => {
   }
 });
 
+const VALID_CATEGORIES = ["general", "discussion", "recommendation", "fanart", "news", "question"] as const;
+
 router.post("/community", async (req, res) => {
   try {
     const { username, title, content, category, imageUrl } = req.body;
+    if (!username || typeof username !== "string" || username.trim().length === 0) {
+      res.status(400).json({ error: "username is required" }); return;
+    }
+    if (!title || typeof title !== "string" || title.trim().length === 0) {
+      res.status(400).json({ error: "title cannot be empty" }); return;
+    }
+    if (title.trim().length > 200) {
+      res.status(400).json({ error: "title must be under 200 characters" }); return;
+    }
+    if (!content || typeof content !== "string" || content.trim().length === 0) {
+      res.status(400).json({ error: "content cannot be empty" }); return;
+    }
+    if (content.trim().length > 10000) {
+      res.status(400).json({ error: "content must be under 10000 characters" }); return;
+    }
+    if (category && !VALID_CATEGORIES.includes(category)) {
+      res.status(400).json({ error: `category must be one of: ${VALID_CATEGORIES.join(", ")}` }); return;
+    }
     const [row] = await db
       .insert(communityPostTable)
       .values({
-        username,
-        title,
-        content,
-        category,
+        username: username.trim(),
+        title: title.trim(),
+        content: content.trim(),
+        category: category ?? "general",
         imageUrl: imageUrl ?? null,
-        avatarUrl: randomAvatar(username),
+        avatarUrl: randomAvatar(username.trim()),
         likes: 0,
         commentCount: 0,
       })
@@ -100,15 +120,25 @@ router.get("/community/:id/comments", async (req, res) => {
 router.post("/community/:id/comments", async (req, res) => {
   try {
     const postId = parseInt(req.params.id);
+    if (isNaN(postId)) { res.status(400).json({ error: "Invalid post id" }); return; }
     const { username, content, parentId } = req.body;
+    if (!username || typeof username !== "string" || username.trim().length === 0) {
+      res.status(400).json({ error: "username is required" }); return;
+    }
+    if (!content || typeof content !== "string" || content.trim().length === 0) {
+      res.status(400).json({ error: "content cannot be empty" }); return;
+    }
+    if (content.trim().length > 2000) {
+      res.status(400).json({ error: "content must be under 2000 characters" }); return;
+    }
 
     const [row] = await db
       .insert(commentTable)
       .values({
         communityPostId: postId,
-        username,
-        content,
-        avatarUrl: randomAvatar(username),
+        username: username.trim(),
+        content: content.trim(),
+        avatarUrl: randomAvatar(username.trim()),
         parentId: parentId ?? null,
         likes: 0,
       })
