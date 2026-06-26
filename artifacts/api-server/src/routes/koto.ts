@@ -69,11 +69,11 @@ async function decryptLinkId(token: string): Promise<StreamResult | null> {
   return { url: data.result.url, skipData: data.result.skip_data ?? null };
 }
 
-async function tryLinkIds(linkIds: string[]): Promise<StreamResult | null> {
-  for (const id of linkIds) {
+async function tryLinkIds(linkIds: Array<{ id: string; isDub: boolean }>): Promise<StreamResult | null> {
+  for (const { id, isDub } of linkIds) {
     try {
       const r = await decryptLinkId(id);
-      if (r?.url) return r;
+      if (r?.url) return { ...r, isDub };
     } catch {
       // try next
     }
@@ -81,11 +81,15 @@ async function tryLinkIds(linkIds: string[]): Promise<StreamResult | null> {
   return null;
 }
 
-function extractLinkIds(html: string): string[] {
-  const ids: string[] = [];
+function extractLinkIds(html: string, preferDub = false): Array<{ id: string; isDub: boolean }> {
+  const ids: Array<{ id: string; isDub: boolean }> = [];
   const seenIds = new Set<string>();
 
-  for (const type of ["sub", "hsub", "dub"]) {
+  // Order types so preferred audio comes first
+  const typeOrder = preferDub ? ["dub", "sub", "hsub"] : ["sub", "hsub", "dub"];
+
+  for (const type of typeOrder) {
+    const isDubType = type === "dub";
     const typeRe = new RegExp(
       `data-type="${type}"[\\s\\S]*?(?=data-type="|$)`,
       "i"
@@ -97,25 +101,26 @@ function extractLinkIds(html: string): string[] {
       const id = m[1].trim();
       if (id && !seenIds.has(id)) {
         seenIds.add(id);
-        ids.push(id);
+        ids.push({ id, isDub: isDubType });
       }
     }
   }
 
+  // Catch any remaining link-ids not under a typed block
   const allRe = /data-link-id="([^"]+)"/g;
   let m2: RegExpExecArray | null;
   while ((m2 = allRe.exec(html)) !== null) {
     const id = m2[1].trim();
     if (id && !seenIds.has(id)) {
       seenIds.add(id);
-      ids.push(id);
+      ids.push({ id, isDub: false });
     }
   }
 
   return ids;
 }
 
-async function fetchViaAnikotoNative(slug: string, ep: number): Promise<StreamResult | null> {
+async function fetchViaAnikotoNative(slug: string, ep: number, preferDub = false): Promise<StreamResult | null> {
   const pageResp = await fetch(
     `https://anikoto.cz/watch/${encodeURIComponent(slug)}/ep-${ep}`,
     {
@@ -178,7 +183,7 @@ async function fetchViaAnikotoNative(slug: string, ep: number): Promise<StreamRe
   if (serverListJson.status !== 200) return null;
   const serverHtml = serverListJson.result ?? "";
 
-  const linkIds = extractLinkIds(serverHtml);
+  const linkIds = extractLinkIds(serverHtml, preferDub);
   if (linkIds.length === 0) return null;
 
   const streamResult = await tryLinkIds(linkIds);
@@ -267,7 +272,7 @@ router.get("/koto/stream", async (req, res) => {
 
   if (slug) {
     try {
-      const result = await fetchViaAnikotoNative(slug, parseInt(ep));
+      const result = await fetchViaAnikotoNative(slug, parseInt(ep), preferDub);
       if (result?.url) {
         const rawHls = extractHlsFromPlayerUrl(result.url);
         if (rawHls) {
