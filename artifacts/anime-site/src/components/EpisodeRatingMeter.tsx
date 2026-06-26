@@ -367,7 +367,7 @@ export function EpisodeRatingMeter({ animeId, episode, episodeTitle, onPostRevie
           .catch(() => {});
       }
     } catch {
-      setMyVote(myVote);
+      setMyVote(prev);
     } finally {
       setSubmitting(false);
       setTimeout(() => textareaRef.current?.focus(), 100);

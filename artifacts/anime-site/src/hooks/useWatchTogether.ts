@@ -104,6 +104,8 @@ export function useWatchTogether(opts: UseWatchTogetherOptions) {
         animeId,
         episode,
       }));
+      // Clear any existing ping before creating a new one
+      if (pingRef.current) clearInterval(pingRef.current);
       // Keep-alive ping every 20s
       pingRef.current = setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "ping" }));
@@ -155,7 +157,7 @@ export function useWatchTogether(opts: UseWatchTogetherOptions) {
     ws.onerror = () => {
       setStatus("disconnected");
     };
-  }, [animeId, episode, onPlay, onPause, onSeek]);
+  }, [animeId, episode, onPlay, onPause, onSeek, onSync]);
 
   const createRoom = useCallback(() => {
     const rid = generateRoomId();

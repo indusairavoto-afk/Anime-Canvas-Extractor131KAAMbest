@@ -113,6 +113,19 @@ router.post("/auth/reset-password", async (req, res) => {
   }
 });
 
+router.get("/auth/me", async (req, res) => {
+  try {
+    const id = parseInt(req.query.id as string);
+    if (!id || isNaN(id)) { res.status(401).json({ error: "Unauthorized" }); return; }
+    const [row] = await db.select().from(userTable).where(eq(userTable.id, id)).limit(1);
+    if (!row) { res.status(401).json({ error: "User not found" }); return; }
+    res.json(toPublicUser(row));
+  } catch (err) {
+    req.log.error(err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 router.post("/auth/login", async (req, res) => {
   try {
     const { emailOrUsername, password } = req.body;

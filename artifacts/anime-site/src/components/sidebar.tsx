@@ -19,6 +19,7 @@ const NAV_ITEMS = [
 function useAiringCount() {
   const [count, setCount] = useState<number | null>(null);
   useEffect(() => {
+    const controller = new AbortController();
     const now = Math.floor(Date.now() / 1000);
     const dayStart = now - (now % 86400);
     const dayEnd = dayStart + 86400;
@@ -28,13 +29,15 @@ function useAiringCount() {
       body: JSON.stringify({
         query: `{ Page(perPage: 50) { airingSchedules(airingAt_greater: ${dayStart}, airingAt_lesser: ${dayEnd}, notYetAired: false) { id } } }`,
       }),
+      signal: controller.signal,
     })
       .then((r) => r.json())
       .then((d) => {
         const n = d?.data?.Page?.airingSchedules?.length ?? 0;
         setCount(n > 0 ? n : null);
       })
-      .catch(() => {});
+      .catch((e) => { if (e?.name !== "AbortError") {} });
+    return () => controller.abort();
   }, []);
   return count;
 }
@@ -233,7 +236,7 @@ export function Sidebar() {
                             </motion.span>
                           )}
                           {showCommunityBadge && (
-                            <span className="absolute -top-1.5 -right-1.5 bg-white text-black text-[8px] font-bold w-4 h-4 rounded-full flex items-center justify-center leading-none">54</span>
+                            <span className="absolute -top-1.5 -right-1.5 bg-white/80 text-black text-[8px] font-bold w-2 h-2 rounded-full" />
                           )}
                         </div>
                       </motion.div>

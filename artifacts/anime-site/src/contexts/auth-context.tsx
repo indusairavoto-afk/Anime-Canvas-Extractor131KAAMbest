@@ -28,11 +28,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) setUser(JSON.parse(raw));
-    } catch {}
-    setLoading(false);
+    let cancelled = false;
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) { setLoading(false); return; }
+    let cached: AuthUser | null = null;
+    try { cached = JSON.parse(raw); } catch {}
+    if (cached) setUser(cached);
+    // Verify stored session is still valid with server
+    fetch(apiUrl(`/api/auth/me?id=${cached?.id ?? ""}`))
+      .then(r => r.ok ? r.json() : null)
+      .then((data: AuthUser | null) => {
+        if (cancelled) return;
+        if (data) {
+          setUser(data);
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+        } else {
+          setUser(null);
+          localStorage.removeItem(STORAGE_KEY);
+        }
+      })
+      .catch(() => { /* keep cached user on network error */ })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, []);
 
   const login = useCallback(async (emailOrUsername: string, password: string) => {
