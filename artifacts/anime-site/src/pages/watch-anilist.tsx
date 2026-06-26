@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Link, useParams, useLocation } from "wouter";
 import HlsPlayer, { getEpisodeProgressPct, type HlsSyncCommand } from "@/components/HlsPlayer";
 import DashPlayer from "@/components/DashPlayer";
@@ -248,6 +248,29 @@ export default function WatchAniList() {
   const [voteCounts, setVoteCounts] = useState({ skip: 0, timepass: 0, go_for_it: 0, perfection: 0 });
   const [myVote, setMyVote] = useState<string | null>(null);
   const [voteSubmitting, setVoteSubmitting] = useState(false);
+
+  // ── Smart server suggestion system ──────────────────────────────────────
+  const SERVER_META: Record<string, { label: string; colorCls: string; borderCls: string; hoverCls: string }> = {
+    GOGO:       { label: "GogoAnimeS", colorCls: "text-orange-400", borderCls: "border-orange-400/70", hoverCls: "hover:bg-orange-400/10" },
+    KOTO:       { label: "AniKoto",    colorCls: "text-teal-400",   borderCls: "border-teal-400/70",   hoverCls: "hover:bg-teal-400/10" },
+    ANIZONE:    { label: "AniZone",    colorCls: "text-blue-400",   borderCls: "border-blue-400/70",   hoverCls: "hover:bg-blue-400/10" },
+    MIRURO:     { label: "Miruro",     colorCls: "text-purple-400", borderCls: "border-purple-400/70", hoverCls: "hover:bg-purple-400/10" },
+    ANIMEONSEN: { label: "AnimeonSen", colorCls: "text-green-400",  borderCls: "border-green-400/70",  hoverCls: "hover:bg-green-400/10" },
+    ANINEKO:    { label: "AniNeko",    colorCls: "text-pink-400",   borderCls: "border-pink-400/70",   hoverCls: "hover:bg-pink-400/10" },
+  };
+
+  const suggestedServer = useMemo(() => {
+    const priority = ["GOGO", "KOTO", "ANIZONE", "MIRURO", "ANINEKO", "ANIMEONSEN"] as const;
+    return priority.find(s => s !== server && serverHealth[s] === "ok") ?? null;
+  }, [server, serverHealth]);
+
+  const switchToServer = useCallback((key: string) => {
+    userPickedRef.current = true;
+    setIframeLoaded(false);
+    if (key === "GOGO") { setCdnNotFound(false); setGogoStreamError(false); bridgeLiveRef.current = false; setBridgeLive(false); }
+    if (key === "ANIMEONSEN" && aoCfReady) setAnimeonsenInitializing(false);
+    setServer(key as Parameters<typeof setServer>[0]);
+  }, [aoCfReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Watch Together sync command for HlsPlayer ───────────────────────────
   const [wtSyncCmd, setWtSyncCmd] = useState<HlsSyncCommand | null>(null);
@@ -2200,19 +2223,19 @@ export default function WatchAniList() {
                     <div className="relative z-10 flex flex-col items-center gap-4">
                       {animeonsenError ? (
                         <div className="text-center space-y-3">
-                          <div className="w-10 h-10 rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center mx-auto">
-                            <span className="text-red-400 text-lg">✕</span>
+                          <div className="w-11 h-11 border border-yellow-400/40 bg-yellow-400/5 flex items-center justify-center mx-auto rounded-sm">
+                            <span className="text-yellow-400 text-xl">🔧</span>
                           </div>
-                          <p className="text-white/80 text-sm font-semibold tracking-wide">Not available on AnimeonSen</p>
-                          <p className="text-white/30 text-[10px] font-mono max-w-[260px] text-center">This title isn't in AnimeonSen's catalog. Try GOGO, KOTO, or MIRURO instead.</p>
-                          <a
-                            href={`https://www.animeonsen.xyz`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-2 text-[11px] font-mono font-bold px-5 py-2.5 border border-green-400/40 text-green-300/60 hover:border-green-400 hover:text-green-300 transition-all uppercase tracking-widest mt-1"
-                          >
-                            Browse AnimeonSen →
-                          </a>
+                          <p className="text-white/80 text-sm font-semibold tracking-wide">AnimeonSen Under Maintenance</p>
+                          <p className="text-white/35 text-[11px] font-mono max-w-[260px] text-center leading-relaxed">This server isn't available right now.<br/>Please try another server below.</p>
+                          {suggestedServer && SERVER_META[suggestedServer] && (
+                            <button
+                              onClick={() => switchToServer(suggestedServer)}
+                              className={`inline-flex items-center gap-2 text-[11px] font-mono font-bold px-5 py-2.5 border ${SERVER_META[suggestedServer].borderCls} ${SERVER_META[suggestedServer].colorCls} ${SERVER_META[suggestedServer].hoverCls} transition-all uppercase tracking-widest mt-1`}
+                            >
+                              <Play className="w-3 h-3 fill-current" /> Try {SERVER_META[suggestedServer].label}
+                            </button>
+                          )}
                         </div>
                       ) : (
                         <>
@@ -2238,17 +2261,19 @@ export default function WatchAniList() {
                     <div className="relative z-10 flex flex-col items-center gap-4">
                       {miruroError ? (
                         <div className="text-center space-y-3">
-                          <p className="text-white/70 text-sm font-semibold tracking-wide">Miruro cannot be embedded</p>
-                          <p className="text-white/30 text-[10px] font-mono max-w-[240px] text-center">miruro.bz stream unavailable — open it in a new tab instead.</p>
-                          <a
-                            href={`https://www.miruro.bz/watch/${animeId}/${(romajiTitle ?? "").toLowerCase().replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "")}?ep=${currentEp}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-2 text-[11px] font-mono font-bold px-5 py-2.5 border border-purple-400 text-purple-300 hover:bg-purple-400 hover:text-black transition-all uppercase tracking-widest mt-1"
-                          >
-                            Watch on miruro.bz →
-                          </a>
-                          <p className="text-white/20 text-[10px] font-mono max-w-[240px] text-center">Or switch to AniKoto / AniZone below.</p>
+                          <div className="w-11 h-11 border border-yellow-400/40 bg-yellow-400/5 flex items-center justify-center mx-auto rounded-sm">
+                            <span className="text-yellow-400 text-xl">🔧</span>
+                          </div>
+                          <p className="text-white/80 text-sm font-semibold tracking-wide">Miruro Under Maintenance</p>
+                          <p className="text-white/35 text-[11px] font-mono max-w-[260px] text-center leading-relaxed">This server isn't available right now.<br/>Please try another server below.</p>
+                          {suggestedServer && SERVER_META[suggestedServer] && (
+                            <button
+                              onClick={() => switchToServer(suggestedServer)}
+                              className={`inline-flex items-center gap-2 text-[11px] font-mono font-bold px-5 py-2.5 border ${SERVER_META[suggestedServer].borderCls} ${SERVER_META[suggestedServer].colorCls} ${SERVER_META[suggestedServer].hoverCls} transition-all uppercase tracking-widest mt-1`}
+                            >
+                              <Play className="w-3 h-3 fill-current" /> Try {SERVER_META[suggestedServer].label}
+                            </button>
+                          )}
                         </div>
                       ) : (
                         <>
@@ -2288,19 +2313,19 @@ export default function WatchAniList() {
                     <div className="relative z-10 flex flex-col items-center gap-4">
                       {aninekoError ? (
                         <div className="text-center space-y-3">
-                          <div className="w-10 h-10 rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center mx-auto">
-                            <span className="text-red-400 text-lg">✕</span>
+                          <div className="w-11 h-11 border border-yellow-400/40 bg-yellow-400/5 flex items-center justify-center mx-auto rounded-sm">
+                            <span className="text-yellow-400 text-xl">🔧</span>
                           </div>
-                          <p className="text-white/80 text-sm font-semibold tracking-wide">Not found on AniNeko</p>
-                          <p className="text-white/30 text-[10px] font-mono max-w-[260px] text-center">{aninekoError}</p>
-                          <a
-                            href={`https://anineko.to/browser?keyword=${encodeURIComponent(title)}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-2 text-[11px] font-mono font-bold px-5 py-2.5 border border-pink-400/40 text-pink-300/60 hover:border-pink-400 hover:text-pink-300 transition-all uppercase tracking-widest mt-1"
-                          >
-                            Browse AniNeko →
-                          </a>
+                          <p className="text-white/80 text-sm font-semibold tracking-wide">AniNeko Under Maintenance</p>
+                          <p className="text-white/35 text-[11px] font-mono max-w-[260px] text-center leading-relaxed">This server isn't available right now.<br/>Please try another server below.</p>
+                          {suggestedServer && SERVER_META[suggestedServer] && (
+                            <button
+                              onClick={() => switchToServer(suggestedServer)}
+                              className={`inline-flex items-center gap-2 text-[11px] font-mono font-bold px-5 py-2.5 border ${SERVER_META[suggestedServer].borderCls} ${SERVER_META[suggestedServer].colorCls} ${SERVER_META[suggestedServer].hoverCls} transition-all uppercase tracking-widest mt-1`}
+                            >
+                              <Play className="w-3 h-3 fill-current" /> Try {SERVER_META[suggestedServer].label}
+                            </button>
+                          )}
                         </div>
                       ) : (
                         <>
@@ -2325,10 +2350,20 @@ export default function WatchAniList() {
                     {banner && <img src={banner} alt="" className="absolute inset-0 w-full h-full object-cover opacity-10 scale-110 blur-sm" />}
                     <div className="relative z-10 flex flex-col items-center gap-4">
                       {kotoPlayerError ? (
-                        <div className="text-center space-y-2">
-                          <p className="text-white/70 text-sm font-semibold tracking-wide">AniKoto unavailable</p>
-                          <p className="text-white/30 text-[11px] font-mono max-w-[260px] text-center">{kotoPlayerError}</p>
-                          <p className="text-white/20 text-[10px] font-mono max-w-[260px] text-center">Try switching to GogoAnimeS or AniZone.</p>
+                        <div className="text-center space-y-3">
+                          <div className="w-11 h-11 border border-yellow-400/40 bg-yellow-400/5 flex items-center justify-center mx-auto rounded-sm">
+                            <span className="text-yellow-400 text-xl">🔧</span>
+                          </div>
+                          <p className="text-white/80 text-sm font-semibold tracking-wide">AniKoto Under Maintenance</p>
+                          <p className="text-white/35 text-[11px] font-mono max-w-[260px] text-center leading-relaxed">This server isn't available right now.<br/>Please try another server below.</p>
+                          {suggestedServer && SERVER_META[suggestedServer] && (
+                            <button
+                              onClick={() => switchToServer(suggestedServer)}
+                              className={`inline-flex items-center gap-2 text-[11px] font-mono font-bold px-5 py-2.5 border ${SERVER_META[suggestedServer].borderCls} ${SERVER_META[suggestedServer].colorCls} ${SERVER_META[suggestedServer].hoverCls} transition-all uppercase tracking-widest mt-1`}
+                            >
+                              <Play className="w-3 h-3 fill-current" /> Try {SERVER_META[suggestedServer].label}
+                            </button>
+                          )}
                         </div>
                       ) : (
                         <>
