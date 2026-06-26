@@ -186,7 +186,7 @@ async function fetchViaAnikotoNative(slug: string, ep: number): Promise<StreamRe
   return { ...streamResult, sourceTitle };
 }
 
-async function fetchViaMapper(malId: string, ep: string): Promise<StreamResult | null> {
+async function fetchViaMapper(malId: string, ep: string, preferDub = false): Promise<StreamResult | null> {
   const timestamp = Math.floor(Date.now() / 1000);
   const mapperUrl = `https://mapper.nekostream.site/api/mal/${malId}/${ep}/${timestamp}`;
   const mapperResp = await fetch(mapperUrl, {
@@ -203,11 +203,28 @@ async function fetchViaMapper(malId: string, ep: string): Promise<StreamResult |
   let encryptedUrl: string | null = null;
   let isDub = false;
 
-  for (const [source, data] of Object.entries(mapperData)) {
-    if (source === "status") continue;
-    const d = data as Record<string, { url?: string }> | null;
-    if (d?.sub?.url) { encryptedUrl = d.sub.url; isDub = false; break; }
-    if (!encryptedUrl && d?.dub?.url) { encryptedUrl = d.dub.url; isDub = true; }
+  if (preferDub) {
+    // When dub is preferred: try dub first, fall back to sub
+    for (const [source, data] of Object.entries(mapperData)) {
+      if (source === "status") continue;
+      const d = data as Record<string, { url?: string }> | null;
+      if (d?.dub?.url) { encryptedUrl = d.dub.url; isDub = true; break; }
+    }
+    if (!encryptedUrl) {
+      for (const [source, data] of Object.entries(mapperData)) {
+        if (source === "status") continue;
+        const d = data as Record<string, { url?: string }> | null;
+        if (d?.sub?.url) { encryptedUrl = d.sub.url; isDub = false; break; }
+      }
+    }
+  } else {
+    // Default: sub first, dub fallback
+    for (const [source, data] of Object.entries(mapperData)) {
+      if (source === "status") continue;
+      const d = data as Record<string, { url?: string }> | null;
+      if (d?.sub?.url) { encryptedUrl = d.sub.url; isDub = false; break; }
+      if (!encryptedUrl && d?.dub?.url) { encryptedUrl = d.dub.url; isDub = true; }
+    }
   }
 
   if (!encryptedUrl) return null;
@@ -224,8 +241,9 @@ router.get("/koto/stream", async (req, res) => {
   const slug = (req.query.slug as string | undefined)?.trim();
   const ep = (req.query.ep as string | undefined)?.trim();
   const malId = (req.query.malId as string | undefined)?.trim();
+  const preferDub = (req.query.preferDub as string | undefined) === "1";
 
-  req.log.info({ slug, ep, malId }, "koto/stream params");
+  req.log.info({ slug, ep, malId, preferDub }, "koto/stream params");
 
   if (!ep) {
     return res.status(400).json({ error: "ep query param required" });
@@ -265,7 +283,7 @@ router.get("/koto/stream", async (req, res) => {
 
   if (malId) {
     try {
-      const result = await fetchViaMapper(malId, ep);
+      const result = await fetchViaMapper(malId, ep, preferDub);
       if (result?.url) {
         return res.json(buildResponse(result));
       }

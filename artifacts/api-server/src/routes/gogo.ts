@@ -406,20 +406,26 @@ router.get("/gogo/cdn-url", async (req, res) => {
 });
 
 /**
- * GET /api/gogo/resolve-slug?title=...&ep=...
+ * GET /api/gogo/resolve-slug?title=...&ep=...&dub=0|1
  *
  * Full auto-resolution: derives slug from title → tries variants → if all fail,
  * searches GoGo for the title and picks the best scoring match → probes that slug.
+ * When dub=1, appends "-dub" to slug and tries dub variants first.
  * This lets the frontend make a single call instead of a two-step derive + search.
  */
 router.get("/gogo/resolve-slug", async (req, res) => {
   const titleRaw = (req.query.title as string | undefined)?.trim();
   const ep = (req.query.ep as string | undefined)?.trim();
+  const preferDub = (req.query.dub as string | undefined) === "1";
   if (!titleRaw || !ep) return res.status(400).set(NO_CACHE).json({ error: "title and ep query params are required" });
 
   // Step 1: derive and try slug variants
   const derived = titleToSlug(titleRaw);
-  const variants = slugVariants(derived);
+  // When dub preferred, try dub slug first then fall through to sub
+  const dubDerived = derived.replace(/-dub$/i, "") + "-dub";
+  const variants = preferDub
+    ? [...slugVariants(dubDerived), ...slugVariants(derived)]
+    : slugVariants(derived);
 
   for (const variant of variants) {
     const result = await probeCdnUrl(variant, ep);

@@ -608,6 +608,7 @@ router.get("/miruro/stream", async (req, res) => {
   const anilistId = (req.query.anilistId as string | undefined)?.trim();
   const ep = (req.query.ep as string | undefined)?.trim();
   const romajiTitle = (req.query.romajiTitle as string | undefined)?.trim();
+  const preferDub = (req.query.dub as string | undefined) === "1";
 
   if (!anilistId || !ep) {
     res.status(400).json({ error: "anilistId and ep query params are required" });
@@ -621,9 +622,10 @@ router.get("/miruro/stream", async (req, res) => {
   }
 
   const slug = romajiTitle ? toMiruroSlug(romajiTitle) : null;
+  const dubSuffix = preferDub ? "&dub=true" : "";
   const miruroUrl = slug
-    ? `${MIRURO_ORIGIN}/watch/${anilistId}/${slug}?ep=${epNum}`
-    : `${MIRURO_ORIGIN}/watch/${anilistId}?ep=${epNum}`;
+    ? `${MIRURO_ORIGIN}/watch/${anilistId}/${slug}?ep=${epNum}${dubSuffix}`
+    : `${MIRURO_ORIGIN}/watch/${anilistId}?ep=${epNum}${dubSuffix}`;
 
   // Build an absolute URL so this works in all deployment environments
   // (Render, Replit prod, etc.) where the frontend and API may be on

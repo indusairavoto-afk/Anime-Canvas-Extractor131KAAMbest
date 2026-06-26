@@ -619,7 +619,8 @@ export default function WatchAniList() {
       setBridgeLive(false);
     };
 
-    const gSlug = localStorage.getItem(`na_gogo_${animeId}`) || deriveGogoSlug(title);
+    const baseGSlug = (localStorage.getItem(`na_gogo_${animeId}`) || deriveGogoSlug(title)).replace(/-dub$/i, "");
+    const gSlug = lang === "DUB" ? baseGSlug + "-dub" : baseGSlug;
     const aSlug = localStorage.getItem(`na_anizone3_${animeId}`) || "";
     const malId = anime?.idMal ?? null;
 
@@ -653,7 +654,7 @@ export default function WatchAniList() {
             return;
           }
           // Slug variants all failed — silently try resolve-slug (server searches GoGo by title)
-          return fetch(apiUrl(`/api/gogo/resolve-slug?title=${encodeURIComponent(gogoTitle)}&ep=${currentEp}`), { cache: "no-store" })
+          return fetch(apiUrl(`/api/gogo/resolve-slug?title=${encodeURIComponent(gogoTitle)}&ep=${currentEp}&dub=${lang === "DUB" ? "1" : "0"}`), { cache: "no-store" })
             .then(r => r.json())
             .then((resolveData: { cdnUrl?: string; hlsUrl?: string | null; resolvedSlug?: string; pageTitle?: string | null; streamOk?: boolean }) => {
               if (cancelled) return;
@@ -679,7 +680,7 @@ export default function WatchAniList() {
     if (malId) {
       setServerHealth(h => ({ ...h, KOTO: "checking" }));
       schedule(preferred === "KOTO" ? 0 : HEAD_START, () => {
-        const params = new URLSearchParams({ ep: String(currentEp), malId: String(malId) });
+        const params = new URLSearchParams({ ep: String(currentEp), malId: String(malId), ...(lang === "DUB" ? { preferDub: "1" } : {}) });
         fetch(apiUrl(`/api/koto/stream?${params}`))
           .then(r => r.json())
           .then((data: { url?: string; hlsUrl?: string | null; error?: string }) => {
@@ -727,7 +728,7 @@ export default function WatchAniList() {
     // MIRURO — constructs an iframe URL via miruro.to using the AniList ID + romaji slug
     setServerHealth(h => ({ ...h, MIRURO: "checking" }));
     schedule(preferred === "MIRURO" ? 0 : HEAD_START, () => {
-      fetch(apiUrl(`/api/miruro/stream?anilistId=${animeId}&ep=${currentEp}&romajiTitle=${encodeURIComponent(romajiTitle)}`))
+      fetch(apiUrl(`/api/miruro/stream?anilistId=${animeId}&ep=${currentEp}&romajiTitle=${encodeURIComponent(romajiTitle)}&dub=${lang === "DUB" ? "1" : "0"}`))
         .then(r => r.json())
         .then((data: { iframeUrl?: string; error?: string }) => {
           if (cancelled) return;
@@ -801,7 +802,7 @@ export default function WatchAniList() {
     }, 15000);
 
     return () => { cancelled = true; timers.forEach(clearTimeout); clearTimeout(fallback); };
-  }, [animeId, currentEp, title, anime?.idMal]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [animeId, currentEp, title, anime?.idMal, lang]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // When GOGO server is selected, fetch the CDN player iframe URL from the gogoanimes.cv page
   // so we can embed only the CDN player (with our control bridge) instead of the full site.
@@ -841,17 +842,23 @@ export default function WatchAniList() {
     setCdnNotFound(false);
     setGogoSearchResults([]);
     setGogoSearchDone(false);
+    // When DUB is selected, append -dub to the GoGo slug (GogoAnime hosts dubbed
+    // content under "{slug}-dub" paths, e.g. demon-slayer-kimetsu-no-yaiba-dub)
+    const effectiveGogoSlug = lang === "DUB"
+      ? gogoSlug.replace(/-dub$/i, "") + "-dub"
+      : gogoSlug.replace(/-dub$/i, "");
     let cancelled = false;
-    fetch(apiUrl(`/api/gogo/cdn-url?slug=${encodeURIComponent(gogoSlug)}&ep=${currentEp}`), { cache: "no-store" })
+    fetch(apiUrl(`/api/gogo/cdn-url?slug=${encodeURIComponent(effectiveGogoSlug)}&ep=${currentEp}`), { cache: "no-store" })
       .then((r) => r.json())
       .then((data: { cdnUrl?: string; hlsUrl?: string | null; resolvedSlug?: string; pageTitle?: string | null; streamOk?: boolean }) => {
         if (cancelled) return;
 
-        // Save auto-resolved slug from variant probe
-        if (data.resolvedSlug && data.resolvedSlug !== gogoSlug) {
-          setGogoSlug(data.resolvedSlug);
-          setGogoSlugInput(data.resolvedSlug);
-          localStorage.setItem(`na_gogo_${animeId}`, data.resolvedSlug);
+        // Save auto-resolved slug from variant probe (strip -dub before saving base slug)
+        if (data.resolvedSlug && data.resolvedSlug !== effectiveGogoSlug) {
+          const baseResolved = data.resolvedSlug.replace(/-dub$/i, "");
+          setGogoSlug(baseResolved);
+          setGogoSlugInput(baseResolved);
+          localStorage.setItem(`na_gogo_${animeId}`, baseResolved);
         }
 
         if (data.cdnUrl) {
@@ -863,7 +870,7 @@ export default function WatchAniList() {
         }
 
         // All slug variants exhausted — automatically resolve server-side via title search+scoring.
-        return fetch(apiUrl(`/api/gogo/resolve-slug?title=${encodeURIComponent(title)}&ep=${currentEp}`), { cache: "no-store" })
+        return fetch(apiUrl(`/api/gogo/resolve-slug?title=${encodeURIComponent(title)}&ep=${currentEp}&dub=${lang === "DUB" ? "1" : "0"}`), { cache: "no-store" })
           .then((r) => r.json())
           .then((resolveData: { cdnUrl?: string; hlsUrl?: string | null; resolvedSlug?: string; pageTitle?: string | null; streamOk?: boolean }) => {
             if (cancelled) return;
@@ -887,7 +894,7 @@ export default function WatchAniList() {
       .catch(() => { if (!cancelled) setCdnNotFound(true); })
       .finally(() => { if (!cancelled) setCdnLoading(false); });
     return () => { cancelled = true; };
-  }, [server, gogoSlug, currentEp, animeId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [server, gogoSlug, currentEp, animeId, lang]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Reset search results when switching away from GOGO or when anime changes
   useEffect(() => {
