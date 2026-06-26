@@ -3007,6 +3007,17 @@ export default function WatchAniList() {
             </div>
           </div>
 
+          {/* DUB-not-available warning — shown when DUB was requested but stream fell back to SUB */}
+          {lang === "DUB" && actualLang === "SUB" && !autoDetecting && (
+            <div className="flex items-center gap-2.5 px-4 py-2 bg-amber-400/[0.06] border-b border-amber-400/20">
+              <span className="text-[10px] shrink-0">⚠️</span>
+              <p className="text-[10px] font-mono text-amber-300/70">
+                No dubbed version found for this title — playing in <span className="text-amber-200/90 font-semibold">SUB</span> instead.
+                Try a different server or check back later.
+              </p>
+            </div>
+          )}
+
           {/* Auto-detect banner — shown while race is running */}
           {autoDetecting && (
             <div className="border-b border-white/5 px-4 py-2.5 flex items-center gap-2.5">
