@@ -20,12 +20,7 @@ const BLOCKED_HEADERS = new Set([
   "transfer-encoding",
 ]);
 
-/**
- * CSS injected into the proxied lnori.com reader page.
- * Hides the top navigation bar and adjusts the sidebar to match our dark theme.
- */
 const READER_STYLE = `<style id="na-lnori-override">
-/* Hide top nav / site branding */
 header:not(.toc-sidebar-header),
 nav:not(.toc-view),
 .top-bar, .site-header, .site-nav,
@@ -44,7 +39,6 @@ html, body {
   font-family: Georgia, 'Times New Roman', serif !important;
 }
 
-/* Sidebar / TOC */
 #sidebar-container .toc-sidebar {
   background: #111 !important;
   border-right: 1px solid rgba(255,255,255,0.06) !important;
@@ -85,7 +79,6 @@ html, body {
   background: rgba(255,255,255,0.04) !important;
 }
 
-/* Main reading area */
 .chapter, [class*="chapter-content"] {
   color: #d8d8d8 !important;
   line-height: 1.85 !important;
@@ -119,9 +112,6 @@ a { color: #888 !important; }
 ::-webkit-scrollbar-thumb:hover { background: #3a3a3a; }
 </style>`;
 
-/**
- * Rewrite lnori.com absolute and root-relative URLs to go through our pass proxy.
- */
 function rewriteHtmlUrls(html: string): string {
   return html
     .replace(new RegExp(`${LNORI_ORIGIN}/`, "g"), `${PASS_PREFIX}/`)
@@ -140,11 +130,34 @@ function injectIntoHtml(html: string, injection: string): string {
   return injection + html;
 }
 
-/**
- * ALL /api/lnori/pass/*path
- *
- * Pass-through proxy for all lnori.com assets (CSS, JS, images, fonts).
- */
+/** Derive a human-readable label from a lnori.com book slug. */
+function labelFromSlug(slug: string): string {
+  const volMatch = slug.match(/-vol-(\d+(?:\.\d+)?)$/i);
+  if (volMatch) return `Vol. ${volMatch[1]}`;
+  return slug
+    .replace(/-/g, " ")
+    .replace(/\b\w/g, c => c.toUpperCase())
+    .trim();
+}
+
+/** Parse all unique book links from a lnori.com series or library page. */
+function parseBookLinks(html: string): { bookId: string; slug: string; label: string }[] {
+  const seen = new Set<string>();
+  const results: { bookId: string; slug: string; label: string }[] = [];
+  const re = /href="\/book\/(\d+)\/([^"?#]+)"/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) !== null) {
+    const bookId = m[1];
+    if (seen.has(bookId)) continue;
+    seen.add(bookId);
+    const slug = m[2];
+    results.push({ bookId, slug, label: labelFromSlug(slug) });
+  }
+  return results;
+}
+
+/* ── Pass-through proxy ─────────────────────────────────────────────────── */
+
 router.all("/lnori/pass/*path", async (req, res) => {
   const rawPath = (req.params as Record<string, string | string[]>).path;
   const rest = (Array.isArray(rawPath) ? rawPath.join("/") : rawPath ?? "").replace(/^\//, "");
@@ -183,12 +196,8 @@ router.all("/lnori/pass/*path", async (req, res) => {
   }
 });
 
-/**
- * GET /api/lnori/reader?bookId=<id>&slug=<slug>&page=<pageAnchor>
- *
- * Fetches a lnori.com book page, rewrites asset URLs to go through the pass
- * proxy, and injects dark-theme CSS overrides so it embeds cleanly.
- */
+/* ── Book reader ────────────────────────────────────────────────────────── */
+
 router.get("/lnori/reader", async (req, res) => {
   const bookId = typeof req.query.bookId === "string" ? req.query.bookId.trim() : "";
   const slug = typeof req.query.slug === "string" ? req.query.slug.trim() : "";
@@ -204,10 +213,7 @@ router.get("/lnori/reader", async (req, res) => {
 
   try {
     const upstream = await fetch(`${LNORI_ORIGIN}${bookPath}`, {
-      headers: {
-        ...HEADERS,
-        Referer: LNORI_ORIGIN + "/",
-      },
+      headers: { ...HEADERS, Referer: LNORI_ORIGIN + "/" },
       redirect: "follow",
       signal: AbortSignal.timeout(20000),
     });
@@ -225,7 +231,6 @@ router.get("/lnori/reader", async (req, res) => {
     html = rewriteHtmlUrls(html);
     html = injectIntoHtml(html, READER_STYLE);
 
-    // If a page anchor is requested, inject a script to scroll to it on load
     if (page) {
       const scrollScript = `<script>(function(){function go(){var el=document.getElementById(${JSON.stringify(page)});if(el)el.scrollIntoView({behavior:'smooth'});}if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',go);}else{setTimeout(go,200);}}());</script>`;
       html = injectIntoHtml(html, scrollScript);
@@ -244,12 +249,8 @@ router.get("/lnori/reader", async (req, res) => {
   }
 });
 
-/**
- * GET /api/lnori/toc?bookId=<id>&slug=<slug>
- *
- * Returns the table of contents for a lnori.com book as JSON.
- * Parses the TOC nav from the SSR HTML.
- */
+/* ── Book TOC ───────────────────────────────────────────────────────────── */
+
 router.get("/lnori/toc", async (req, res) => {
   const bookId = typeof req.query.bookId === "string" ? req.query.bookId.trim() : "";
   const slug = typeof req.query.slug === "string" ? req.query.slug.trim() : "";
@@ -272,11 +273,9 @@ router.get("/lnori/toc", async (req, res) => {
 
     const html = await upstream.text();
 
-    // Extract book title
     const titleMatch = html.match(/<title>([^<]+)<\/title>/i);
     const bookTitle = titleMatch ? titleMatch[1].trim() : "";
 
-    // Extract TOC entries from <nav class="toc-view"> ... </nav>
     const tocMatch = html.match(/<nav[^>]*toc-view[^>]*>([\s\S]*?)<\/nav>/i);
     const tocEntries: { anchor: string; label: string }[] = [];
 
@@ -299,23 +298,81 @@ router.get("/lnori/toc", async (req, res) => {
   }
 });
 
+/* ── Series volumes ─────────────────────────────────────────────────────── */
+
 /**
- * GET /api/lnori/find?anilistId=<id>&title=<title>
+ * GET /api/lnori/series?seriesId=<id>&slug=<slug>
  *
- * Attempts to find a novel on lnori.com.
- * Checks AniList externalLinks for a lnori.com URL first, then tries slug derivation.
- * Returns { found: true, bookId, slug, url } or { found: false, searchUrl }.
+ * Fetches a lnori.com series page and returns all volumes as JSON.
+ * Returns { seriesTitle, volumes: [{bookId, slug, label}] }
+ */
+router.get("/lnori/series", async (req, res) => {
+  const seriesId = typeof req.query.seriesId === "string" ? req.query.seriesId.trim() : "";
+  const slug = typeof req.query.slug === "string" ? req.query.slug.trim() : "";
+
+  if (!seriesId || !slug) {
+    res.status(400).json({ error: "seriesId and slug are required" });
+    return;
+  }
+
+  try {
+    const upstream = await fetch(`${LNORI_ORIGIN}/series/${seriesId}/${slug}`, {
+      headers: { ...HEADERS, Referer: LNORI_ORIGIN + "/" },
+      redirect: "follow",
+      signal: AbortSignal.timeout(20000),
+    });
+
+    if (!upstream.ok) {
+      res.status(upstream.status).json({ error: `lnori returned ${upstream.status}` });
+      return;
+    }
+
+    const html = await upstream.text();
+
+    const titleMatch = html.match(/<title>([^<]+)<\/title>/i);
+    const seriesTitle = titleMatch
+      ? titleMatch[1].replace(/\s*[-|].*$/, "").trim()
+      : slug.replace(/-/g, " ");
+
+    const volumes = parseBookLinks(html);
+
+    res.json({ seriesTitle, volumes });
+  } catch (err: unknown) {
+    req.log?.error(err);
+    res.status(502).json({ error: "Failed to fetch series from lnori.com" });
+  }
+});
+
+/* ── Find novel ─────────────────────────────────────────────────────────── */
+
+/**
+ * GET /api/lnori/find?anilistId=<id>&title=<title>&lnoriUrl=<url>
+ *
+ * Priority:
+ *  1. If lnoriUrl is given, parse it directly (book or series).
+ *  2. Check AniList externalLinks for book or series URLs.
+ *  3. Fall back to "not found" with a search link.
  */
 router.get("/lnori/find", async (req, res) => {
   const anilistId = typeof req.query.anilistId === "string" ? req.query.anilistId.trim() : "";
   const title = typeof req.query.title === "string" ? req.query.title.trim() : "";
+  const lnoriUrl = typeof req.query.lnoriUrl === "string" ? req.query.lnoriUrl.trim() : "";
 
-  if (!anilistId && !title) {
-    res.status(400).json({ error: "anilistId or title required" });
-    return;
+  // 1. Direct lnori URL provided — parse it
+  if (lnoriUrl) {
+    const seriesMatch = lnoriUrl.match(/lnori\.com\/series\/(\d+)\/([^/?#]+)/);
+    if (seriesMatch) {
+      res.json({ found: true, type: "series", seriesId: seriesMatch[1], slug: seriesMatch[2] });
+      return;
+    }
+    const bookMatch = lnoriUrl.match(/lnori\.com\/book\/(\d+)\/([^/?#]+)/);
+    if (bookMatch) {
+      res.json({ found: true, type: "book", bookId: bookMatch[1], slug: bookMatch[2] });
+      return;
+    }
   }
 
-  // 1. Check AniList externalLinks for a lnori.com URL
+  // 2. Check AniList externalLinks
   if (anilistId) {
     try {
       const anilistRes = await fetch("https://graphql.anilist.co", {
@@ -332,48 +389,24 @@ router.get("/lnori/find", async (req, res) => {
         anilistData?.data?.Media?.externalLinks ?? [];
 
       for (const link of links) {
-        const lnoriMatch = link.url.match(/lnori\.com\/book\/(\d+)\/([^/?#]+)/);
-        if (lnoriMatch) {
-          res.json({
-            found: true,
-            bookId: lnoriMatch[1],
-            slug: lnoriMatch[2],
-            url: link.url,
-          });
+        const seriesMatch = link.url.match(/lnori\.com\/series\/(\d+)\/([^/?#]+)/);
+        if (seriesMatch) {
+          res.json({ found: true, type: "series", seriesId: seriesMatch[1], slug: seriesMatch[2] });
+          return;
+        }
+        const bookMatch = link.url.match(/lnori\.com\/book\/(\d+)\/([^/?#]+)/);
+        if (bookMatch) {
+          res.json({ found: true, type: "book", bookId: bookMatch[1], slug: bookMatch[2] });
           return;
         }
       }
     } catch {
-      // fall through to slug probing
+      // fall through
     }
   }
 
-  // 2. Try to derive slug from title and probe candidate URLs
-  // lnori slug pattern: lowercase, special chars replaced with hyphens
-  if (title) {
-    const makeSlug = (s: string) =>
-      s
-        .toLowerCase()
-        .replace(/['']/g, "")
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-+|-+$/g, "");
-
-    // Try AniList to get more title variants
-    let candidates: string[] = [];
-    const baseSlug = makeSlug(title);
-    candidates.push(baseSlug);
-    candidates.push(makeSlug(title.split(/[:\-–]/)[0].trim()));
-    candidates.push(makeSlug(title.replace(/^(the|a|an)\s+/i, "")));
-    candidates = [...new Set(candidates.filter(Boolean))];
-
-    // We can't probe without the numeric book ID, so just return not_found
-    // with a helpful search link to lnori.com
-    const searchUrl = `https://lnori.com/search?q=${encodeURIComponent(title)}`;
-    res.json({ found: false, searchUrl, hint: "lnori.com search requires browser JS" });
-    return;
-  }
-
-  res.json({ found: false, searchUrl: `https://lnori.com` });
+  const searchUrl = `https://lnori.com/library#search`;
+  res.json({ found: false, searchUrl });
 });
 
 export default router;

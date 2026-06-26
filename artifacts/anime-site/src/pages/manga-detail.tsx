@@ -117,56 +117,134 @@ interface LnoriTocEntry {
   label: string;
 }
 
+interface LnoriVolume {
+  bookId: string;
+  slug: string;
+  label: string;
+}
+
+/** Extract a lnori.com URL from AniList external links (series or book). */
+function extractLnoriUrl(links?: { url: string; site: string; type: string }[]): string | null {
+  if (!links) return null;
+  for (const l of links) {
+    if (l.url && /lnori\.com\/(series|book)\//.test(l.url)) return l.url;
+  }
+  return null;
+}
+
 function NovelReaderModal({
   anilistId,
   title,
+  externalLinks,
   onClose,
 }: {
   anilistId: number;
   title: string;
+  externalLinks?: { url: string; site: string; type: string }[];
   onClose: () => void;
 }) {
   const [findStatus, setFindStatus] = useState<"searching" | "found" | "not_found" | "error">("searching");
+  const [resultType, setResultType] = useState<"book" | "series" | null>(null);
+
+  // Book state
   const [bookId, setBookId] = useState<string | null>(null);
   const [slug, setSlug] = useState<string | null>(null);
-  const [searchUrl, setSearchUrl] = useState<string>("https://lnori.com");
+
+  // Series state
+  const [volumes, setVolumes] = useState<LnoriVolume[]>([]);
+  const [selectedVolIdx, setSelectedVolIdx] = useState(0);
+  const [volMenuOpen, setVolMenuOpen] = useState(false);
+
+  const [searchUrl, setSearchUrl] = useState<string>("https://lnori.com/library#search");
+  const [manualInput, setManualInput] = useState("");
+  const [manualLoading, setManualLoading] = useState(false);
   const [toc, setToc] = useState<LnoriTocEntry[]>([]);
   const [currentAnchor, setCurrentAnchor] = useState<string>("");
   const [tocOpen, setTocOpen] = useState(false);
   const [iframeKey, setIframeKey] = useState(0);
 
+  // Determine the active book for series (selected volume) or direct book
+  const activeBookId = resultType === "series" ? (volumes[selectedVolIdx]?.bookId ?? null) : bookId;
+  const activeSlug = resultType === "series" ? (volumes[selectedVolIdx]?.slug ?? null) : slug;
+
+  // Fetch TOC whenever the active book changes
+  useEffect(() => {
+    if (!activeBookId || !activeSlug) return;
+    let cancelled = false;
+    setToc([]);
+    setCurrentAnchor("");
+    fetch(apiUrl(`/api/lnori/toc?bookId=${activeBookId}&slug=${encodeURIComponent(activeSlug)}`))
+      .then(r => r.json())
+      .then((d: { entries?: LnoriTocEntry[] }) => {
+        if (!cancelled && d.entries) setToc(d.entries);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [activeBookId, activeSlug]);
+
+  // Find the novel on lnori.com
   useEffect(() => {
     let cancelled = false;
     setFindStatus("searching");
+    setResultType(null);
     setBookId(null);
     setSlug(null);
+    setVolumes([]);
+    setSelectedVolIdx(0);
     setToc([]);
     setCurrentAnchor("");
 
-    fetch(apiUrl(`/api/lnori/find?anilistId=${anilistId}&title=${encodeURIComponent(title)}`))
+    // Build find URL — prefer known lnori link from externalLinks
+    const knownUrl = extractLnoriUrl(externalLinks);
+    const qs = new URLSearchParams({ anilistId: String(anilistId), title });
+    if (knownUrl) qs.set("lnoriUrl", knownUrl);
+
+    fetch(apiUrl(`/api/lnori/find?${qs}`))
       .then(r => r.json())
-      .then((data: { found: boolean; bookId?: string; slug?: string; searchUrl?: string }) => {
+      .then((data: {
+        found: boolean;
+        type?: "book" | "series";
+        bookId?: string;
+        slug?: string;
+        seriesId?: string;
+        searchUrl?: string;
+      }) => {
         if (cancelled) return;
-        if (data.found && data.bookId && data.slug) {
+        if (!data.found) {
+          if (data.searchUrl) setSearchUrl(data.searchUrl);
+          setFindStatus("not_found");
+          return;
+        }
+
+        if (data.type === "series" && data.seriesId && data.slug) {
+          setResultType("series");
+          // Fetch series volumes
+          fetch(apiUrl(`/api/lnori/series?seriesId=${data.seriesId}&slug=${encodeURIComponent(data.slug)}`))
+            .then(r => r.json())
+            .then((sd: { volumes?: LnoriVolume[] }) => {
+              if (cancelled) return;
+              if (sd.volumes && sd.volumes.length > 0) {
+                setVolumes(sd.volumes);
+                setSelectedVolIdx(0);
+                setFindStatus("found");
+              } else {
+                setFindStatus("not_found");
+              }
+            })
+            .catch(() => { if (!cancelled) setFindStatus("error"); });
+        } else if (data.type === "book" && data.bookId && data.slug) {
+          setResultType("book");
           setBookId(data.bookId);
           setSlug(data.slug);
           setFindStatus("found");
-          // Fetch TOC separately
-          fetch(apiUrl(`/api/lnori/toc?bookId=${data.bookId}&slug=${encodeURIComponent(data.slug)}`))
-            .then(r => r.json())
-            .then((tocData: { entries?: LnoriTocEntry[] }) => {
-              if (!cancelled && tocData.entries) setToc(tocData.entries);
-            })
-            .catch(() => {});
         } else {
-          if (data.searchUrl) setSearchUrl(data.searchUrl);
           setFindStatus("not_found");
         }
       })
       .catch(() => { if (!cancelled) setFindStatus("error"); });
 
     return () => { cancelled = true; };
-  }, [anilistId, title]);
+  }, [anilistId, title, externalLinks]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -186,16 +264,65 @@ function NovelReaderModal({
     setIframeKey(k => k + 1);
   }
 
-  const currentLabel = toc.find(e => e.anchor === currentAnchor)?.label ?? "Chapter";
+  function loadManualUrl() {
+    const url = manualInput.trim();
+    if (!url) return;
+    const seriesMatch = url.match(/lnori\.com\/series\/(\d+)\/([^/?#]+)/);
+    const bookMatch = url.match(/lnori\.com\/book\/(\d+)\/([^/?#]+)/);
+    if (!seriesMatch && !bookMatch) return;
+    setManualLoading(true);
+    setFindStatus("searching");
+    setResultType(null);
+    setVolumes([]);
+    setToc([]);
+    setCurrentAnchor("");
+
+    if (seriesMatch) {
+      const [, seriesId, slug] = seriesMatch;
+      fetch(apiUrl(`/api/lnori/series?seriesId=${seriesId}&slug=${encodeURIComponent(slug)}`))
+        .then(r => r.json())
+        .then((sd: { volumes?: LnoriVolume[] }) => {
+          if (sd.volumes && sd.volumes.length > 0) {
+            setResultType("series");
+            setVolumes(sd.volumes);
+            setSelectedVolIdx(0);
+            setFindStatus("found");
+          } else {
+            setFindStatus("not_found");
+          }
+        })
+        .catch(() => setFindStatus("error"))
+        .finally(() => setManualLoading(false));
+    } else if (bookMatch) {
+      const [, bId, bSlug] = bookMatch;
+      setResultType("book");
+      setBookId(bId);
+      setSlug(bSlug);
+      setFindStatus("found");
+      setManualLoading(false);
+    }
+  }
+
+  function selectVolume(idx: number) {
+    setSelectedVolIdx(idx);
+    setVolMenuOpen(false);
+    setCurrentAnchor("");
+    setIframeKey(k => k + 1);
+  }
+
+  const currentLabel = toc.find(e => e.anchor === currentAnchor)?.label ?? "Contents";
+  const currentTocIdx = toc.findIndex(e => e.anchor === currentAnchor);
 
   const iframeSrc =
-    bookId && slug
+    activeBookId && activeSlug
       ? apiUrl(
-          `/api/lnori/reader?bookId=${bookId}&slug=${encodeURIComponent(slug)}${currentAnchor ? `&page=${encodeURIComponent(currentAnchor)}` : ""}`
+          `/api/lnori/reader?bookId=${activeBookId}&slug=${encodeURIComponent(activeSlug)}${currentAnchor ? `&page=${encodeURIComponent(currentAnchor)}` : ""}`
         )
       : null;
 
-  const currentTocIdx = toc.findIndex(e => e.anchor === currentAnchor);
+  const externalHref = activeBookId && activeSlug
+    ? `https://lnori.com/book/${activeBookId}/${activeSlug}`
+    : null;
 
   return (
     <motion.div
@@ -208,24 +335,62 @@ function NovelReaderModal({
       {/* Toolbar */}
       <div className="flex items-center gap-2 px-3 py-1.5 border-b border-white/[0.06] bg-[#0d0d0d] shrink-0">
         <BookMarked className="w-3.5 h-3.5 text-white/25 shrink-0" />
-        <span className="text-[10px] font-mono uppercase tracking-widest text-white/30 truncate max-w-[120px] hidden sm:block">{title}</span>
+        <span className="text-[10px] font-mono uppercase tracking-widest text-white/30 truncate max-w-[100px] hidden sm:block">{title}</span>
 
-        {/* TOC nav */}
         <div className="flex items-center gap-1 mx-auto">
+          {/* Prev chapter */}
           <button
-            onClick={() => {
-              if (currentTocIdx > 0) navigateTo(toc[currentTocIdx - 1].anchor);
-            }}
+            onClick={() => { if (currentTocIdx > 0) navigateTo(toc[currentTocIdx - 1].anchor); }}
             disabled={currentTocIdx <= 0 || toc.length === 0}
             className="p-1.5 text-white/30 hover:text-white/70 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
 
+          {/* Volume picker (series only) */}
+          {resultType === "series" && volumes.length > 0 && (
+            <div className="relative">
+              <button
+                onClick={() => { setVolMenuOpen(v => !v); setTocOpen(false); }}
+                className="flex items-center gap-1.5 px-2.5 py-1 border border-white/10 text-[11px] font-mono text-white/50 hover:border-white/25 hover:text-white/80 transition-colors min-w-[80px] justify-between"
+              >
+                <span className="truncate">{volumes[selectedVolIdx]?.label ?? "Vol."}</span>
+                <ChevronDown className={`w-3 h-3 shrink-0 transition-transform ${volMenuOpen ? "rotate-180" : ""}`} />
+              </button>
+              <AnimatePresence>
+                {volMenuOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 4 }}
+                    transition={{ duration: 0.1 }}
+                    className="absolute top-full left-0 mt-1 z-50 bg-zinc-900 border border-white/10 shadow-2xl w-44 max-h-80 overflow-y-auto"
+                  >
+                    {volumes.map((vol, idx) => (
+                      <button
+                        key={vol.bookId}
+                        onClick={() => selectVolume(idx)}
+                        className={`w-full text-left px-3 py-2 text-[11px] font-mono transition-colors flex items-center gap-2 ${
+                          idx === selectedVolIdx
+                            ? "bg-white/10 text-white"
+                            : "text-white/45 hover:bg-white/[0.05] hover:text-white/80"
+                        }`}
+                      >
+                        {idx === selectedVolIdx && <Check className="w-3 h-3 shrink-0" />}
+                        <span className="truncate">{vol.label}</span>
+                      </button>
+                    ))}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          )}
+
+          {/* TOC / chapter picker */}
           <div className="relative">
             <button
-              onClick={() => setTocOpen(v => !v)}
-              disabled={toc.length === 0 && findStatus !== "found"}
+              onClick={() => { setTocOpen(v => !v); setVolMenuOpen(false); }}
+              disabled={findStatus === "searching" || (toc.length === 0 && findStatus !== "found")}
               className="flex items-center gap-1.5 px-3 py-1 border border-white/10 text-[11px] font-mono text-white/50 hover:border-white/25 hover:text-white/80 transition-colors disabled:opacity-30 disabled:cursor-not-allowed min-w-[130px] justify-between"
             >
               {findStatus === "searching" ? (
@@ -266,10 +431,9 @@ function NovelReaderModal({
             </AnimatePresence>
           </div>
 
+          {/* Next chapter */}
           <button
-            onClick={() => {
-              if (currentTocIdx < toc.length - 1) navigateTo(toc[currentTocIdx + 1].anchor);
-            }}
+            onClick={() => { if (currentTocIdx < toc.length - 1) navigateTo(toc[currentTocIdx + 1].anchor); }}
             disabled={currentTocIdx === -1 || currentTocIdx >= toc.length - 1 || toc.length === 0}
             className="p-1.5 text-white/30 hover:text-white/70 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
           >
@@ -277,9 +441,9 @@ function NovelReaderModal({
           </button>
         </div>
 
-        {iframeSrc && bookId && slug && (
+        {externalHref && (
           <a
-            href={`https://lnori.com/book/${bookId}/${slug}`}
+            href={externalHref}
             target="_blank"
             rel="noopener noreferrer"
             className="p-1.5 text-white/25 hover:text-white/70 transition-colors"
@@ -308,20 +472,43 @@ function NovelReaderModal({
         )}
 
         {(findStatus === "not_found" || findStatus === "error") && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 px-6">
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-5 px-6 max-w-md mx-auto w-full">
             <BookMarked className="w-10 h-10 text-white/10" />
             <p className="text-white/40 font-serif text-lg text-center">{title}</p>
             <p className="text-[11px] font-mono text-white/20 uppercase tracking-widest">
-              {findStatus === "error" ? "Could not reach lnori.com" : "Not found on lnori.com"}
+              {findStatus === "error" ? "Could not reach lnori.com" : "Not found automatically on lnori.com"}
             </p>
+
+            {/* Manual URL input */}
+            <div className="w-full flex flex-col gap-2">
+              <p className="text-[10px] font-mono text-white/30 uppercase tracking-widest text-center">Paste a lnori.com series or book URL</p>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={manualInput}
+                  onChange={e => setManualInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter") loadManualUrl(); }}
+                  placeholder="https://lnori.com/series/3336/..."
+                  className="flex-1 bg-white/[0.04] border border-white/10 text-[11px] font-mono text-white/70 placeholder-white/20 px-3 py-2 outline-none focus:border-white/25 transition-colors"
+                />
+                <button
+                  onClick={loadManualUrl}
+                  disabled={manualLoading || !manualInput.trim()}
+                  className="px-3 py-2 border border-white/15 text-[11px] font-mono text-white/50 hover:border-white/35 hover:text-white/80 disabled:opacity-30 disabled:cursor-not-allowed transition-colors shrink-0"
+                >
+                  {manualLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Load"}
+                </button>
+              </div>
+            </div>
+
             <a
               href={searchUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-1.5 px-3 py-1.5 border border-white/10 text-[11px] font-mono text-white/40 hover:border-white/30 hover:text-white/70 transition-colors"
+              className="flex items-center gap-1.5 text-[10px] font-mono text-white/25 hover:text-white/50 transition-colors"
             >
               <ExternalLink className="w-3 h-3" />
-              Search on lnori.com
+              Browse lnori.com
             </a>
           </div>
         )}
@@ -958,6 +1145,7 @@ export default function MangaDetail() {
           <NovelReaderModal
             anilistId={manga.id}
             title={manga.title.english ?? manga.title.romaji}
+            externalLinks={manga.externalLinks}
             onClose={() => setNovelReaderOpen(false)}
           />
         )}
