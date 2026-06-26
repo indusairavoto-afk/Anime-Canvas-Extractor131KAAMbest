@@ -75,12 +75,18 @@ const SEGMENTS = CATS.map((cat, i) => ({
   labelDeg: 180 - i * 45 - 22.5,
 }));
 
-function GaugeMeter({ counts, total, myVote }: { counts: VoteCounts; total: number; myVote: VoteCategory | null }) {
+function GaugeMeter({ counts, total, myVote, onVote }: {
+  counts: VoteCounts; total: number; myVote: VoteCategory | null;
+  onVote?: (cat: VoteCategory) => void;
+}) {
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [hoveredSeg, setHoveredSeg] = useState<VoteCategory | null>(null);
+  const isDraggingRef = useRef(false);
+
   const weightedPos = total > 0
     ? CATS.reduce((sum, cat, i) => sum + (i / (CATS.length - 1)) * counts[cat.key], 0) / total
-    : -1; // -1 = no votes yet
+    : -1;
 
-  // Needle rotation: -90° = points left (pos=0), 0° = points up (pos=0.5), +90° = points right (pos=1)
   const needleRot = weightedPos >= 0 ? weightedPos * 180 - 90 : -90;
 
   const activeCat = myVote ? CAT_MAP[myVote] : null;
@@ -88,8 +94,60 @@ function GaugeMeter({ counts, total, myVote }: { counts: VoteCounts; total: numb
   const domCat    = domIdx >= 0 ? CATS[domIdx] : null;
   const domPct    = domCat && total > 0 ? Math.round((counts[domCat.key] / total) * 100) : 0;
 
+  // Convert pointer event to gauge segment
+  function segFromPointer(e: React.PointerEvent<SVGSVGElement>): VoteCategory | null {
+    const svg = svgRef.current;
+    if (!svg) return null;
+    const rect = svg.getBoundingClientRect();
+    const px = ((e.clientX - rect.left) / rect.width) * 240;
+    const py = ((e.clientY - rect.top) / rect.height) * 140;
+    const dx = px - CX;
+    const dy = -(py - CY); // invert y (SVG y grows down)
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < R_IN * 0.6 || dist > R_OUT * 1.25) return null;
+    if (dy < -8) return null; // below baseline
+    const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+    if (angle < 0 || angle > 180) return null;
+    if (angle >= 135) return "skip";
+    if (angle >= 90)  return "timepass";
+    if (angle >= 45)  return "go_for_it";
+    return "perfection";
+  }
+
+  const displayCat = hoveredSeg ? CAT_MAP[hoveredSeg] : activeCat;
+
   return (
-    <svg viewBox="0 0 240 140" className="w-full max-w-[280px]" style={{ overflow: "visible" }}>
+    <svg
+      ref={svgRef}
+      viewBox="0 0 240 140"
+      className="w-full max-w-[280px]"
+      style={{ overflow: "visible", cursor: onVote ? "pointer" : "default", touchAction: "none" }}
+      onPointerDown={(e) => {
+        if (!onVote) return;
+        isDraggingRef.current = true;
+        (e.currentTarget as SVGSVGElement).setPointerCapture(e.pointerId);
+        const seg = segFromPointer(e);
+        if (seg) setHoveredSeg(seg);
+      }}
+      onPointerMove={(e) => {
+        if (!onVote) return;
+        const seg = segFromPointer(e);
+        setHoveredSeg(seg);
+      }}
+      onPointerUp={(e) => {
+        if (!onVote) return;
+        const seg = segFromPointer(e);
+        if (seg && isDraggingRef.current) onVote(seg);
+        isDraggingRef.current = false;
+        setHoveredSeg(null);
+      }}
+      onPointerLeave={() => { isDraggingRef.current = false; setHoveredSeg(null); }}
+      onClick={(e) => {
+        if (!onVote) return;
+        const seg = segFromPointer(e);
+        if (seg) onVote(seg);
+      }}
+    >
       <defs>
         {SEGMENTS.map(seg => (
           <filter key={`glow-${seg.key}`} id={`glow-${seg.key}`} x="-30%" y="-30%" width="160%" height="160%">
@@ -101,16 +159,18 @@ function GaugeMeter({ counts, total, myVote }: { counts: VoteCounts; total: numb
 
       {/* Segment arcs */}
       {SEGMENTS.map((seg) => {
-        const isActive = myVote === seg.key;
-        const isDom    = domCat?.key === seg.key && total > 0;
+        const isActive  = myVote === seg.key;
+        const isHovered = hoveredSeg === seg.key;
+        const isDom     = domCat?.key === seg.key && total > 0;
+        const opacity   = isActive ? 1 : isHovered ? 0.85 : isDom ? 0.65 : total > 0 ? 0.25 : 0.18;
         return (
           <path
             key={seg.key}
             d={seg.path}
             fill={seg.fill}
-            opacity={isActive ? 1 : isDom ? 0.65 : total > 0 ? 0.25 : 0.18}
-            filter={isActive ? `url(#glow-${seg.key})` : undefined}
-            style={{ transition: "opacity 0.4s ease, filter 0.4s ease" }}
+            opacity={opacity}
+            filter={(isActive || isHovered) ? `url(#glow-${seg.key})` : undefined}
+            style={{ transition: "opacity 0.2s ease, filter 0.2s ease" }}
           />
         );
       })}
@@ -118,7 +178,8 @@ function GaugeMeter({ counts, total, myVote }: { counts: VoteCounts; total: numb
       {/* Zone labels along the arc */}
       {SEGMENTS.map((seg) => {
         const lp = polar(R_OUT + 13, seg.labelDeg);
-        const isActive = myVote === seg.key;
+        const isActive  = myVote === seg.key;
+        const isHovered = hoveredSeg === seg.key;
         return (
           <text
             key={`lbl-${seg.key}`}
@@ -130,10 +191,10 @@ function GaugeMeter({ counts, total, myVote }: { counts: VoteCounts; total: numb
             fontFamily="monospace"
             fontWeight="700"
             letterSpacing="0.8"
-            fill={isActive ? seg.text : "rgba(255,255,255,0.28)"}
+            fill={isActive || isHovered ? seg.text : "rgba(255,255,255,0.28)"}
             style={{
               textTransform: "uppercase",
-              transition: "fill 0.4s ease",
+              transition: "fill 0.2s ease",
               transform: `rotate(${-(seg.labelDeg - 90)}deg)`,
               transformOrigin: `${lp.x}px ${lp.y}px`,
             }}
@@ -143,23 +204,23 @@ function GaugeMeter({ counts, total, myVote }: { counts: VoteCounts; total: numb
         );
       })}
 
-      {/* Center text */}
+      {/* Center text — reacts to hover */}
       <text
         x={CX} y={CY - 16}
         textAnchor="middle"
-        fontSize={total > 0 ? "28" : "11"}
+        fontSize={hoveredSeg ? "11" : total > 0 ? "28" : "11"}
         fontWeight="800"
         fontFamily="system-ui,sans-serif"
-        fill={activeCat?.text ?? (domCat?.text ?? "rgba(255,255,255,0.2)")}
-        style={{ transition: "fill 0.4s ease" }}
+        fill={displayCat?.text ?? (domCat?.text ?? "rgba(255,255,255,0.2)")}
+        style={{ transition: "fill 0.2s ease, font-size 0.15s ease" }}
       >
-        {total > 0 ? `${domPct}%` : "NEXA"}
+        {hoveredSeg ? CAT_MAP[hoveredSeg].label.toUpperCase() : total > 0 ? `${domPct}%` : "NEXA"}
       </text>
-      {total > 0 && (
+      {!hoveredSeg && total > 0 && (
         <>
           <text x={CX} y={CY - 2} textAnchor="middle" fontSize="7" fontFamily="monospace"
             fill={activeCat?.text ?? (domCat?.text ?? "rgba(255,255,255,0.3)")}
-            fontWeight="600" style={{ transition: "fill 0.4s ease" }}>
+            fontWeight="600" style={{ transition: "fill 0.2s ease" }}>
             {domCat?.zone ?? ""}
           </text>
           <text x={CX} y={CY + 8} textAnchor="middle" fontSize="5.5" fontFamily="monospace"
@@ -168,10 +229,16 @@ function GaugeMeter({ counts, total, myVote }: { counts: VoteCounts; total: numb
           </text>
         </>
       )}
-      {total === 0 && (
+      {!hoveredSeg && total === 0 && (
         <text x={CX} y={CY - 2} textAnchor="middle" fontSize="6" fontFamily="monospace"
           fill="rgba(255,255,255,0.15)" letterSpacing="1">
           METER
+        </text>
+      )}
+      {hoveredSeg && (
+        <text x={CX} y={CY - 2} textAnchor="middle" fontSize="5.5" fontFamily="monospace"
+          fill={CAT_MAP[hoveredSeg].text} letterSpacing="0.8" opacity="0.7">
+          TAP TO VOTE
         </text>
       )}
 
@@ -347,7 +414,7 @@ export function EpisodeRatingMeter({ animeId, episode, episodeTitle, onPostRevie
 
         {/* Gauge meter */}
         <div className="shrink-0 w-full sm:w-[220px] flex flex-col items-center">
-          <GaugeMeter counts={counts} total={total} myVote={myVote} />
+          <GaugeMeter counts={counts} total={total} myVote={myVote} onVote={castVote} />
 
           {/* Title below gauge */}
           <p className="text-[8px] font-mono uppercase tracking-[0.3em] text-white/15 mt-1">
