@@ -732,7 +732,7 @@ export default function WatchAniList() {
         .then(r => r.json())
         .then((data: { slug?: string; watchUrl?: string; embedUrl?: string; error?: string }) => {
           if (cancelled) return;
-          const iframeUrl = data.watchUrl ?? null;
+          const iframeUrl = data.embedUrl || data.watchUrl || null;
           if (iframeUrl) {
             if (data.slug) localStorage.setItem(`na_anineko_${animeId}`, data.slug);
             raceCache.current.anineko = { iframeUrl, slug: data.slug };
@@ -1301,15 +1301,15 @@ export default function WatchAniList() {
     if (slug) params.set("slug", slug);
     fetch(apiUrl(`/api/anineko/find?${params}`))
       .then(r => r.json())
-      .then((data: { slug?: string; watchUrl?: string; error?: string }) => {
+      .then((data: { slug?: string; watchUrl?: string; embedUrl?: string; error?: string }) => {
         if (cancelled) return;
-        if (data.watchUrl) {
+        if (data.embedUrl || data.watchUrl) {
           if (data.slug) {
             setAninekoSlug(data.slug);
             setAninekoSlugInput(data.slug);
             localStorage.setItem(`na_anineko_${animeId}`, data.slug);
           }
-          setAninekoIframeUrl(data.watchUrl);
+          setAninekoIframeUrl(data.embedUrl || data.watchUrl || null);
         } else {
           setAninekoError(data.error ?? "Anime not found on AniNeko");
         }
