@@ -751,7 +751,7 @@ export default function AnimeDetailAniList() {
             <div className="flex flex-wrap gap-2">
               {(anime.externalLinks ?? []).filter(l => l.type === "STREAMING").map((l) => (
                 <a
-                  key={l.site}
+                  key={l.url ?? l.site}
                   href={l.url}
                   target="_blank"
                   rel="noopener noreferrer"

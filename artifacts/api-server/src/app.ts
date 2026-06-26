@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";
 import router from "./routes";
 import { logger } from "./lib/logger";
+import { globalLimiter } from "./lib/rate-limiters";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -34,6 +35,7 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+app.use(globalLimiter);
 app.use("/api", router);
 
 // Serve built frontend static files in production.

@@ -219,8 +219,8 @@ export default function CharacterDetail() {
             {/* Stats grid */}
             {stats.length > 0 && (
               <div className="flex flex-wrap gap-x-6 gap-y-2 mb-5">
-                {stats.map((s) => (
-                  <div key={s.label}>
+                {stats.map((s, i) => (
+                  <div key={`${s.label}-${i}`}>
                     <p className="text-[9px] font-mono text-white/25 uppercase tracking-[0.25em]">{s.label}</p>
                     <p className="text-white/80 text-sm font-medium">{s.value}</p>
                   </div>

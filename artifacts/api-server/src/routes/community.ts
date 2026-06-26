@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { communityPostTable, commentTable } from "@workspace/db";
 import { eq, desc, sql } from "drizzle-orm";
 import { toCommentResponse } from "./comments";
+import { writeLimiter, voteLimiter } from "../lib/rate-limiters";
 
 const router = Router();
 
@@ -49,7 +50,7 @@ router.get("/community", async (req, res) => {
 
 const VALID_CATEGORIES = ["general", "discussion", "recommendation", "fanart", "news", "question"] as const;
 
-router.post("/community", async (req, res) => {
+router.post("/community", writeLimiter, async (req, res) => {
   try {
     const { username, title, content, category, imageUrl } = req.body;
     if (!username || typeof username !== "string" || username.trim().length === 0) {
@@ -117,7 +118,7 @@ router.get("/community/:id/comments", async (req, res) => {
   }
 });
 
-router.post("/community/:id/comments", async (req, res) => {
+router.post("/community/:id/comments", writeLimiter, async (req, res) => {
   try {
     const postId = parseInt(req.params.id);
     if (isNaN(postId)) { res.status(400).json({ error: "Invalid post id" }); return; }

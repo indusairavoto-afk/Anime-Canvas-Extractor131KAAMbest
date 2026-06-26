@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { commentTable } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
+import { writeLimiter, voteLimiter } from "../lib/rate-limiters";
 
 const router = Router();
 
@@ -24,7 +25,7 @@ router.get("/episodes/:id/comments", async (req, res) => {
   }
 });
 
-router.post("/episodes/:id/comments", async (req, res) => {
+router.post("/episodes/:id/comments", writeLimiter, async (req, res) => {
   try {
     const episodeId = parseInt(req.params.id);
     if (isNaN(episodeId)) { res.status(400).json({ error: "Invalid episode id" }); return; }
@@ -56,7 +57,7 @@ router.post("/episodes/:id/comments", async (req, res) => {
   }
 });
 
-router.post("/comments/:id/like", async (req, res) => {
+router.post("/comments/:id/like", voteLimiter, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const [row] = await db

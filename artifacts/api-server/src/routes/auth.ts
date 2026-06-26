@@ -4,6 +4,7 @@ import crypto from "node:crypto";
 import { db } from "@workspace/db";
 import { userTable, passwordResetTable } from "@workspace/db/schema";
 import { eq, or, and, gt, isNull } from "drizzle-orm";
+import { authLimiter } from "../lib/rate-limiters";
 
 const router = Router();
 
@@ -19,7 +20,7 @@ function toPublicUser(row: typeof userTable.$inferSelect) {
   };
 }
 
-router.post("/auth/register", async (req, res) => {
+router.post("/auth/register", authLimiter, async (req, res) => {
   try {
     const { displayName, username, email, password } = req.body;
     if (!displayName || !username || !email || !password) {
@@ -126,7 +127,7 @@ router.get("/auth/me", async (req, res) => {
   }
 });
 
-router.post("/auth/login", async (req, res) => {
+router.post("/auth/login", authLimiter, async (req, res) => {
   try {
     const { emailOrUsername, password } = req.body;
     if (!emailOrUsername || !password) {
