@@ -11,8 +11,13 @@ services:
     runtime: node
     region: oregon
     plan: free
-    buildCommand: pnpm install --frozen-lockfile && pnpm --filter @workspace/anime-site run build && pnpm --filter @workspace/api-server run build
-    startCommand: pnpm --filter @workspace/db run push-force && pnpm --filter @workspace/api-server run start
+    buildCommand: >-
+      npx --yes pnpm@10 install --frozen-lockfile &&
+      npx pnpm@10 --filter @workspace/anime-site run build &&
+      npx pnpm@10 --filter @workspace/api-server run build
+    startCommand: >-
+      npx pnpm@10 --filter @workspace/db run push-force &&
+      npx pnpm@10 --filter @workspace/api-server run start
     healthCheckPath: /api/healthz
     envVars:
       - key: NODE_ENV
@@ -21,5 +26,7 @@ services:
         fromDatabase:
           name: nexa-anime-db
           property: connectionString
+      - key: SESSION_SECRET
+        generateValue: true
       - key: OPENROUTER_API_KEY
         sync: false
