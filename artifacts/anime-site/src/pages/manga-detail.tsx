@@ -156,8 +156,6 @@ function NovelReaderModal({
   const [volMenuOpen, setVolMenuOpen] = useState(false);
 
   const [searchUrl, setSearchUrl] = useState<string>("https://lnori.com/library#search");
-  const [manualInput, setManualInput] = useState("");
-  const [manualLoading, setManualLoading] = useState(false);
   const [toc, setToc] = useState<LnoriTocEntry[]>([]);
   const [currentAnchor, setCurrentAnchor] = useState<string>("");
   const [tocOpen, setTocOpen] = useState(false);
@@ -216,10 +214,11 @@ function NovelReaderModal({
           return;
         }
 
-        if (data.type === "series" && data.seriesId && data.slug) {
+        if (data.type === "series" && data.seriesId) {
           setResultType("series");
-          // Fetch series volumes
-          fetch(apiUrl(`/api/lnori/series?seriesId=${data.seriesId}&slug=${encodeURIComponent(data.slug)}`))
+          // Fetch series volumes (slug is optional — lnori accepts /series/{id} too)
+          const slugParam = data.slug ? `&slug=${encodeURIComponent(data.slug)}` : "";
+          fetch(apiUrl(`/api/lnori/series?seriesId=${data.seriesId}${slugParam}`))
             .then(r => r.json())
             .then((sd: { volumes?: LnoriVolume[] }) => {
               if (cancelled) return;
@@ -262,45 +261,6 @@ function NovelReaderModal({
     setCurrentAnchor(anchor);
     setTocOpen(false);
     setIframeKey(k => k + 1);
-  }
-
-  function loadManualUrl() {
-    const url = manualInput.trim();
-    if (!url) return;
-    const seriesMatch = url.match(/lnori\.com\/series\/(\d+)\/([^/?#]+)/);
-    const bookMatch = url.match(/lnori\.com\/book\/(\d+)\/([^/?#]+)/);
-    if (!seriesMatch && !bookMatch) return;
-    setManualLoading(true);
-    setFindStatus("searching");
-    setResultType(null);
-    setVolumes([]);
-    setToc([]);
-    setCurrentAnchor("");
-
-    if (seriesMatch) {
-      const [, seriesId, slug] = seriesMatch;
-      fetch(apiUrl(`/api/lnori/series?seriesId=${seriesId}&slug=${encodeURIComponent(slug)}`))
-        .then(r => r.json())
-        .then((sd: { volumes?: LnoriVolume[] }) => {
-          if (sd.volumes && sd.volumes.length > 0) {
-            setResultType("series");
-            setVolumes(sd.volumes);
-            setSelectedVolIdx(0);
-            setFindStatus("found");
-          } else {
-            setFindStatus("not_found");
-          }
-        })
-        .catch(() => setFindStatus("error"))
-        .finally(() => setManualLoading(false));
-    } else if (bookMatch) {
-      const [, bId, bSlug] = bookMatch;
-      setResultType("book");
-      setBookId(bId);
-      setSlug(bSlug);
-      setFindStatus("found");
-      setManualLoading(false);
-    }
   }
 
   function selectVolume(idx: number) {
@@ -475,40 +435,17 @@ function NovelReaderModal({
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-5 px-6 max-w-md mx-auto w-full">
             <BookMarked className="w-10 h-10 text-white/10" />
             <p className="text-white/40 font-serif text-lg text-center">{title}</p>
-            <p className="text-[11px] font-mono text-white/20 uppercase tracking-widest">
-              {findStatus === "error" ? "Could not reach lnori.com" : "Not found automatically on lnori.com"}
+            <p className="text-[11px] font-mono text-white/20 uppercase tracking-widest text-center">
+              {findStatus === "error" ? "Could not reach lnori.com" : "Novel not found in library"}
             </p>
-
-            {/* Manual URL input */}
-            <div className="w-full flex flex-col gap-2">
-              <p className="text-[10px] font-mono text-white/30 uppercase tracking-widest text-center">Paste a lnori.com series or book URL</p>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={manualInput}
-                  onChange={e => setManualInput(e.target.value)}
-                  onKeyDown={e => { if (e.key === "Enter") loadManualUrl(); }}
-                  placeholder="https://lnori.com/series/3336/..."
-                  className="flex-1 bg-white/[0.04] border border-white/10 text-[11px] font-mono text-white/70 placeholder-white/20 px-3 py-2 outline-none focus:border-white/25 transition-colors"
-                />
-                <button
-                  onClick={loadManualUrl}
-                  disabled={manualLoading || !manualInput.trim()}
-                  className="px-3 py-2 border border-white/15 text-[11px] font-mono text-white/50 hover:border-white/35 hover:text-white/80 disabled:opacity-30 disabled:cursor-not-allowed transition-colors shrink-0"
-                >
-                  {manualLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Load"}
-                </button>
-              </div>
-            </div>
-
             <a
               href={searchUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-1.5 text-[10px] font-mono text-white/25 hover:text-white/50 transition-colors"
+              className="flex items-center gap-1.5 text-[11px] font-mono text-white/30 hover:text-white/60 border border-white/10 hover:border-white/25 px-4 py-2 transition-colors"
             >
               <ExternalLink className="w-3 h-3" />
-              Browse lnori.com
+              Search on lnori.com
             </a>
           </div>
         )}
