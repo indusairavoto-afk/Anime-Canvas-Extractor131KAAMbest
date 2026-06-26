@@ -151,6 +151,7 @@ export default function WatchAniList() {
   const [jikanLoading, setJikanLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [lang, setLang] = useState<"SUB" | "DUB">("SUB");
+  const [actualLang, setActualLang] = useState<"SUB" | "DUB" | null>(null);
   const [server, setServer] = useState<"GOGO" | "KOTO" | "ANIZONE" | "MIRURO" | "NEXUS" | "ANIMEONSEN" | "ANINEKO" | "CUSTOM">("GOGO");
   const [anizoneSlug, setAnizoneSlug] = useState("");
   const [anizoneSlugInput, setAnizoneSlugInput] = useState("");
@@ -617,6 +618,7 @@ export default function WatchAniList() {
       setIframeLoaded(false);
       bridgeLiveRef.current = false;
       setBridgeLive(false);
+      setActualLang(null);
     };
 
     const baseGSlug = (localStorage.getItem(`na_gogo_${animeId}`) || deriveGogoSlug(title)).replace(/-dub$/i, "");
@@ -688,6 +690,7 @@ export default function WatchAniList() {
             if (data.url || data.hlsUrl) {
               raceCache.current.koto = data;
               setServerHealth(h => ({ ...h, KOTO: "ok" }));
+              setActualLang(lang === "DUB" ? "DUB" : "SUB");
               tryWin("KOTO");
             } else {
               raceCache.current.koto = null;
@@ -712,6 +715,7 @@ export default function WatchAniList() {
             if (data.hlsUrl) {
               raceCache.current.anizone = data;
               setServerHealth(h => ({ ...h, ANIZONE: "ok" }));
+              setActualLang("SUB"); // AniZone is sub-only
               tryWin("ANIZONE");
             } else {
               raceCache.current.anizone = null;
@@ -735,6 +739,7 @@ export default function WatchAniList() {
           if (data.iframeUrl) {
             raceCache.current.miruro = { iframeUrl: data.iframeUrl };
             setServerHealth(h => ({ ...h, MIRURO: "ok" }));
+            setActualLang(lang === "DUB" ? "DUB" : "SUB");
             tryWin("MIRURO");
           } else {
             raceCache.current.miruro = null;
@@ -864,6 +869,7 @@ export default function WatchAniList() {
         if (data.cdnUrl) {
           setCdnUrl(data.cdnUrl);
           setGogoHlsUrl(data.hlsUrl ?? null);
+          setActualLang(effectiveGogoSlug.includes("-dub") ? "DUB" : "SUB");
           if (data.pageTitle) setSourcePageTitle(data.pageTitle);
           if (data.streamOk === false) setGogoStreamError(true);
           return;
@@ -878,6 +884,7 @@ export default function WatchAniList() {
               setCdnUrl(resolveData.cdnUrl);
               setGogoHlsUrl(resolveData.hlsUrl ?? null);
               setCdnNotFound(false);
+              setActualLang((resolveData.resolvedSlug ?? effectiveGogoSlug).includes("-dub") ? "DUB" : "SUB");
               if (resolveData.pageTitle) setSourcePageTitle(resolveData.pageTitle);
               if (resolveData.resolvedSlug) {
                 setGogoSlug(resolveData.resolvedSlug);
@@ -2693,7 +2700,19 @@ export default function WatchAniList() {
                 </button>
               </Link>
               {/* SUB/DUB */}
-              <div className="ml-auto flex items-center gap-1">
+              <div className="ml-auto flex items-center gap-1.5">
+                {actualLang && !autoDetecting && (
+                  <span
+                    title={actualLang === lang ? `Playing in ${actualLang}` : `Requested ${lang} but stream is ${actualLang}`}
+                    className={`text-[8px] font-mono px-1.5 py-0.5 rounded border shrink-0 ${
+                      actualLang === "DUB"
+                        ? actualLang === lang ? "border-yellow-400/50 text-yellow-300/80 bg-yellow-400/10" : "border-yellow-400/30 text-yellow-300/50"
+                        : actualLang === lang ? "border-sky-400/50 text-sky-300/80 bg-sky-400/10" : "border-sky-400/30 text-sky-300/50"
+                    }`}
+                  >
+                    {actualLang === lang ? `✓ ${actualLang}` : `↩ ${actualLang}`}
+                  </span>
+                )}
                 {(["SUB", "DUB"] as const).map((l) => (
                   <button
                     key={l}
@@ -2902,7 +2921,19 @@ export default function WatchAniList() {
             </div>
             <div className="flex flex-wrap items-center gap-2 ml-auto">
               {/* SUB/DUB toggle */}
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-2">
+                {actualLang && !autoDetecting && (
+                  <span
+                    title={actualLang === lang ? `Playing in ${actualLang}` : `Requested ${lang} but stream is ${actualLang}`}
+                    className={`text-[9px] font-mono px-1.5 py-0.5 border shrink-0 ${
+                      actualLang === "DUB"
+                        ? actualLang === lang ? "border-yellow-400/60 text-yellow-300/90 bg-yellow-400/10" : "border-yellow-400/30 text-yellow-300/50"
+                        : actualLang === lang ? "border-sky-400/60 text-sky-300/90 bg-sky-400/10" : "border-sky-400/30 text-sky-300/50"
+                    }`}
+                  >
+                    {actualLang === lang ? `✓ ${actualLang}` : `↩ ${actualLang}`}
+                  </span>
+                )}
                 {(["SUB", "DUB"] as const).map((l) => (
                   <button
                     key={l}
