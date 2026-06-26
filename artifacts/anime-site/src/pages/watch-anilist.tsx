@@ -1227,15 +1227,17 @@ export default function WatchAniList() {
     setKotoPlayerError(null);
     const params = new URLSearchParams({ ep: String(currentEp), malId: String(malId) });
     if (slug) params.set("slug", slug);
+    if (lang === "DUB") params.set("preferDub", "1");
     let cancelled = false;
     fetch(apiUrl(`/api/koto/stream?${params}`))
       .then((r) => r.json())
-      .then((data: { url?: string; hlsUrl?: string | null; error?: string; sourceTitle?: string | null }) => {
+      .then((data: { url?: string; hlsUrl?: string | null; error?: string; sourceTitle?: string | null; isDub?: boolean }) => {
         if (cancelled) return;
         if (data.url) {
           setKotoPlayerUrl(data.url);
           setKotoHlsUrl(data.hlsUrl ?? null);
           if (data.sourceTitle) setSourcePageTitle(data.sourceTitle);
+          setActualLang(data.isDub ? "DUB" : "SUB");
         } else {
           setKotoPlayerError(data.error ?? "No player URL found");
         }
@@ -1243,7 +1245,7 @@ export default function WatchAniList() {
       .catch((e: Error) => { if (!cancelled) setKotoPlayerError(e.message); })
       .finally(() => { if (!cancelled) setKotoPlayerLoading(false); });
     return () => { cancelled = true; };
-  }, [server, kotoSlug, kotoSearching, anime, currentEp]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [server, kotoSlug, kotoSearching, anime, currentEp, lang]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch HLS stream JSON for AniZone when server is selected with a valid slug
   useEffect(() => {
@@ -1309,12 +1311,13 @@ export default function WatchAniList() {
     setMiruroIframeUrl(null);
     setMiruroLoading(true);
     setMiruroError(null);
-    fetch(apiUrl(`/api/miruro/stream?anilistId=${animeId}&ep=${currentEp}&romajiTitle=${encodeURIComponent(romajiTitle)}`))
+    fetch(apiUrl(`/api/miruro/stream?anilistId=${animeId}&ep=${currentEp}&romajiTitle=${encodeURIComponent(romajiTitle)}&dub=${lang === "DUB" ? "1" : "0"}`))
       .then((r) => r.json())
       .then((data: { iframeUrl?: string; error?: string }) => {
         if (cancelled) return;
         if (data.iframeUrl) {
           setMiruroIframeUrl(data.iframeUrl);
+          setActualLang(lang === "DUB" ? "DUB" : "SUB");
         } else {
           setMiruroError(data.error ?? "No stream found for this episode");
         }
@@ -1322,7 +1325,7 @@ export default function WatchAniList() {
       .catch((e: Error) => { if (!cancelled) setMiruroError(e.message); })
       .finally(() => { if (!cancelled) setMiruroLoading(false); });
     return () => { cancelled = true; };
-  }, [server, animeId, currentEp]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [server, animeId, currentEp, lang]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load saved AniNeko slug from localStorage
   useEffect(() => {
