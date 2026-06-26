@@ -164,6 +164,18 @@ export const CreateEpisodeCommentBody = zod.object({
 
 
 /**
+ * @summary Delete a comment (owner only)
+ */
+export const DeleteCommentParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteCommentBody = zod.object({
+  "username": zod.string()
+})
+
+
+/**
  * @summary Like a comment
  */
 export const LikeCommentParams = zod.object({
@@ -214,6 +226,18 @@ export const CreateCommunityPostBody = zod.object({
   "content": zod.string(),
   "category": zod.string(),
   "imageUrl": zod.string().nullish()
+})
+
+
+/**
+ * @summary Delete a community post (owner only)
+ */
+export const DeleteCommunityPostParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteCommunityPostBody = zod.object({
+  "username": zod.string()
 })
 
 

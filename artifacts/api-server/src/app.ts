@@ -12,6 +12,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const app: Express = express();
 
+// Trust the first proxy hop (Replit's reverse proxy) so express-rate-limit
+// can correctly identify clients via X-Forwarded-For without throwing ERR_ERL_UNEXPECTED_X_FORWARDED_FOR.
+app.set("trust proxy", 1);
+
 app.use(
   pinoHttp({
     logger,

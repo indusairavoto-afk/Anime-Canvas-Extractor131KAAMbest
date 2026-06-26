@@ -110,6 +110,10 @@ export interface CommunityPost {
   createdAt: string;
 }
 
+export interface DeleteOwnerInput {
+  username: string;
+}
+
 export interface CommunityPostInput {
   username: string;
   title: string;

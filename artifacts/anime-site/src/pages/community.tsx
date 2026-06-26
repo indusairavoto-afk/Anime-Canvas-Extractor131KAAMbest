@@ -1,12 +1,13 @@
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { useState } from "react";
-import { Link } from "wouter";
-import { ThumbsUp, MessageCircle, PenLine, X, Pin, Users } from "lucide-react";
+import { Link, useLocation } from "wouter";
+import { ThumbsUp, MessageCircle, PenLine, X, Pin, Users, Trash2 } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import {
   useListCommunityPosts,
   getListCommunityPostsQueryKey,
   useCreateCommunityPost,
+  useDeleteCommunityPost,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -19,27 +20,44 @@ const GENERIC_AVATAR = "https://api.dicebear.com/7.x/avataaars/svg?seed=guest";
 
 export default function Community() {
   const { user } = useAuth();
+  const [, navigate] = useLocation();
   const [category, setCategory] = useState("All");
   const [showForm, setShowForm] = useState(false);
   const [username, setUsername] = useState("");
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [postCategory, setPostCategory] = useState("Discussion");
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
   const queryClient = useQueryClient();
 
   const params = category !== "All" ? { category } : undefined;
   const { data: posts, isLoading } = useListCommunityPosts(params);
   const createPost = useCreateCommunityPost();
+  const deletePost = useDeleteCommunityPost();
 
   const handleSubmit = () => {
-    if (!username.trim() || !title.trim() || !content.trim()) return;
+    const poster = user?.username || username.trim();
+    if (!poster || !title.trim() || !content.trim()) return;
     createPost.mutate(
-      { data: { username: username.trim(), title: title.trim(), content: content.trim(), category: postCategory } },
+      { data: { username: poster, title: title.trim(), content: content.trim(), category: postCategory } },
       {
         onSuccess: () => {
           setShowForm(false);
           setTitle("");
           setContent("");
+          queryClient.invalidateQueries({ queryKey: getListCommunityPostsQueryKey() });
+        },
+      }
+    );
+  };
+
+  const handleDelete = (postId: number) => {
+    if (!user) return;
+    deletePost.mutate(
+      { id: postId, data: { username: user.username } },
+      {
+        onSuccess: () => {
+          setConfirmDeleteId(null);
           queryClient.invalidateQueries({ queryKey: getListCommunityPostsQueryKey() });
         },
       }
@@ -87,9 +105,9 @@ export default function Community() {
               className="grid grid-cols-1 sm:grid-cols-3 gap-3"
             >
               {pinnedPosts.map((post) => (
-                <motion.div key={post.id} variants={fadeUp}>
+                <motion.div key={post.id} variants={fadeUp} className="relative group/card">
                   <Link href={`/community/${post.id}`}>
-                    <div className="group relative border border-white/5 hover:border-white/20 transition-all cursor-pointer overflow-hidden aspect-[4/3] flex flex-col">
+                    <div className="relative border border-white/5 hover:border-white/20 transition-all cursor-pointer overflow-hidden aspect-[4/3] flex flex-col">
                       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent z-10" />
                       <div className="absolute inset-0 bg-white/[0.015]" />
                       <div className="relative z-20 flex flex-col h-full p-4">
@@ -106,6 +124,15 @@ export default function Community() {
                       </div>
                     </div>
                   </Link>
+                  {user && user.username === post.username && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(post.id); }}
+                      className="absolute top-2 right-2 z-30 p-1.5 bg-black/70 text-white/40 hover:text-red-400 hover:bg-black/90 transition-colors opacity-0 group-hover/card:opacity-100"
+                      title="Delete post"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </motion.div>
               ))}
             </motion.div>
@@ -147,8 +174,12 @@ export default function Community() {
               </button>
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <input type="text" placeholder="Username" value={username} onChange={(e) => setUsername(e.target.value)}
-                className="bg-transparent border-b border-white/10 pb-2 text-white text-sm placeholder:text-white/25 focus:outline-none" data-testid="input-username" />
+              {user ? (
+                <p className="text-white/60 text-sm self-center">Posting as <span className="text-white font-medium">{user.username}</span></p>
+              ) : (
+                <input type="text" placeholder="Username" value={username} onChange={(e) => setUsername(e.target.value)}
+                  className="bg-transparent border-b border-white/10 pb-2 text-white text-sm placeholder:text-white/25 focus:outline-none" data-testid="input-username" />
+              )}
               <select value={postCategory} onChange={(e) => setPostCategory(e.target.value)}
                 className="bg-black border-b border-white/10 pb-2 text-white/70 text-sm focus:outline-none" data-testid="select-category">
                 {CATEGORIES.filter((c) => c !== "All").map((c) => <option key={c} value={c} className="bg-black">{c}</option>)}
@@ -184,17 +215,17 @@ export default function Community() {
             </div>
 
             {regularPosts.map((post) => (
-              <motion.div key={post.id} variants={fadeUp}>
+              <motion.div key={post.id} variants={fadeUp} className="group/row relative">
                 <Link href={`/community/${post.id}`}>
-                  <div className="group flex items-start gap-4 border border-white/5 p-5 hover:border-white/15 hover:bg-white/[0.02] transition-all cursor-pointer" data-testid={`post-${post.id}`}>
+                  <div className="flex items-start gap-4 border border-white/5 p-5 hover:border-white/15 hover:bg-white/[0.02] transition-all cursor-pointer" data-testid={`post-${post.id}`}>
                     <img src={post.avatarUrl} alt={post.username} className="w-9 h-9 rounded-full grayscale flex-shrink-0 mt-0.5" />
-                    <div className="flex-1 min-w-0">
+                    <div className="flex-1 min-w-0 pr-8">
                       <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                         <span className="text-[9px] font-mono uppercase tracking-widest border border-white/10 px-2 py-0.5 text-white/40">{post.category}</span>
                         <span className="text-white text-xs font-medium">{post.username}</span>
                         <span className="text-white/25 text-[9px] font-mono">{new Date(post.createdAt).toLocaleDateString()}</span>
                       </div>
-                      <h3 className="text-white font-serif text-lg group-hover:text-white/90 transition-colors mb-1">{post.title}</h3>
+                      <h3 className="text-white font-serif text-lg group-hover/row:text-white/90 transition-colors mb-1">{post.title}</h3>
                       <p className="text-white/45 text-sm line-clamp-2">{post.content}</p>
                       <div className="flex items-center gap-5 mt-3 text-[10px] font-mono text-white/30 uppercase tracking-widest">
                         <span className="flex items-center gap-1.5"><ThumbsUp className="w-3 h-3" />{post.likes}</span>
@@ -203,11 +234,59 @@ export default function Community() {
                     </div>
                   </div>
                 </Link>
+                {user && user.username === post.username && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(post.id); }}
+                    className="absolute top-4 right-4 p-1.5 text-white/20 hover:text-red-400 transition-colors opacity-0 group-hover/row:opacity-100"
+                    title="Delete post"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </motion.div>
             ))}
           </motion.div>
         )}
       </div>
+
+      {/* Delete confirmation modal */}
+      <AnimatePresence>
+        {confirmDeleteId !== null && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm px-4"
+            onClick={() => setConfirmDeleteId(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-zinc-950 border border-white/10 p-8 max-w-sm w-full"
+            >
+              <h3 className="font-serif text-xl text-white mb-2">Delete Post?</h3>
+              <p className="text-white/50 text-sm mb-6">This will permanently remove the post and all its replies. This cannot be undone.</p>
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={() => setConfirmDeleteId(null)}
+                  className="px-5 py-2 text-xs font-mono uppercase tracking-widest text-white/50 hover:text-white border border-white/10 hover:border-white/30 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => handleDelete(confirmDeleteId)}
+                  disabled={deletePost.isPending}
+                  className="px-5 py-2 text-xs font-mono uppercase tracking-widest bg-red-600 text-white hover:bg-red-500 transition-colors disabled:opacity-50"
+                >
+                  {deletePost.isPending ? "Deleting…" : "Delete"}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

@@ -25,6 +25,7 @@ import type {
   CommentInput,
   CommunityPost,
   CommunityPostInput,
+  DeleteOwnerInput,
   Episode,
   FeaturedSpotlight,
   GenreStat,
@@ -590,6 +591,78 @@ export const useCreateEpisodeComment = <TError = ErrorType<unknown>,
       return useMutation(getCreateEpisodeCommentMutationOptions(options));
     }
 
+export const getDeleteCommentUrl = (id: number,) => {
+
+
+
+
+  return `/api/comments/${id}`
+}
+
+/**
+ * @summary Delete a comment (owner only)
+ */
+export const deleteComment = async (id: number,
+    deleteOwnerInput: DeleteOwnerInput, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteCommentUrl(id),
+  {
+    ...options,
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      deleteOwnerInput,)
+  }
+);}
+
+
+
+
+export const getDeleteCommentMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteComment>>, TError,{id: number;data: BodyType<DeleteOwnerInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteComment>>, TError,{id: number;data: BodyType<DeleteOwnerInput>}, TContext> => {
+
+const mutationKey = ['deleteComment'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteComment>>, {id: number;data: BodyType<DeleteOwnerInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  deleteComment(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteCommentMutationResult = NonNullable<Awaited<ReturnType<typeof deleteComment>>>
+    export type DeleteCommentMutationBody = BodyType<DeleteOwnerInput>
+    export type DeleteCommentMutationError = ErrorType<void>
+
+    /**
+ * @summary Delete a comment (owner only)
+ */
+export const useDeleteComment = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteComment>>, TError,{id: number;data: BodyType<DeleteOwnerInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteComment>>,
+        TError,
+        {id: number;data: BodyType<DeleteOwnerInput>},
+        TContext
+      > => {
+      return useMutation(getDeleteCommentMutationOptions(options));
+    }
+
 export const getLikeCommentUrl = (id: number,) => {
 
 
@@ -813,6 +886,78 @@ export const useCreateCommunityPost = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getCreateCommunityPostMutationOptions(options));
+    }
+
+export const getDeleteCommunityPostUrl = (id: number,) => {
+
+
+
+
+  return `/api/community/${id}`
+}
+
+/**
+ * @summary Delete a community post (owner only)
+ */
+export const deleteCommunityPost = async (id: number,
+    deleteOwnerInput: DeleteOwnerInput, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteCommunityPostUrl(id),
+  {
+    ...options,
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      deleteOwnerInput,)
+  }
+);}
+
+
+
+
+export const getDeleteCommunityPostMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteCommunityPost>>, TError,{id: number;data: BodyType<DeleteOwnerInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteCommunityPost>>, TError,{id: number;data: BodyType<DeleteOwnerInput>}, TContext> => {
+
+const mutationKey = ['deleteCommunityPost'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteCommunityPost>>, {id: number;data: BodyType<DeleteOwnerInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  deleteCommunityPost(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteCommunityPostMutationResult = NonNullable<Awaited<ReturnType<typeof deleteCommunityPost>>>
+    export type DeleteCommunityPostMutationBody = BodyType<DeleteOwnerInput>
+    export type DeleteCommunityPostMutationError = ErrorType<void>
+
+    /**
+ * @summary Delete a community post (owner only)
+ */
+export const useDeleteCommunityPost = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteCommunityPost>>, TError,{id: number;data: BodyType<DeleteOwnerInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteCommunityPost>>,
+        TError,
+        {id: number;data: BodyType<DeleteOwnerInput>},
+        TContext
+      > => {
+      return useMutation(getDeleteCommunityPostMutationOptions(options));
     }
 
 export const getGetCommunityPostUrl = (id: number,) => {

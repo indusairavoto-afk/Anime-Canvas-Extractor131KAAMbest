@@ -13,6 +13,7 @@ export * from './comment';
 export * from './commentInput';
 export * from './communityPost';
 export * from './communityPostInput';
+export * from './deleteOwnerInput';
 export * from './episode';
 export * from './episodeType';
 export * from './featuredSpotlight';

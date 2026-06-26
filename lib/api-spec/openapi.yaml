@@ -178,6 +178,31 @@ paths:
               schema:
                 $ref: "#/components/schemas/Comment"
 
+  /comments/{id}:
+    delete:
+      operationId: deleteComment
+      tags: [comments]
+      summary: Delete a comment (owner only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeleteOwnerInput"
+      responses:
+        "204":
+          description: Deleted
+        "403":
+          description: Not your comment
+        "404":
+          description: Not found
+
   /comments/{id}/like:
     post:
       operationId: likeComment
@@ -243,6 +268,29 @@ paths:
                 $ref: "#/components/schemas/CommunityPost"
 
   /community/{id}:
+    delete:
+      operationId: deleteCommunityPost
+      tags: [community]
+      summary: Delete a community post (owner only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeleteOwnerInput"
+      responses:
+        "204":
+          description: Deleted
+        "403":
+          description: Not your post
+        "404":
+          description: Not found
     get:
       operationId: getCommunityPost
       tags: [community]
@@ -600,6 +648,13 @@ components:
         commentCount:
           type: integer
         createdAt:
+          type: string
+
+    DeleteOwnerInput:
+      type: object
+      required: [username]
+      properties:
+        username:
           type: string
 
     CommunityPostInput:
