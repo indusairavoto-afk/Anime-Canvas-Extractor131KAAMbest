@@ -272,6 +272,9 @@ export default function WatchAniList() {
     setServer(key as Parameters<typeof setServer>[0]);
   }, [aoCfReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Race winner tracking (fastest server in auto-detect) ─────────────────
+  const [raceWinnerServer, setRaceWinnerServer] = useState<string | null>(null);
+
   // ── Auto-switch countdown when current server has an error ───────────────
   const [failCountdown, setFailCountdown] = useState<number | null>(null);
 
@@ -603,9 +606,11 @@ export default function WatchAniList() {
     // Non-preferred servers wait this long before their fetch fires, giving preferred a head start
     const HEAD_START = preferred ? 800 : 0;
 
+    setRaceWinnerServer(null);
     const tryWin = (srv: "GOGO" | "KOTO" | "ANIZONE" | "MIRURO" | "NEXUS" | "ANIMEONSEN" | "ANINEKO") => {
       if (cancelled || won || userPickedRef.current) return;
       won = true;
+      setRaceWinnerServer(srv);
       localStorage.setItem(`na_preferred_${animeId}`, srv);
       setAutoDetecting(false);
       setServer(srv);
@@ -2742,6 +2747,9 @@ export default function WatchAniList() {
                   >
                     <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotClass}`} title={dotTitle} />
                     {label}
+                    {raceWinnerServer === key && (
+                      <span className="text-[8px] leading-none ml-0.5" title="Fastest server this episode">⚡</span>
+                    )}
                   </button>
                 );
               })}
@@ -2945,6 +2953,9 @@ export default function WatchAniList() {
                     className={`relative text-[10px] font-mono px-2.5 py-1 border transition-all ${active ? c.active : c.idle} ${isFailed ? "opacity-40" : ""}`}
                   >
                     {label}
+                    {raceWinnerServer === key && (
+                      <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 text-[8px] leading-none" title="Fastest server this episode">⚡</span>
+                    )}
                     <span
                       title={dotTitle}
                       className={`absolute -top-1 -right-1 w-2 h-2 rounded-full border border-black ${dotClass}`}
@@ -3078,7 +3089,7 @@ export default function WatchAniList() {
                 ) : animeonsenIframeUrl ? (
                   <>
                     <div className="w-2 h-2 rounded-full bg-green-400 shrink-0" />
-                    <span className="text-[10px] font-mono text-green-400/70 uppercase tracking-widest">animeonsen.xyz · {animeonsenContentId || "matched"}</span>
+                    <span className="text-[10px] font-mono text-green-400/70 uppercase tracking-widest">Connected</span>
                   </>
                 ) : animeonsenError ? (
                   <>
