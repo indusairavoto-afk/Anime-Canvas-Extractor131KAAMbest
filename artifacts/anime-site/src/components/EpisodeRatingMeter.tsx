@@ -82,6 +82,7 @@ function GaugeMeter({ counts, total, myVote, onVote }: {
   const svgRef = useRef<SVGSVGElement>(null);
   const [hoveredSeg, setHoveredSeg] = useState<VoteCategory | null>(null);
   const isDraggingRef = useRef(false);
+  const pointerHandledRef = useRef(false);
 
   const weightedPos = total > 0
     ? CATS.reduce((sum, cat, i) => sum + (i / (CATS.length - 1)) * counts[cat.key], 0) / total
@@ -137,13 +138,17 @@ function GaugeMeter({ counts, total, myVote, onVote }: {
       onPointerUp={(e) => {
         if (!onVote) return;
         const seg = segFromPointer(e);
-        if (seg && isDraggingRef.current) onVote(seg);
+        if (seg && isDraggingRef.current) {
+          pointerHandledRef.current = true;
+          onVote(seg);
+        }
         isDraggingRef.current = false;
         setHoveredSeg(null);
       }}
       onPointerLeave={() => { isDraggingRef.current = false; setHoveredSeg(null); }}
       onClick={(e) => {
         if (!onVote) return;
+        if (pointerHandledRef.current) { pointerHandledRef.current = false; return; }
         const seg = segFromPointer(e);
         if (seg) onVote(seg);
       }}
