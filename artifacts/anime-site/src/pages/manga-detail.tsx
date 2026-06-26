@@ -1,7 +1,7 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { apiUrl } from "@/lib/api";
 import { Link, useParams } from "wouter";
-import { ArrowLeft, Star, BookOpen, X, ExternalLink, ChevronLeft, ChevronRight, ChevronDown, Check, Minus, Plus, Loader2 } from "lucide-react";
+import { ArrowLeft, Star, BookOpen, X, ExternalLink, ChevronLeft, ChevronRight, ChevronDown, Check, Minus, Plus, Loader2, BookMarked } from "lucide-react";
 import { useMangaList, type ReadStatus } from "@/hooks/useMangaList";
 import { useState, useEffect, useCallback } from "react";
 
@@ -107,6 +107,243 @@ interface AtsuChapter {
   pageCount: number;
   index: number;
 }
+
+/* ─────────────────────────────────────────────
+   Novel reader modal — powered by lnori.com proxy
+   ───────────────────────────────────────────── */
+
+interface LnoriTocEntry {
+  anchor: string;
+  label: string;
+}
+
+function NovelReaderModal({
+  anilistId,
+  title,
+  onClose,
+}: {
+  anilistId: number;
+  title: string;
+  onClose: () => void;
+}) {
+  const [findStatus, setFindStatus] = useState<"searching" | "found" | "not_found" | "error">("searching");
+  const [bookId, setBookId] = useState<string | null>(null);
+  const [slug, setSlug] = useState<string | null>(null);
+  const [searchUrl, setSearchUrl] = useState<string>("https://lnori.com");
+  const [toc, setToc] = useState<LnoriTocEntry[]>([]);
+  const [currentAnchor, setCurrentAnchor] = useState<string>("");
+  const [tocOpen, setTocOpen] = useState(false);
+  const [iframeKey, setIframeKey] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    setFindStatus("searching");
+    setBookId(null);
+    setSlug(null);
+    setToc([]);
+    setCurrentAnchor("");
+
+    fetch(apiUrl(`/api/lnori/find?anilistId=${anilistId}&title=${encodeURIComponent(title)}`))
+      .then(r => r.json())
+      .then((data: { found: boolean; bookId?: string; slug?: string; searchUrl?: string }) => {
+        if (cancelled) return;
+        if (data.found && data.bookId && data.slug) {
+          setBookId(data.bookId);
+          setSlug(data.slug);
+          setFindStatus("found");
+          // Fetch TOC separately
+          fetch(apiUrl(`/api/lnori/toc?bookId=${data.bookId}&slug=${encodeURIComponent(data.slug)}`))
+            .then(r => r.json())
+            .then((tocData: { entries?: LnoriTocEntry[] }) => {
+              if (!cancelled && tocData.entries) setToc(tocData.entries);
+            })
+            .catch(() => {});
+        } else {
+          if (data.searchUrl) setSearchUrl(data.searchUrl);
+          setFindStatus("not_found");
+        }
+      })
+      .catch(() => { if (!cancelled) setFindStatus("error"); });
+
+    return () => { cancelled = true; };
+  }, [anilistId, title]);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", onKey);
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = "";
+    };
+  }, [onClose]);
+
+  function navigateTo(anchor: string) {
+    setCurrentAnchor(anchor);
+    setTocOpen(false);
+    setIframeKey(k => k + 1);
+  }
+
+  const currentLabel = toc.find(e => e.anchor === currentAnchor)?.label ?? "Chapter";
+
+  const iframeSrc =
+    bookId && slug
+      ? apiUrl(
+          `/api/lnori/reader?bookId=${bookId}&slug=${encodeURIComponent(slug)}${currentAnchor ? `&page=${encodeURIComponent(currentAnchor)}` : ""}`
+        )
+      : null;
+
+  const currentTocIdx = toc.findIndex(e => e.anchor === currentAnchor);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 bg-[#080808] flex flex-col"
+      style={{ top: 56 }}
+    >
+      {/* Toolbar */}
+      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-white/[0.06] bg-[#0d0d0d] shrink-0">
+        <BookMarked className="w-3.5 h-3.5 text-white/25 shrink-0" />
+        <span className="text-[10px] font-mono uppercase tracking-widest text-white/30 truncate max-w-[120px] hidden sm:block">{title}</span>
+
+        {/* TOC nav */}
+        <div className="flex items-center gap-1 mx-auto">
+          <button
+            onClick={() => {
+              if (currentTocIdx > 0) navigateTo(toc[currentTocIdx - 1].anchor);
+            }}
+            disabled={currentTocIdx <= 0 || toc.length === 0}
+            className="p-1.5 text-white/30 hover:text-white/70 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+
+          <div className="relative">
+            <button
+              onClick={() => setTocOpen(v => !v)}
+              disabled={toc.length === 0 && findStatus !== "found"}
+              className="flex items-center gap-1.5 px-3 py-1 border border-white/10 text-[11px] font-mono text-white/50 hover:border-white/25 hover:text-white/80 transition-colors disabled:opacity-30 disabled:cursor-not-allowed min-w-[130px] justify-between"
+            >
+              {findStatus === "searching" ? (
+                <span className="flex items-center gap-1.5">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  Finding…
+                </span>
+              ) : (
+                <span className="truncate">{currentAnchor ? currentLabel : "Table of Contents"}</span>
+              )}
+              <ChevronDown className={`w-3 h-3 shrink-0 transition-transform ${tocOpen ? "rotate-180" : ""}`} />
+            </button>
+
+            <AnimatePresence>
+              {tocOpen && toc.length > 0 && (
+                <motion.div
+                  initial={{ opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 4 }}
+                  transition={{ duration: 0.1 }}
+                  className="absolute top-full left-0 mt-1 z-50 bg-zinc-900 border border-white/10 shadow-2xl w-72 max-h-80 overflow-y-auto"
+                >
+                  {toc.map(entry => (
+                    <button
+                      key={entry.anchor}
+                      onClick={() => navigateTo(entry.anchor)}
+                      className={`w-full text-left px-3 py-2 text-[11px] font-mono transition-colors ${
+                        currentAnchor === entry.anchor
+                          ? "bg-white/10 text-white"
+                          : "text-white/45 hover:bg-white/[0.05] hover:text-white/80"
+                      }`}
+                    >
+                      {entry.label}
+                    </button>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          <button
+            onClick={() => {
+              if (currentTocIdx < toc.length - 1) navigateTo(toc[currentTocIdx + 1].anchor);
+            }}
+            disabled={currentTocIdx === -1 || currentTocIdx >= toc.length - 1 || toc.length === 0}
+            className="p-1.5 text-white/30 hover:text-white/70 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+
+        {iframeSrc && bookId && slug && (
+          <a
+            href={`https://lnori.com/book/${bookId}/${slug}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="p-1.5 text-white/25 hover:text-white/70 transition-colors"
+            title="Open on lnori.com"
+          >
+            <ExternalLink className="w-4 h-4" />
+          </a>
+        )}
+
+        <button
+          onClick={onClose}
+          className="p-1.5 text-white/25 hover:text-white/70 transition-colors"
+          title="Close (Esc)"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 relative bg-[#0a0a0a]">
+        {findStatus === "searching" && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+            <Loader2 className="w-6 h-6 text-white/30 animate-spin" />
+            <p className="text-[11px] font-mono text-white/25 uppercase tracking-widest">Finding novel…</p>
+          </div>
+        )}
+
+        {(findStatus === "not_found" || findStatus === "error") && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 px-6">
+            <BookMarked className="w-10 h-10 text-white/10" />
+            <p className="text-white/40 font-serif text-lg text-center">{title}</p>
+            <p className="text-[11px] font-mono text-white/20 uppercase tracking-widest">
+              {findStatus === "error" ? "Could not reach lnori.com" : "Not found on lnori.com"}
+            </p>
+            <a
+              href={searchUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 px-3 py-1.5 border border-white/10 text-[11px] font-mono text-white/40 hover:border-white/30 hover:text-white/70 transition-colors"
+            >
+              <ExternalLink className="w-3 h-3" />
+              Search on lnori.com
+            </a>
+          </div>
+        )}
+
+        {findStatus === "found" && iframeSrc && (
+          <iframe
+            key={`lnori-${iframeKey}`}
+            src={iframeSrc}
+            className="w-full h-full border-0"
+            allow="fullscreen"
+            title={`Reading ${title}`}
+            sandbox="allow-scripts allow-same-origin allow-popups"
+          />
+        )}
+      </div>
+    </motion.div>
+  );
+}
+
+/* ─────────────────────────────────────────────
+   Manga / manhwa reader modal — powered by atsu.moe
+   ───────────────────────────────────────────── */
 
 function ReaderModal({
   title,
@@ -347,6 +584,7 @@ export default function MangaDetail() {
   const [chapterInput, setChapterInput] = useState<string | null>(null);
   const [descExpanded, setDescExpanded] = useState(false);
   const [readerOpen, setReaderOpen] = useState(false);
+  const [novelReaderOpen, setNovelReaderOpen] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -486,11 +724,11 @@ export default function MangaDetail() {
               {/* Action buttons */}
               <div className="flex items-center gap-2 flex-wrap mb-2">
                 <button
-                  onClick={() => setReaderOpen(true)}
+                  onClick={() => manga.format === "NOVEL" ? setNovelReaderOpen(true) : setReaderOpen(true)}
                   className="flex items-center gap-2 px-5 py-2.5 bg-white text-black text-sm font-mono uppercase tracking-widest hover:bg-white/90 transition-colors"
                 >
-                  <BookOpen className="w-4 h-4" />
-                  Read Now
+                  {manga.format === "NOVEL" ? <BookMarked className="w-4 h-4" /> : <BookOpen className="w-4 h-4" />}
+                  {manga.format === "NOVEL" ? "Read Novel" : "Read Now"}
                 </button>
 
                 {/* Status picker */}
@@ -703,13 +941,24 @@ export default function MangaDetail() {
         </div>
       </div>
 
-      {/* Reader overlay */}
+      {/* Manga reader overlay */}
       <AnimatePresence>
         {readerOpen && (
           <ReaderModal
             anilistId={manga.id}
             title={manga.title.english ?? manga.title.romaji}
             onClose={() => setReaderOpen(false)}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Novel reader overlay (lnori.com) */}
+      <AnimatePresence>
+        {novelReaderOpen && (
+          <NovelReaderModal
+            anilistId={manga.id}
+            title={manga.title.english ?? manga.title.romaji}
+            onClose={() => setNovelReaderOpen(false)}
           />
         )}
       </AnimatePresence>
