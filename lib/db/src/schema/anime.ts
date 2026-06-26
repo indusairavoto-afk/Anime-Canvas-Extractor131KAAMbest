@@ -186,6 +186,16 @@ export const anilistSyncLogTable = pgTable("anilist_sync_log", {
 
 export type AnilistSyncLog = typeof anilistSyncLogTable.$inferSelect;
 
+export const lnoriMappingTable = pgTable("lnori_mapping", {
+  id: serial("id").primaryKey(),
+  anilistId: integer("anilist_id").notNull().unique(),
+  lnoriUrl: text("lnori_url").notNull(),
+  lnoriType: text("lnori_type").notNull().default("series"),
+  savedAt: timestamp("saved_at").notNull().defaultNow(),
+});
+
+export type LnoriMapping = typeof lnoriMappingTable.$inferSelect;
+
 export const insertAnimeSchema = createInsertSchema(animeTable).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertEpisodeSchema = createInsertSchema(episodeTable).omit({ id: true, createdAt: true });
 export const insertCommentSchema = createInsertSchema(commentTable).omit({ id: true, createdAt: true });
