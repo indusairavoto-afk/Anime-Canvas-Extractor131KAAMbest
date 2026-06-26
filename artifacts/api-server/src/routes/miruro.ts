@@ -246,6 +246,9 @@ router.get("/miruro/proxy", async (req, res) => {
     return;
   }
 
+  // Read dub preference from the miruro URL itself (set by /miruro/stream)
+  const preferDub = targetUrl.searchParams.get("dub") === "true";
+
   try {
     // Fetch the HTML page and env2.js in parallel so we can inline env2.js
     // synchronously. This is critical: env2.js sets window.env (VITE_PROXY_A/B,
