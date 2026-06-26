@@ -377,6 +377,44 @@ ${env2Inline ? `// env2.js inlined synchronously to ensure window.env is set bef
 
   try { history.replaceState(null, '', ${JSON.stringify(originalPath)}); } catch(e) {}
 
+  // ── DUB mode: set miruro's language preference in localStorage ────────────
+  // Miruro stores settings under "miruro:settings:*" keys (same pattern as
+  // miruro:settings:theme). The audio/lang preference persists across sessions.
+  // Since our proxy runs on a different origin than miruro.bz, we must set it
+  // manually — the user's miruro.bz localStorage is not accessible here.
+  if (${JSON.stringify(preferDub)}) {
+    var _naDubVal = JSON.stringify('dub');
+    // Try all plausible key names miruro might use for audio language preference
+    var _naDubKeys = [
+      'miruro:settings:lang',
+      'miruro:settings:language',
+      'miruro:settings:audio',
+      'miruro:settings:audioLanguage',
+      'miruro:settings:dubLang',
+    ];
+    for (var _ki = 0; _ki < _naDubKeys.length; _ki++) {
+      try { localStorage.setItem(_naDubKeys[_ki], _naDubVal); } catch(_ke) {}
+    }
+
+    // DOM fallback: click the "Dub" button in miruro's audio selector after
+    // React mounts it. This handles any key name we may have missed.
+    function _naClickDub() {
+      var btns = document.querySelectorAll('button,[role="button"]');
+      for (var _bi = 0; _bi < btns.length; _bi++) {
+        var _bt = (btns[_bi].textContent || '').trim().toLowerCase();
+        var _bl = (btns[_bi].getAttribute('aria-label') || '').toLowerCase();
+        if (_bt === 'dub' || _bl === 'dub' || _bt === 'dubbed' || _bl === 'dubbed') {
+          try { btns[_bi].click(); return true; } catch(_be) {}
+        }
+      }
+      return false;
+    }
+    var _naDubTick = 0;
+    var _naDubTimer = setInterval(function() {
+      if (_naClickDub() || ++_naDubTick >= 30) clearInterval(_naDubTimer);
+    }, 300);
+  }
+
   // Block service worker registration — the miruro SW precaches files at root
   // paths (/assets/vidstack-*.js etc.) that don't exist on our proxy server,
   // causing a flood of 404s and breaking workbox, without helping the player.
