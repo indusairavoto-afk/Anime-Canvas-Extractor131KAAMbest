@@ -1,0 +1,66 @@
+2026-06-26T06:33:38.324281052Z ==> Downloading cache...
+2026-06-26T06:33:38.360236477Z ==> Cloning from https://github.com/indusairavoto-afk/Anime-Canvas-Extractor131KAAMbest
+2026-06-26T06:33:47.250694244Z ==> Checking out commit c0588ae2ab58eecffa1894eb1c3a1b8de3fe5155 in branch main
+2026-06-26T06:33:53.093394438Z ==> Downloaded 134MB in 8s. Extraction took 6s.
+2026-06-26T06:33:58.59546823Z ==> Using Node.js version 24.14.1 (default)
+2026-06-26T06:33:58.595480851Z ==> Docs on specifying a Node.js version: https://render.com/docs/node-version
+2026-06-26T06:33:58.637990174Z ==> Running build command 'npx --yes pnpm@10 install --frozen-lockfile && npx --yes pnpm@10 --filter @workspace/anime-site run build && npx --yes pnpm@10 --filter @workspace/api-server run build'...
+2026-06-26T06:34:01.990047029Z 
+2026-06-26T06:34:01.99007442Z > @workspace/anime-site@0.0.0 build /opt/render/project/src/artifacts/anime-site
+2026-06-26T06:34:01.990080661Z > vite build --config vite.config.ts
+2026-06-26T06:34:01.990083371Z 
+2026-06-26T06:34:02.273122757Z vite v7.3.3 building client environment for production...
+2026-06-26T06:34:02.339201224Z transforming...
+2026-06-26T06:34:02.774082549Z src/components/ui/tooltip.tsx (2:0): Error when using sourcemap for reporting an error: Can't resolve original location of error.
+2026-06-26T06:34:06.649409135Z ✓ 2203 modules transformed.
+2026-06-26T06:34:07.181174063Z rendering chunks...
+2026-06-26T06:34:07.196922662Z computing gzip size...
+2026-06-26T06:34:07.233066759Z dist/index.html                     1.38 kB │ gzip:   0.54 kB
+2026-06-26T06:34:07.233101561Z dist/assets/index-WM87OOFL.css    181.06 kB │ gzip:  25.86 kB
+2026-06-26T06:34:07.233112692Z dist/assets/index-I5UiErLa.js   1,362.90 kB │ gzip: 395.91 kB
+2026-06-26T06:34:07.233191017Z 
+2026-06-26T06:34:07.233201077Z (!) Some chunks are larger than 500 kB after minification. Consider:
+2026-06-26T06:34:07.233206248Z - Using dynamic import() to code-split the application
+2026-06-26T06:34:07.233211188Z - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+2026-06-26T06:34:07.233215038Z - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+2026-06-26T06:34:07.233431022Z ✓ built in 4.93s
+2026-06-26T06:34:08.211192346Z 
+2026-06-26T06:34:08.211218128Z > @workspace/api-server@0.0.0 build /opt/render/project/src/artifacts/api-server
+2026-06-26T06:34:08.211223478Z > node ./build.mjs
+2026-06-26T06:34:08.211227388Z 
+2026-06-26T06:34:08.679821999Z 
+2026-06-26T06:34:08.679852901Z   dist/index.mjs                       2.5mb ⚠️
+2026-06-26T06:34:08.679860152Z   dist/pino-worker.mjs               153.4kb
+2026-06-26T06:34:08.679866202Z   dist/pino-file.mjs                 142.1kb
+2026-06-26T06:34:08.679872312Z   dist/pino-pretty.mjs               114.6kb
+2026-06-26T06:34:08.679878113Z   dist/thread-stream-worker.mjs        7.3kb
+2026-06-26T06:34:08.679904314Z   dist/index.mjs.map                   4.3mb
+2026-06-26T06:34:08.679908165Z   dist/pino-worker.mjs.map           256.9kb
+2026-06-26T06:34:08.679911915Z   dist/pino-file.mjs.map             229.0kb
+2026-06-26T06:34:08.679915675Z   dist/pino-pretty.mjs.map           204.0kb
+2026-06-26T06:34:08.679920255Z   dist/thread-stream-worker.mjs.map   12.0kb
+2026-06-26T06:34:08.679923896Z 
+2026-06-26T06:34:08.679928666Z ⚡ Done in 414ms
+2026-06-26T06:34:09.460088776Z ==> Uploading build...
+2026-06-26T06:34:22.795399448Z ==> Uploaded in 8.6s. Compression took 4.7s
+2026-06-26T06:34:22.862054352Z ==> Build successful 🎉
+2026-06-26T06:34:25.21379028Z ==> Deploying...
+2026-06-26T06:34:25.283426328Z ==> Setting WEB_CONCURRENCY=1 by default, based on available CPUs in the instance
+2026-06-26T06:35:00.390815778Z ==> Running 'npx --yes pnpm@10 --filter @workspace/db run push && node artifacts/api-server/dist/index.mjs'
+2026-06-26T06:35:13.195008729Z 
+2026-06-26T06:35:13.195042959Z > @workspace/db@0.0.0 push /opt/render/project/src/lib/db
+2026-06-26T06:35:13.19505005Z > drizzle-kit push --config ./drizzle.config.ts
+2026-06-26T06:35:13.19505416Z 
+2026-06-26T06:35:14.588678113Z Reading config file '/opt/render/project/src/lib/db/drizzle.config.ts'
+2026-06-26T06:35:22.197919101Z Using 'pg' driver for database querying
+2026-06-26T06:35:27.19013992Z ==> No open ports detected, continuing to scan...
+2026-06-26T06:35:27.291936352Z ==> Docs on specifying a port: https://render.com/docs/web-services#port-binding
+2026-06-26T06:35:27.893252767Z [⣷] Pulling schema from database...
+2026-06-26T06:35:27.985798584Z [⣯] Pulling schema from database...
+2026-06-26T06:35:27.987303009Z [⣯] Pulling schema from database...
+2026-06-26T06:35:28.196378688Z /opt/render/project/src/lib/db:
+2026-06-26T06:35:28.196409439Z  ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @workspace/db@0.0.0 push: `drizzle-kit push --config ./drizzle.config.ts`
+2026-06-26T06:35:28.196416899Z Exit status 1
+2026-06-26T06:35:29.88577131Z ==> Exited with status 1
+2026-06-26T06:35:29.888466804Z ==> Common ways to troubleshoot your deploy: https://render.com/docs/troubleshooting-deploys
+2026-06-26T06:35:35.371446275Z ==> Running 'npx --yes pnpm@10 --filter @workspace/db run push && node artifacts/api-server/dist/index.mjs'
