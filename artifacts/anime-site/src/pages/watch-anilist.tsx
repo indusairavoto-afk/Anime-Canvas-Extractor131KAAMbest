@@ -272,6 +272,24 @@ export default function WatchAniList() {
     setServer(key as Parameters<typeof setServer>[0]);
   }, [aoCfReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Auto-switch countdown when current server has an error ───────────────
+  const [failCountdown, setFailCountdown] = useState<number | null>(null);
+
+  useEffect(() => {
+    const hasError =
+      (server === "ANINEKO" && !!aninekoError) ||
+      (server === "KOTO" && !!kotoPlayerError) ||
+      (server === "MIRURO" && !!miruroError) ||
+      (server === "ANIMEONSEN" && !!animeonsenError);
+
+    if (!hasError || !suggestedServer) { setFailCountdown(null); return; }
+
+    setFailCountdown(5);
+    const iv = setInterval(() => setFailCountdown(n => (n !== null && n > 1 ? n - 1 : n)), 1000);
+    const t = setTimeout(() => { switchToServer(suggestedServer); setFailCountdown(null); }, 5000);
+    return () => { clearInterval(iv); clearTimeout(t); };
+  }, [server, aninekoError, kotoPlayerError, miruroError, animeonsenError, suggestedServer]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Watch Together sync command for HlsPlayer ───────────────────────────
   const [wtSyncCmd, setWtSyncCmd] = useState<HlsSyncCommand | null>(null);
   const playerTimeRef = useRef<number>(0);
@@ -2229,12 +2247,29 @@ export default function WatchAniList() {
                           <p className="text-white/80 text-sm font-semibold tracking-wide">AnimeonSen Under Maintenance</p>
                           <p className="text-white/35 text-[11px] font-mono max-w-[260px] text-center leading-relaxed">This server isn't available right now.<br/>Please try another server below.</p>
                           {suggestedServer && SERVER_META[suggestedServer] && (
-                            <button
-                              onClick={() => switchToServer(suggestedServer)}
-                              className={`inline-flex items-center gap-2 text-[11px] font-mono font-bold px-5 py-2.5 border ${SERVER_META[suggestedServer].borderCls} ${SERVER_META[suggestedServer].colorCls} ${SERVER_META[suggestedServer].hoverCls} transition-all uppercase tracking-widest mt-1`}
-                            >
-                              <Play className="w-3 h-3 fill-current" /> Try {SERVER_META[suggestedServer].label}
-                            </button>
+                            <>
+                              {failCountdown !== null && (
+                                <p className="text-yellow-400/80 text-[11px] font-mono animate-pulse">
+                                  Auto-switching to {SERVER_META[suggestedServer].label} in {failCountdown}s…
+                                </p>
+                              )}
+                              <div className="flex items-center gap-2 mt-1">
+                                <button
+                                  onClick={() => switchToServer(suggestedServer)}
+                                  className={`inline-flex items-center gap-2 text-[11px] font-mono font-bold px-5 py-2.5 border ${SERVER_META[suggestedServer].borderCls} ${SERVER_META[suggestedServer].colorCls} ${SERVER_META[suggestedServer].hoverCls} transition-all uppercase tracking-widest`}
+                                >
+                                  <Play className="w-3 h-3 fill-current" /> Try {SERVER_META[suggestedServer].label}
+                                </button>
+                                {failCountdown !== null && (
+                                  <button
+                                    onClick={() => setFailCountdown(null)}
+                                    className="text-[10px] font-mono px-3 py-2.5 border border-white/15 text-white/35 hover:border-white/40 hover:text-white/60 transition-colors uppercase tracking-widest"
+                                  >
+                                    Cancel
+                                  </button>
+                                )}
+                              </div>
+                            </>
                           )}
                         </div>
                       ) : (
@@ -2267,12 +2302,29 @@ export default function WatchAniList() {
                           <p className="text-white/80 text-sm font-semibold tracking-wide">Miruro Under Maintenance</p>
                           <p className="text-white/35 text-[11px] font-mono max-w-[260px] text-center leading-relaxed">This server isn't available right now.<br/>Please try another server below.</p>
                           {suggestedServer && SERVER_META[suggestedServer] && (
-                            <button
-                              onClick={() => switchToServer(suggestedServer)}
-                              className={`inline-flex items-center gap-2 text-[11px] font-mono font-bold px-5 py-2.5 border ${SERVER_META[suggestedServer].borderCls} ${SERVER_META[suggestedServer].colorCls} ${SERVER_META[suggestedServer].hoverCls} transition-all uppercase tracking-widest mt-1`}
-                            >
-                              <Play className="w-3 h-3 fill-current" /> Try {SERVER_META[suggestedServer].label}
-                            </button>
+                            <>
+                              {failCountdown !== null && (
+                                <p className="text-yellow-400/80 text-[11px] font-mono animate-pulse">
+                                  Auto-switching to {SERVER_META[suggestedServer].label} in {failCountdown}s…
+                                </p>
+                              )}
+                              <div className="flex items-center gap-2 mt-1">
+                                <button
+                                  onClick={() => switchToServer(suggestedServer)}
+                                  className={`inline-flex items-center gap-2 text-[11px] font-mono font-bold px-5 py-2.5 border ${SERVER_META[suggestedServer].borderCls} ${SERVER_META[suggestedServer].colorCls} ${SERVER_META[suggestedServer].hoverCls} transition-all uppercase tracking-widest`}
+                                >
+                                  <Play className="w-3 h-3 fill-current" /> Try {SERVER_META[suggestedServer].label}
+                                </button>
+                                {failCountdown !== null && (
+                                  <button
+                                    onClick={() => setFailCountdown(null)}
+                                    className="text-[10px] font-mono px-3 py-2.5 border border-white/15 text-white/35 hover:border-white/40 hover:text-white/60 transition-colors uppercase tracking-widest"
+                                  >
+                                    Cancel
+                                  </button>
+                                )}
+                              </div>
+                            </>
                           )}
                         </div>
                       ) : (
@@ -2319,12 +2371,29 @@ export default function WatchAniList() {
                           <p className="text-white/80 text-sm font-semibold tracking-wide">AniNeko Under Maintenance</p>
                           <p className="text-white/35 text-[11px] font-mono max-w-[260px] text-center leading-relaxed">This server isn't available right now.<br/>Please try another server below.</p>
                           {suggestedServer && SERVER_META[suggestedServer] && (
-                            <button
-                              onClick={() => switchToServer(suggestedServer)}
-                              className={`inline-flex items-center gap-2 text-[11px] font-mono font-bold px-5 py-2.5 border ${SERVER_META[suggestedServer].borderCls} ${SERVER_META[suggestedServer].colorCls} ${SERVER_META[suggestedServer].hoverCls} transition-all uppercase tracking-widest mt-1`}
-                            >
-                              <Play className="w-3 h-3 fill-current" /> Try {SERVER_META[suggestedServer].label}
-                            </button>
+                            <>
+                              {failCountdown !== null && (
+                                <p className="text-yellow-400/80 text-[11px] font-mono animate-pulse">
+                                  Auto-switching to {SERVER_META[suggestedServer].label} in {failCountdown}s…
+                                </p>
+                              )}
+                              <div className="flex items-center gap-2 mt-1">
+                                <button
+                                  onClick={() => switchToServer(suggestedServer)}
+                                  className={`inline-flex items-center gap-2 text-[11px] font-mono font-bold px-5 py-2.5 border ${SERVER_META[suggestedServer].borderCls} ${SERVER_META[suggestedServer].colorCls} ${SERVER_META[suggestedServer].hoverCls} transition-all uppercase tracking-widest`}
+                                >
+                                  <Play className="w-3 h-3 fill-current" /> Try {SERVER_META[suggestedServer].label}
+                                </button>
+                                {failCountdown !== null && (
+                                  <button
+                                    onClick={() => setFailCountdown(null)}
+                                    className="text-[10px] font-mono px-3 py-2.5 border border-white/15 text-white/35 hover:border-white/40 hover:text-white/60 transition-colors uppercase tracking-widest"
+                                  >
+                                    Cancel
+                                  </button>
+                                )}
+                              </div>
+                            </>
                           )}
                         </div>
                       ) : (
@@ -2357,12 +2426,29 @@ export default function WatchAniList() {
                           <p className="text-white/80 text-sm font-semibold tracking-wide">AniKoto Under Maintenance</p>
                           <p className="text-white/35 text-[11px] font-mono max-w-[260px] text-center leading-relaxed">This server isn't available right now.<br/>Please try another server below.</p>
                           {suggestedServer && SERVER_META[suggestedServer] && (
-                            <button
-                              onClick={() => switchToServer(suggestedServer)}
-                              className={`inline-flex items-center gap-2 text-[11px] font-mono font-bold px-5 py-2.5 border ${SERVER_META[suggestedServer].borderCls} ${SERVER_META[suggestedServer].colorCls} ${SERVER_META[suggestedServer].hoverCls} transition-all uppercase tracking-widest mt-1`}
-                            >
-                              <Play className="w-3 h-3 fill-current" /> Try {SERVER_META[suggestedServer].label}
-                            </button>
+                            <>
+                              {failCountdown !== null && (
+                                <p className="text-yellow-400/80 text-[11px] font-mono animate-pulse">
+                                  Auto-switching to {SERVER_META[suggestedServer].label} in {failCountdown}s…
+                                </p>
+                              )}
+                              <div className="flex items-center gap-2 mt-1">
+                                <button
+                                  onClick={() => switchToServer(suggestedServer)}
+                                  className={`inline-flex items-center gap-2 text-[11px] font-mono font-bold px-5 py-2.5 border ${SERVER_META[suggestedServer].borderCls} ${SERVER_META[suggestedServer].colorCls} ${SERVER_META[suggestedServer].hoverCls} transition-all uppercase tracking-widest`}
+                                >
+                                  <Play className="w-3 h-3 fill-current" /> Try {SERVER_META[suggestedServer].label}
+                                </button>
+                                {failCountdown !== null && (
+                                  <button
+                                    onClick={() => setFailCountdown(null)}
+                                    className="text-[10px] font-mono px-3 py-2.5 border border-white/15 text-white/35 hover:border-white/40 hover:text-white/60 transition-colors uppercase tracking-widest"
+                                  >
+                                    Cancel
+                                  </button>
+                                )}
+                              </div>
+                            </>
                           )}
                         </div>
                       ) : (
