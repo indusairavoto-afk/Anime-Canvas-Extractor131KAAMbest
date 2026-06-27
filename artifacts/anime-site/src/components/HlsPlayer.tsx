@@ -273,6 +273,28 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
         if (mounted) setActiveAudioTrack(data.id);
       });
 
+      // AUDIO_TRACKS_UPDATED fires after the master manifest is fully parsed
+      // and is the reliable point where hls.audioTracks is populated.
+      hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, () => {
+        if (!mounted) return;
+        const atracks = hls.audioTracks;
+        if (!atracks || atracks.length === 0) return;
+        setAudioTracks(atracks.map((t) => ({ name: t.name || t.lang || "Track", lang: t.lang || "" })));
+        setActiveAudioTrack(hls.audioTrack);
+
+        // Apply initial DUB/SUB preference now that tracks are confirmed available
+        if (atracks.length > 1) {
+          const targetLang = preferDub ? "en" : "ja";
+          const targetIdx = atracks.findIndex(
+            (t) =>
+              (t.lang && t.lang.toLowerCase().startsWith(targetLang)) ||
+              (t.name && t.name.toLowerCase().includes(preferDub ? "english" : "japanese"))
+          );
+          if (targetIdx >= 0) hls.audioTrack = targetIdx;
+          else if (!preferDub) hls.audioTrack = 0;
+        }
+      });
+
       hls.on(Hls.Events.ERROR, (_, data) => {
         if (data.fatal) {
           setError(data.details ?? "Stream error");
@@ -352,6 +374,23 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
       video.removeEventListener("ended", onEnded_);
     };
   }, [onEnded, progressKey, flushProgress]);
+
+  // ── React to preferDub changes without restarting the stream ────────────
+  // The main HLS useEffect only runs when hlsUrl changes. When the user
+  // toggles DUB/SUB, hlsUrl stays the same but preferDub changes — this
+  // effect catches that and switches the active audio track immediately.
+  useEffect(() => {
+    const hls = hlsRef.current;
+    if (!hls || audioTracks.length <= 1) return;
+    const targetLang = preferDub ? "en" : "ja";
+    const targetIdx = hls.audioTracks.findIndex(
+      (t) =>
+        (t.lang && t.lang.toLowerCase().startsWith(targetLang)) ||
+        (t.name && t.name.toLowerCase().includes(preferDub ? "english" : "japanese"))
+    );
+    if (targetIdx >= 0) hls.audioTrack = targetIdx;
+    else if (!preferDub) hls.audioTrack = 0;
+  }, [preferDub, audioTracks]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── External sync command (Watch Together) ───────────────────────────────
   useEffect(() => {
