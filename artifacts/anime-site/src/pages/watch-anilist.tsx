@@ -146,11 +146,19 @@ export default function WatchAniList() {
   const currentEp = parseInt((params.episode ?? "1").replace(/^ep-?/i, ""));
   const [, navigate] = useLocation();
 
+  // Read ?lang=DUB from query string so dubbed page can pre-select DUB mode
+  const initialLang = (() => {
+    try {
+      const qs = new URLSearchParams(window.location.search);
+      return qs.get("lang") === "DUB" ? "DUB" : "SUB";
+    } catch { return "SUB"; }
+  })();
+
   const [anime, setAnime] = useState<AniMedia | null>(null);
   const [jikanEps, setJikanEps] = useState<JikanEpisode[]>([]);
   const [jikanLoading, setJikanLoading] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [lang, setLang] = useState<"SUB" | "DUB">("SUB");
+  const [lang, setLang] = useState<"SUB" | "DUB">(initialLang as "SUB" | "DUB");
   const [actualLang, setActualLang] = useState<"SUB" | "DUB" | null>(null);
   const [server, setServer] = useState<"GOGO" | "KOTO" | "ANIZONE" | "MIRURO" | "NEXUS" | "ANIMEONSEN" | "ANINEKO" | "CUSTOM">("GOGO");
   const [anizoneSlug, setAnizoneSlug] = useState("");

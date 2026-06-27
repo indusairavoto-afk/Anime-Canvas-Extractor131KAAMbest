@@ -25,6 +25,7 @@ import ProfilePage from "@/pages/profile";
 import MangaPage from "@/pages/manga";
 import MangaDetail from "@/pages/manga-detail";
 import ResetPasswordPage from "@/pages/reset-password";
+import Dubbed from "@/pages/dubbed";
 
 const queryClient = new QueryClient();
 
@@ -49,6 +50,7 @@ function Router() {
       <Route path="/manga" component={MangaPage} />
       <Route path="/manga/al/:id" component={MangaDetail} />
       <Route path="/reset/:token" component={ResetPasswordPage} />
+      <Route path="/dubbed" component={Dubbed} />
       <Route component={NotFound} />
     </Switch>
   );
