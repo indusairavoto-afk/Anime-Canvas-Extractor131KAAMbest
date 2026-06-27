@@ -2105,6 +2105,7 @@ export default function WatchAniList() {
                     key={`anizone-${anizoneSlug}-${currentEp}`}
                     hlsUrl={anizoneHlsUrl}
                     subtitles={anizoneSubtitles}
+                    preferDub={lang === "DUB"}
                     title={getEpTitle(currentEp) !== `Episode ${currentEp}` ? `${title} — Ep ${currentEp}: ${getEpTitle(currentEp)}` : `${title} — Episode ${currentEp}`}
                     progressKey={`al_${animeId}_${currentEp}`}
                     syncCommand={wtSyncCmd}

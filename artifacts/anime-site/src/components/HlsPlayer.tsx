@@ -48,6 +48,7 @@ interface Props {
   subtitles?: SubTrack[];
   title?: string;
   progressKey?: string;
+  preferDub?: boolean;
   onEnded?: () => void;
   onFatalError?: () => void;
   onPlayStateChange?: (playing: boolean, time: number) => void;
@@ -96,7 +97,7 @@ export function getEpisodeProgressPct(progressKey: string): number | null {
   return pct;
 }
 
-export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, onEnded, onFatalError, onPlayStateChange, onTimeUpdate: onTimeUpdateProp, syncCommand }: Props) {
+export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, preferDub = false, onEnded, onFatalError, onPlayStateChange, onTimeUpdate: onTimeUpdateProp, syncCommand }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -217,6 +218,25 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
         if (!mounted) return;
         setLevels(data.levels);
         setLoading(false);
+
+        // ── Audio track selection for DUB / SUB ────────────────────────────
+        // AniZone HLS streams embed multiple audio tracks (e.g. Japanese + English).
+        // When preferDub=true, find the English track and activate it.
+        // When preferDub=false (SUB), find Japanese track or fall back to track 0.
+        const tracks = hls.audioTracks;
+        if (tracks && tracks.length > 1) {
+          const targetLang = preferDub ? "en" : "ja";
+          const targetIdx = tracks.findIndex(
+            (t) =>
+              (t.lang && t.lang.toLowerCase().startsWith(targetLang)) ||
+              (t.name && t.name.toLowerCase().includes(preferDub ? "english" : "japanese"))
+          );
+          if (targetIdx >= 0) {
+            hls.audioTrack = targetIdx;
+          } else if (!preferDub) {
+            hls.audioTrack = 0;
+          }
+        }
 
         if (progressKey) {
           const saved = loadProgress(progressKey);
