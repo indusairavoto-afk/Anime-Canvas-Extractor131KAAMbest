@@ -4,7 +4,7 @@ import Hls, { type Level } from "hls.js";
 import {
   Play, Pause, Volume2, VolumeX, Maximize, Minimize,
   SkipForward, SkipBack, Settings, Subtitles, Loader2,
-  AlertTriangle, RotateCcw, Languages, Download,
+  AlertTriangle, RotateCcw, Languages, Download, Mic,
 } from "lucide-react";
 
 const TRANSLATE_LANGS = [
@@ -122,6 +122,9 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
     subtitles.find((s) => s.isDefault)?.src ?? (subtitles.length === 1 ? subtitles[0].src : null)
   );
   const [resumeToast, setResumeToast] = useState<string | null>(null);
+  const [audioTracks, setAudioTracks] = useState<{ name: string; lang: string }[]>([]);
+  const [activeAudioTrack, setActiveAudioTrack] = useState(-1);
+  const [showAudio, setShowAudio] = useState(false);
   const [translateLang, setTranslateLang] = useState("es");
   const [translating, setTranslating] = useState(false);
   const [translateError, setTranslateError] = useState<string | null>(null);
@@ -224,6 +227,10 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
         // When preferDub=true, find the English track and activate it.
         // When preferDub=false (SUB), find Japanese track or fall back to track 0.
         const tracks = hls.audioTracks;
+        if (tracks && tracks.length > 0) {
+          setAudioTracks(tracks.map((t) => ({ name: t.name || t.lang || "Track", lang: t.lang || "" })));
+          setActiveAudioTrack(hls.audioTrack);
+        }
         if (tracks && tracks.length > 1) {
           const targetLang = preferDub ? "en" : "ja";
           const targetIdx = tracks.findIndex(
@@ -260,6 +267,10 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
 
       hls.on(Hls.Events.LEVEL_SWITCHED, (_, data) => {
         setCurrentLevel(data.level);
+      });
+
+      hls.on(Hls.Events.AUDIO_TRACK_SWITCHED, (_, data) => {
+        if (mounted) setActiveAudioTrack(data.id);
       });
 
       hls.on(Hls.Events.ERROR, (_, data) => {
@@ -619,6 +630,44 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
             </span>
 
             <div className="flex-1" />
+
+            {/* Audio track badge — only shown when stream has multiple tracks */}
+            {audioTracks.length > 1 && (
+              <div className="relative">
+                <button
+                  onClick={() => { setShowAudio((v) => !v); setShowSettings(false); setShowSubs(false); }}
+                  className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-mono font-bold tracking-widest transition-colors bg-white/10 hover:bg-white/20 text-white/80 hover:text-white"
+                  title="Audio track"
+                >
+                  <Mic className="w-3 h-3 shrink-0" />
+                  {audioTracks[activeAudioTrack]?.lang
+                    ? audioTracks[activeAudioTrack].lang.toUpperCase().slice(0, 2)
+                    : audioTracks[activeAudioTrack]?.name?.slice(0, 2).toUpperCase() ?? "AU"}
+                </button>
+                {showAudio && (
+                  <div className="absolute bottom-full right-0 mb-2 min-w-[140px] bg-zinc-900 border border-white/10 rounded shadow-xl z-50 overflow-hidden">
+                    <p className="px-3 py-1.5 text-[9px] font-mono text-white/30 uppercase tracking-widest border-b border-white/5 flex items-center gap-1">
+                      <Mic className="w-3 h-3" /> Audio Track
+                    </p>
+                    {audioTracks.map((t, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => {
+                          if (hlsRef.current) hlsRef.current.audioTrack = idx;
+                          setActiveAudioTrack(idx);
+                          setShowAudio(false);
+                        }}
+                        className={`w-full text-left px-3 py-2 text-[11px] font-mono transition-colors hover:bg-white/10 flex items-center gap-2 ${activeAudioTrack === idx ? "text-blue-400" : "text-white/60"}`}
+                      >
+                        {activeAudioTrack === idx && <span className="w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0" />}
+                        {activeAudioTrack !== idx && <span className="w-1.5 h-1.5 rounded-full bg-white/20 shrink-0" />}
+                        {t.name || t.lang || `Track ${idx + 1}`}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Subtitles */}
             {subtitles.length > 0 && (
