@@ -3,6 +3,7 @@ import { apiUrl } from "@/lib/api";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Link } from "wouter";
 import { Search, SlidersHorizontal, X, Star, Loader2, ChevronDown, ArrowRight } from "lucide-react";
+import { NexaBadge } from "@/components/NexaBadge";
 
 const GENRES = [
   "Action","Adventure","Comedy","Drama","Fantasy","Horror","Mecha",
@@ -149,12 +150,15 @@ function AniCard({ item, index }: { item: AniMedia; index: number }) {
           <h3 className="text-white font-serif text-sm leading-tight line-clamp-2 mb-1 drop-shadow-lg">
             {title}
           </h3>
-          <div className="flex items-center gap-1.5 text-[9px] font-mono text-white/50 uppercase tracking-widest flex-wrap">
-            {item.seasonYear && <span>{item.seasonYear}</span>}
-            {item.seasonYear && <span className="w-0.5 h-0.5 rounded-full bg-white/30" />}
-            <span className={item.status === "RELEASING" ? "text-white/70" : ""}>
-              {STATUS_MAP[item.status] ?? item.status}
-            </span>
+          <div className="flex items-center justify-between gap-1">
+            <div className="flex items-center gap-1.5 text-[9px] font-mono text-white/50 uppercase tracking-widest flex-wrap">
+              {item.seasonYear && <span>{item.seasonYear}</span>}
+              {item.seasonYear && <span className="w-0.5 h-0.5 rounded-full bg-white/30" />}
+              <span className={item.status === "RELEASING" ? "text-white/70" : ""}>
+                {STATUS_MAP[item.status] ?? item.status}
+              </span>
+            </div>
+            <NexaBadge animeId={item.id} />
           </div>
         </div>
       </div>

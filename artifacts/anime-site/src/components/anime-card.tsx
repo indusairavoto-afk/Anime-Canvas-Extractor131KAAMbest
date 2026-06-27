@@ -4,6 +4,7 @@ import { useRef } from "react";
 import { Bookmark, BookmarkCheck } from "lucide-react";
 import type { Anime } from "@workspace/api-client-react";
 import { useWatchlist } from "@/hooks/useWatchlist";
+import { NexaBadge } from "@/components/NexaBadge";
 
 interface AnimeCardProps {
   anime: Anime;
@@ -77,12 +78,13 @@ export function AnimeCard({ anime }: AnimeCardProps) {
             <h3 className="text-white font-serif text-base leading-tight line-clamp-2 mb-1 drop-shadow-lg">
               {anime.title}
             </h3>
-            <div className="flex items-center gap-2 text-[10px] font-mono text-white/60 uppercase tracking-widest">
-              <span>{anime.releaseYear}</span>
-              <span className="w-0.5 h-0.5 rounded-full bg-white/40" />
-              <span>{anime.status}</span>
-              <span className="w-0.5 h-0.5 rounded-full bg-white/40" />
-              <span>{anime.rating.toFixed(1)}</span>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-[10px] font-mono text-white/60 uppercase tracking-widest">
+                <span>{anime.releaseYear}</span>
+                <span className="w-0.5 h-0.5 rounded-full bg-white/40" />
+                <span>{anime.status}</span>
+              </div>
+              <NexaBadge animeId={anime.id} />
             </div>
           </div>
         </motion.div>
