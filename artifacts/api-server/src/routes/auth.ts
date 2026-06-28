@@ -2,11 +2,22 @@ import { Router } from "express";
 import bcrypt from "bcryptjs";
 import crypto from "node:crypto";
 import { db } from "@workspace/db";
-import { userTable, passwordResetTable, magicCodeTable } from "@workspace/db/schema";
+import { userTable, passwordResetTable, magicCodeTable, emailVerificationTable } from "@workspace/db/schema";
 import { eq, or, and, gt, isNull } from "drizzle-orm";
 import { authLimiter } from "../lib/rate-limiters";
+import {
+  sendMagicCodeEmail,
+  sendVerificationEmail,
+  sendPasswordResetEmail,
+} from "../lib/mailer";
 
 const router = Router();
+
+function getBaseUrl(req: Parameters<Parameters<typeof router.use>[0]>[0]): string {
+  const proto = (req.headers["x-forwarded-proto"] as string) ?? req.protocol ?? "https";
+  const host = req.headers["x-forwarded-host"] as string ?? req.headers.host ?? "localhost:5000";
+  return `${proto}://${host}`;
+}
 
 function toPublicUser(row: typeof userTable.$inferSelect) {
   return {
@@ -16,9 +27,12 @@ function toPublicUser(row: typeof userTable.$inferSelect) {
     email: row.email,
     bio: row.bio ?? null,
     avatarUrl: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(row.avatarSeed)}`,
+    emailVerified: row.emailVerified,
     createdAt: row.createdAt.toISOString(),
   };
 }
+
+// ── Register ────────────────────────────────────────────────────────────────
 
 router.post("/auth/register", authLimiter, async (req, res) => {
   try {
@@ -51,6 +65,17 @@ router.post("/auth/register", authLimiter, async (req, res) => {
       passwordHash,
       avatarSeed: uname,
     }).returning();
+
+    // Send verification email (fire-and-forget — don't block registration)
+    try {
+      const token = crypto.randomBytes(32).toString("hex");
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      await db.insert(emailVerificationTable).values({ userId: row.id, token, expiresAt });
+      await sendVerificationEmail(row.email, row.displayName, token, getBaseUrl(req));
+    } catch (mailErr) {
+      req.log.warn({ mailErr }, "Failed to send verification email");
+    }
+
     res.status(201).json(toPublicUser(row));
   } catch (err) {
     req.log.error(err);
@@ -58,7 +83,60 @@ router.post("/auth/register", authLimiter, async (req, res) => {
   }
 });
 
-router.post("/auth/forgot-password", async (req, res) => {
+// ── Verify Email ────────────────────────────────────────────────────────────
+
+router.get("/auth/verify-email/:token", async (req, res) => {
+  try {
+    const { token } = req.params;
+    const [record] = await db.select().from(emailVerificationTable)
+      .where(and(
+        eq(emailVerificationTable.token, token),
+        isNull(emailVerificationTable.usedAt),
+        gt(emailVerificationTable.expiresAt, new Date()),
+      )).limit(1);
+
+    if (!record) {
+      res.status(400).json({ error: "Verification link is invalid or has expired" });
+      return;
+    }
+
+    await db.update(userTable).set({ emailVerified: true }).where(eq(userTable.id, record.userId));
+    await db.update(emailVerificationTable).set({ usedAt: new Date() }).where(eq(emailVerificationTable.id, record.id));
+
+    // Redirect to frontend with success flag
+    res.redirect(`${getBaseUrl(req)}/login?verified=1`);
+  } catch (err) {
+    req.log.error(err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Resend verification email
+router.post("/auth/resend-verification", authLimiter, async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) { res.status(400).json({ error: "email is required" }); return; }
+
+    const [user] = await db.select().from(userTable)
+      .where(eq(userTable.email, email.trim().toLowerCase())).limit(1);
+    if (!user) { res.status(404).json({ error: "No account found" }); return; }
+    if (user.emailVerified) { res.json({ ok: true, alreadyVerified: true }); return; }
+
+    const token = crypto.randomBytes(32).toString("hex");
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    await db.insert(emailVerificationTable).values({ userId: user.id, token, expiresAt });
+    await sendVerificationEmail(user.email, user.displayName, token, getBaseUrl(req));
+
+    res.json({ ok: true });
+  } catch (err) {
+    req.log.error(err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── Forgot / Reset Password ─────────────────────────────────────────────────
+
+router.post("/auth/forgot-password", authLimiter, async (req, res) => {
   try {
     const { email } = req.body;
     if (!email) { res.status(400).json({ error: "email is required" }); return; }
@@ -67,18 +145,20 @@ router.post("/auth/forgot-password", async (req, res) => {
       .where(eq(userTable.email, email.trim().toLowerCase())).limit(1);
 
     if (!user) {
-      res.status(404).json({ error: "No account found with that email" });
+      // Don't reveal whether email exists
+      res.json({ ok: true });
       return;
     }
 
-    const charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_!@#$%&";
+    const charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
     const bytes = crypto.randomBytes(30);
     const token = Array.from(bytes).map(b => charset[b % charset.length]).join("");
-
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
-    await db.insert(passwordResetTable).values({ userId: user.id, token, expiresAt });
 
-    res.json({ token, expiresAt: expiresAt.toISOString() });
+    await db.insert(passwordResetTable).values({ userId: user.id, token, expiresAt });
+    await sendPasswordResetEmail(user.email, user.displayName, token, getBaseUrl(req));
+
+    res.json({ ok: true });
   } catch (err) {
     req.log.error(err);
     res.status(500).json({ error: "Internal server error" });
@@ -113,6 +193,8 @@ router.post("/auth/reset-password", async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 });
+
+// ── Auth me / Login ─────────────────────────────────────────────────────────
 
 router.get("/auth/me", async (req, res) => {
   try {
@@ -168,15 +250,15 @@ router.post("/auth/magic-code/request", authLimiter, async (req, res) => {
       return;
     }
 
-    // Generate a 8-char uppercase alphanumeric code
     const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
     const bytes = crypto.randomBytes(8);
     const code = Array.from(bytes).map(b => chars[b % chars.length]).join("");
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
     await db.insert(magicCodeTable).values({ userId: user.id, code, expiresAt });
+    await sendMagicCodeEmail(user.email, user.displayName, code);
 
-    res.json({ code, expiresAt: expiresAt.toISOString() });
+    res.json({ ok: true, expiresAt: expiresAt.toISOString() });
   } catch (err) {
     req.log.error(err);
     res.status(500).json({ error: "Internal server error" });

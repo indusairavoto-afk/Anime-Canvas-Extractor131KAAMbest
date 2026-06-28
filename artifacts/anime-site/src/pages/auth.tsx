@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
-import { Eye, EyeOff, Copy, Check, ArrowLeft, AlertCircle, Loader2, Zap, RefreshCw } from "lucide-react";
+import { Eye, EyeOff, Check, ArrowLeft, AlertCircle, Loader2, Zap, RefreshCw } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { apiUrl } from "@/lib/api";
 import nexaLogo from "/favicon.png?v=4";
@@ -99,13 +99,11 @@ function MagicCodePanel({ onSuccess }: { onSuccess: (user: unknown) => void }) {
   const [step, setStep] = useState<"email" | "code">("email");
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
-  const [generatedCode, setGeneratedCode] = useState("");
   const [expiresAt, setExpiresAt] = useState<Date | null>(null);
   const [timeLeft, setTimeLeft] = useState(600);
   const [loading, setLoading] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState("");
-  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (step !== "code" || !expiresAt) return;
@@ -129,7 +127,6 @@ function MagicCodePanel({ onSuccess }: { onSuccess: (user: unknown) => void }) {
       });
       const data = await res.json();
       if (!res.ok) { setError(data.error ?? "Request failed"); return; }
-      setGeneratedCode(data.code);
       setExpiresAt(new Date(data.expiresAt));
       setTimeLeft(600);
       setStep("code");
@@ -199,27 +196,21 @@ function MagicCodePanel({ onSuccess }: { onSuccess: (user: unknown) => void }) {
             <ArrowLeft className="w-3 h-3" /> Back
           </button>
 
-          {/* Generated code display */}
-          <div className="bg-black/60 border border-white/[0.08] rounded-xl p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <p className="text-[11px] text-white/40 font-mono uppercase tracking-widest">Your login code</p>
-              <span className={`text-[11px] font-mono tabular-nums ${timeLeft < 60 ? "text-red-400" : "text-white/30"}`}>
-                {mins}:{secs}
-              </span>
+          {/* Email sent confirmation */}
+          <div className="bg-black/60 border border-white/[0.08] rounded-xl p-4 space-y-2 text-center">
+            <div className="w-9 h-9 rounded-full bg-green-500/10 border border-green-500/20 flex items-center justify-center mx-auto mb-2">
+              <Check className="w-4 h-4 text-green-400" />
             </div>
-            <div className="flex items-center justify-between bg-white/5 border border-white/10 rounded-lg px-4 py-3">
-              <span className="font-mono text-white text-xl tracking-[0.3em] font-bold select-all">{generatedCode}</span>
-              <button type="button" onClick={() => { navigator.clipboard.writeText(generatedCode); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
-                className="text-white/30 hover:text-white/70 transition-colors ml-3">
-                {copied ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
-              </button>
-            </div>
-            <p className="text-[11px] text-white/25">Single use · expires in 10 minutes</p>
+            <p className="text-white/80 text-sm font-medium">Check your inbox</p>
+            <p className="text-white/40 text-xs leading-relaxed">We sent an 8-character code to <span className="text-white/60 font-mono">{email}</span></p>
+            <p className={`text-[11px] font-mono tabular-nums mt-1 ${timeLeft < 60 ? "text-red-400" : "text-white/30"}`}>
+              Expires in {mins}:{secs}
+            </p>
           </div>
 
           {/* Code entry */}
           <div className="space-y-2">
-            <label className="block text-[11px] text-white/40 mb-3 uppercase tracking-widest font-mono text-center">Enter code to sign in</label>
+            <label className="block text-[11px] text-white/40 mb-3 uppercase tracking-widest font-mono text-center">Enter the code from your email</label>
             <CodeInput value={code} onChange={setCode} />
           </div>
 
@@ -268,8 +259,6 @@ export default function AuthPage() {
   const [forgotEmail, setForgotEmail] = useState("");
   const [forgotLoading, setForgotLoading] = useState(false);
   const [forgotError, setForgotError] = useState("");
-  const [resetToken, setResetToken] = useState("");
-  const [copied, setCopied] = useState(false);
 
   const [regDisplay, setRegDisplay] = useState("");
   const [regUsername, setRegUsername] = useState("");
@@ -293,18 +282,12 @@ export default function AuthPage() {
       });
       const data = await res.json();
       if (!res.ok) { setForgotError(data.error ?? "Request failed"); return; }
-      setResetToken(data.token);
       setForgotStep("done");
     } catch {
       setForgotError("Network error — please try again");
     } finally {
       setForgotLoading(false);
     }
-  }
-
-  function copyLink() {
-    const url = `${window.location.origin}/reset/${resetToken}`;
-    navigator.clipboard.writeText(url).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); });
   }
 
   async function handleLogin(e: React.FormEvent) {
@@ -425,7 +408,7 @@ export default function AuthPage() {
                   )}
                 </AnimatePresence>
                 <button type="submit" disabled={forgotLoading} className="w-full bg-white text-black font-semibold py-3 rounded-xl text-sm hover:bg-white/90 transition-all disabled:opacity-50 flex items-center justify-center gap-2">
-                  {forgotLoading ? <><Loader2 className="w-4 h-4 animate-spin" />Generating…</> : "Generate Reset Link"}
+                  {forgotLoading ? <><Loader2 className="w-4 h-4 animate-spin" />Sending…</> : "Send Reset Email"}
                 </button>
               </motion.form>
             )}
@@ -433,23 +416,21 @@ export default function AuthPage() {
             {/* ── FORGOT DONE ── */}
             {tab === "login" && forgotStep === "done" && (
               <motion.div key="forgot-done" initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.97 }} transition={{ duration: 0.2 }} className="space-y-4">
-                <button type="button" onClick={() => setForgotStep("idle")} className="flex items-center gap-1.5 text-[11px] text-white/30 hover:text-white/60 transition-colors font-mono uppercase tracking-widest">
-                  <ArrowLeft className="w-3 h-3" /> Back to sign in
-                </button>
-                <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-4 text-center">
-                  <Check className="w-6 h-6 text-green-400 mx-auto mb-2" />
-                  <p className="text-green-300 text-sm font-medium">Reset link generated</p>
+                <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-5 text-center space-y-2">
+                  <div className="w-10 h-10 rounded-full bg-green-500/15 border border-green-500/25 flex items-center justify-center mx-auto mb-3">
+                    <Check className="w-5 h-5 text-green-400" />
+                  </div>
+                  <p className="text-white text-sm font-semibold">Check your inbox</p>
+                  <p className="text-white/50 text-xs leading-relaxed">
+                    We sent a password reset link to <span className="text-white/70 font-mono">{forgotEmail}</span>.<br />
+                    The link expires in 24 hours.
+                  </p>
                 </div>
-                <div className="bg-black/40 border border-white/[0.08] rounded-xl p-4 space-y-2">
-                  <p className="text-[11px] text-white/40 font-mono uppercase tracking-widest">Reset token</p>
-                  <p className="font-mono text-white/70 text-xs break-all leading-relaxed border border-white/10 bg-black/40 rounded-lg px-3 py-2">{resetToken}</p>
-                  <p className="text-[11px] text-white/30">Valid for 24 hours.</p>
-                </div>
-                <button type="button" onClick={copyLink} className="w-full flex items-center justify-center gap-2 border border-white/10 text-white/60 hover:text-white hover:border-white/30 font-medium py-3 rounded-xl text-sm transition-all">
-                  {copied ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
-                  {copied ? "Copied!" : "Copy reset link"}
+                <p className="text-center text-xs text-white/30">Didn't get it? Check your spam folder.</p>
+                <button type="button" onClick={() => { setForgotStep("idle"); setForgotEmail(""); }}
+                  className="w-full flex items-center justify-center gap-2 border border-white/10 text-white/50 hover:text-white hover:border-white/20 py-2.5 rounded-xl text-sm transition-all">
+                  <ArrowLeft className="w-3.5 h-3.5" /> Back to sign in
                 </button>
-                <a href={`/reset/${resetToken}`} className="block w-full text-center bg-white text-black font-semibold py-3 rounded-xl text-sm hover:bg-white/90 transition-all">Go to reset page →</a>
               </motion.div>
             )}
 

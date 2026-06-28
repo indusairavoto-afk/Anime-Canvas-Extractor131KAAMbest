@@ -94,6 +94,7 @@ export const userTable = pgTable("user", {
   passwordHash: text("password_hash").notNull(),
   bio: text("bio"),
   avatarSeed: text("avatar_seed").notNull(),
+  emailVerified: boolean("email_verified").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -110,6 +111,15 @@ export const magicCodeTable = pgTable("magic_code", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull().references(() => userTable.id, { onDelete: "cascade" }),
   code: text("code").notNull().unique(),
+  expiresAt: timestamp("expires_at").notNull(),
+  usedAt: timestamp("used_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const emailVerificationTable = pgTable("email_verification", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => userTable.id, { onDelete: "cascade" }),
+  token: text("token").notNull().unique(),
   expiresAt: timestamp("expires_at").notNull(),
   usedAt: timestamp("used_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
