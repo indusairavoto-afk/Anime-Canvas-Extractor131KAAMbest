@@ -93,7 +93,7 @@ router.post("/community", writeLimiter, async (req, res) => {
 
 router.get("/community/:id", async (req, res) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id as string);
     const [row] = await db.select().from(communityPostTable).where(eq(communityPostTable.id, id));
     if (!row) { res.status(404).json({ error: "Post not found" }); return; }
     res.json(toPostResponse(row));
@@ -105,7 +105,7 @@ router.get("/community/:id", async (req, res) => {
 
 router.get("/community/:id/comments", async (req, res) => {
   try {
-    const postId = parseInt(req.params.id);
+    const postId = parseInt(req.params.id as string);
     const rows = await db
       .select()
       .from(commentTable)
@@ -120,7 +120,7 @@ router.get("/community/:id/comments", async (req, res) => {
 
 router.post("/community/:id/like", voteLimiter, async (req, res) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id as string);
     if (isNaN(id)) { res.status(400).json({ error: "Invalid post id" }); return; }
     const [row] = await db
       .update(communityPostTable)
@@ -137,7 +137,7 @@ router.post("/community/:id/like", voteLimiter, async (req, res) => {
 
 router.delete("/community/:id", async (req, res) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id as string);
     if (isNaN(id)) { res.status(400).json({ error: "Invalid post id" }); return; }
     const { username } = req.body;
     if (!username || typeof username !== "string") {
@@ -158,7 +158,7 @@ router.delete("/community/:id", async (req, res) => {
 
 router.post("/community/:id/comments", writeLimiter, async (req, res) => {
   try {
-    const postId = parseInt(req.params.id);
+    const postId = parseInt(req.params.id as string);
     if (isNaN(postId)) { res.status(400).json({ error: "Invalid post id" }); return; }
     const { username, content, parentId } = req.body;
     if (!username || typeof username !== "string" || username.trim().length === 0) {

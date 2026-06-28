@@ -21,7 +21,7 @@ export default function DashPlayer({ src, title, progressKey, onFatalError }: Pr
     import("dashjs").then((mod) => {
       if (destroyed || !videoRef.current) return;
       // dashjs exports MediaPlayer as a named export
-      const dashjs = mod.default ?? mod;
+      const dashjs = (mod as any).default ?? mod;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const factory = (dashjs as any).MediaPlayer;
       if (!factory) {

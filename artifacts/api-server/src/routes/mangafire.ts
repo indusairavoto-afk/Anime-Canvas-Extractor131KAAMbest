@@ -333,7 +333,7 @@ router.all("/mangafire/pass/*path", async (req, res) => {
           ? { "X-Requested-With": req.headers["x-requested-with"] as string }
           : {}),
       },
-      body: isPost ? (req as unknown as BodyInit) : undefined,
+      body: isPost ? (req as any) : undefined,
       signal: AbortSignal.timeout(20000),
     });
 

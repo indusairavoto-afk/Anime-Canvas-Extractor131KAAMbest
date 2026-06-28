@@ -104,7 +104,7 @@ router.get("/mangadex/pages", async (req, res) => {
   if (!chapterId) { res.status(400).json({ error: "chapterId required" }); return; }
 
   try {
-    const data = await mdFetch(`/at-home/server/${chapterId}`) as MangaDxAtHome;
+    const data = await mdFetch(`/at-home/server/${chapterId}`) as unknown as MangaDxAtHome;
     const { baseUrl, chapter } = data;
     if (!chapter?.hash || !chapter?.data) {
       res.status(404).json({ error: "No pages found" });

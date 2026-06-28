@@ -41,7 +41,7 @@ interface AnilistAnimeInfo {
 /* ── Anime card ─────────────────────────────────────────────────────────── */
 function WatchlistCard({ animeId, onRemove }: { animeId: number; onRemove: () => void }) {
   const { data: localAnime, isError: localError, isPending: localPending } = useGetAnime(animeId, {
-    query: { retry: false },
+    query: { retry: false } as any,
   });
   const { data: episodes } = useListEpisodes(animeId);
   const { getLastWatched, countWatched } = useWatchProgress();

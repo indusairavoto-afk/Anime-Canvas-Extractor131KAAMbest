@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Eye, EyeOff, Check, ArrowLeft, AlertCircle, Loader2, Zap, RefreshCw } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { apiUrl } from "@/lib/api";
-import nexaLogo from "/favicon.png?v=4";
+import nexaLogo from "/favicon.png";
 
 function PasswordStrength({ password }: { password: string }) {
   const strength = useMemo(() => {

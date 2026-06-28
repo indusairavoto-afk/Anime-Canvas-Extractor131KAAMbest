@@ -19,7 +19,7 @@ function loadLocal(): MangaEntry[] {
     if (Array.isArray(raw) && raw.length > 0 && typeof raw[0] === "number") {
       return (raw as number[]).map(id => ({ id, status: "plan_to_read" as ReadStatus, chapter: 0, addedAt: Date.now() }));
     }
-    return (raw as MangaEntry[]).map(e => ({ chapter: 0, ...e }));
+    return (raw as any[]).map(e => ({ chapter: 0, ...e } as MangaEntry));
   } catch { return []; }
 }
 

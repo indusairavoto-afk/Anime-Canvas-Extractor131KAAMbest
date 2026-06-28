@@ -12,7 +12,7 @@ function randomAvatar(username: string) {
 
 router.get("/episodes/:id/comments", async (req, res) => {
   try {
-    const episodeId = parseInt(req.params.id);
+    const episodeId = parseInt(req.params.id as string);
     const rows = await db
       .select()
       .from(commentTable)
@@ -27,7 +27,7 @@ router.get("/episodes/:id/comments", async (req, res) => {
 
 router.post("/episodes/:id/comments", writeLimiter, async (req, res) => {
   try {
-    const episodeId = parseInt(req.params.id);
+    const episodeId = parseInt(req.params.id as string);
     if (isNaN(episodeId)) { res.status(400).json({ error: "Invalid episode id" }); return; }
     const { username, content, parentId } = req.body;
     if (!username || typeof username !== "string" || username.trim().length === 0) {
@@ -59,7 +59,7 @@ router.post("/episodes/:id/comments", writeLimiter, async (req, res) => {
 
 router.post("/comments/:id/like", voteLimiter, async (req, res) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id as string);
     const [row] = await db
       .update(commentTable)
       .set({ likes: sql`${commentTable.likes} + 1` })
@@ -75,7 +75,7 @@ router.post("/comments/:id/like", voteLimiter, async (req, res) => {
 
 router.delete("/comments/:id", async (req, res) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id as string);
     if (isNaN(id)) { res.status(400).json({ error: "Invalid comment id" }); return; }
     const { username } = req.body;
     if (!username || typeof username !== "string") {

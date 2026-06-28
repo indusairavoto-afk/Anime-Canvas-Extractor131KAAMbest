@@ -210,7 +210,8 @@ async function findViaRanobedb(title: string): Promise<{ seriesId: string } | nu
         { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(8000) }
       );
       if (!res.ok) continue;
-      const data = await res.json();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const data = await res.json() as any;
       const series: RanobedbSeries[] = data.series ?? [];
 
       let bestScore = 0;
@@ -506,7 +507,8 @@ router.get("/lnori/find", async (req, res) => {
         }),
         signal: AbortSignal.timeout(10000),
       });
-      const aniData = await aniRes.json();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const aniData = await aniRes.json() as any;
       const links: { url: string }[] = aniData?.data?.Media?.externalLinks ?? [];
 
       for (const link of links) {

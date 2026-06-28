@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Request } from "express";
 import bcrypt from "bcryptjs";
 import crypto from "node:crypto";
 import { db } from "@workspace/db";
@@ -13,7 +13,7 @@ import {
 
 const router = Router();
 
-function getBaseUrl(req: Parameters<Parameters<typeof router.use>[0]>[0]): string {
+function getBaseUrl(req: Request): string {
   const proto = (req.headers["x-forwarded-proto"] as string) ?? req.protocol ?? "https";
   const host = req.headers["x-forwarded-host"] as string ?? req.headers.host ?? "localhost:5000";
   return `${proto}://${host}`;

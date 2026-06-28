@@ -42,7 +42,7 @@ router.all("/onisaga/pass/*path", async (req, res) => {
           : {}),
         ...(req.headers["cookie"] ? { Cookie: req.headers["cookie"] as string } : {}),
       },
-      body: isPost ? (req as unknown as BodyInit) : undefined,
+      body: isPost ? (req as any) : undefined,
     });
 
     const contentType = upstream.headers.get("content-type") ?? "application/octet-stream";

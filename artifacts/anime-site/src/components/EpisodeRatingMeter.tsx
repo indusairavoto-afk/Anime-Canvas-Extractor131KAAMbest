@@ -96,7 +96,7 @@ function GaugeMeter({ counts, total, myVote, onVote }: {
   const domPct    = domCat && total > 0 ? Math.round((counts[domCat.key] / total) * 100) : 0;
 
   // Convert pointer event to gauge segment
-  function segFromPointer(e: React.PointerEvent<SVGSVGElement>): VoteCategory | null {
+  function segFromPointer(e: React.PointerEvent<SVGSVGElement> | React.MouseEvent<SVGSVGElement>): VoteCategory | null {
     const svg = svgRef.current;
     if (!svg) return null;
     const rect = svg.getBoundingClientRect();
