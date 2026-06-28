@@ -1,0 +1,50 @@
+2026-06-27T04:18:42.821119412Z ✓ 2206 modules transformed.
+2026-06-27T04:18:43.374172767Z rendering chunks...
+2026-06-27T04:18:43.390600226Z computing gzip size...
+2026-06-27T04:18:43.429536459Z dist/index.html                     1.38 kB │ gzip:   0.54 kB
+2026-06-27T04:18:43.42955426Z dist/assets/index-BCNSy-XV.css    185.00 kB │ gzip:  26.38 kB
+2026-06-27T04:18:43.429573631Z dist/assets/index-Bvh3ZVAI.js   1,398.38 kB │ gzip: 404.00 kB
+2026-06-27T04:18:43.429683537Z 
+2026-06-27T04:18:43.429691957Z (!) Some chunks are larger than 500 kB after minification. Consider:
+2026-06-27T04:18:43.429695748Z - Using dynamic import() to code-split the application
+2026-06-27T04:18:43.429699448Z - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+2026-06-27T04:18:43.429702668Z - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+2026-06-27T04:18:43.429983523Z ✓ built in 4.83s
+2026-06-27T04:18:44.486936644Z 
+2026-06-27T04:18:44.486966236Z > @workspace/api-server@0.0.0 build /opt/render/project/src/artifacts/api-server
+2026-06-27T04:18:44.486972196Z > node ./build.mjs
+2026-06-27T04:18:44.486976736Z 
+2026-06-27T04:18:44.99324906Z 
+2026-06-27T04:18:44.993279081Z   dist/index.mjs                       2.6mb ⚠️
+2026-06-27T04:18:44.993285762Z   dist/pino-worker.mjs               153.4kb
+2026-06-27T04:18:44.993291512Z   dist/pino-file.mjs                 142.1kb
+2026-06-27T04:18:44.993297162Z   dist/pino-pretty.mjs               114.6kb
+2026-06-27T04:18:44.993303573Z   dist/thread-stream-worker.mjs        7.3kb
+2026-06-27T04:18:44.993309483Z   dist/index.mjs.map                   4.5mb
+2026-06-27T04:18:44.993313643Z   dist/pino-worker.mjs.map           256.9kb
+2026-06-27T04:18:44.993317323Z   dist/pino-file.mjs.map             229.0kb
+2026-06-27T04:18:44.993321014Z   dist/pino-pretty.mjs.map           204.0kb
+2026-06-27T04:18:44.993324824Z   dist/thread-stream-worker.mjs.map   12.0kb
+2026-06-27T04:18:44.993328434Z 
+2026-06-27T04:18:44.993332924Z ⚡ Done in 450ms
+2026-06-27T04:18:46.86652067Z ==> Uploading build...
+2026-06-27T04:19:00.544412873Z ==> Uploaded in 8.4s. Compression took 5.3s
+2026-06-27T04:19:00.607803874Z ==> Build successful 🎉
+2026-06-27T04:19:02.749122632Z ==> Deploying...
+2026-06-27T04:19:02.813254501Z ==> Setting WEB_CONCURRENCY=1 by default, based on available CPUs in the instance
+2026-06-27T04:19:29.662455253Z ==> Running 'npx --yes pnpm@10 --filter @workspace/db run push && node artifacts/api-server/dist/index.mjs'
+2026-06-27T04:19:40.762543496Z 
+2026-06-27T04:19:40.762566857Z > @workspace/db@0.0.0 push /opt/render/project/src/lib/db
+2026-06-27T04:19:40.762572917Z > drizzle-kit push --config ./drizzle.config.ts
+2026-06-27T04:19:40.762575007Z 
+2026-06-27T04:19:42.059765854Z Reading config file '/opt/render/project/src/lib/db/drizzle.config.ts'
+2026-06-27T04:19:48.755468198Z Using 'pg' driver for database querying
+2026-06-27T04:19:53.560696544Z [⣷] Pulling schema from database...
+2026-06-27T04:19:53.654186245Z [⣯] Pulling schema from database...
+2026-06-27T04:19:53.655250978Z [⣯] Pulling schema from database...
+2026-06-27T04:19:53.857500251Z /opt/render/project/src/lib/db:
+2026-06-27T04:19:53.857521071Z  ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @workspace/db@0.0.0 push: `drizzle-kit push --config ./drizzle.config.ts`
+2026-06-27T04:19:53.857525792Z Exit status 1
+2026-06-27T04:19:55.767667127Z ==> Exited with status 1
+2026-06-27T04:19:55.772009126Z ==> Common ways to troubleshoot your deploy: https://render.com/docs/troubleshooting-deploys
+2026-06-27T04:20:00.842899162Z ==> Running 'npx --yes pnpm@10 --filter @workspace/db run push && node artifacts/api-server/dist/index.mjs'

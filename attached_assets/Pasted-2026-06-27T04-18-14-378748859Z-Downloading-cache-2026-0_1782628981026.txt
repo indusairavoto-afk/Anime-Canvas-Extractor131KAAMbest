@@ -1,0 +1,29 @@
+2026-06-27T04:18:14.378748859Z ==> Downloading cache...
+2026-06-27T04:18:14.419147756Z ==> Cloning from https://github.com/indusairavoto-afk/Anime-Canvas-Extractor131KAAMbest
+2026-06-27T04:18:19.271742487Z ==> Checking out commit 29b814d4713c377bf0a8dd216584558c61827e6d in branch main
+2026-06-27T04:18:25.905994355Z ==> Downloaded 134MB in 3s. Extraction took 6s.
+2026-06-27T04:18:31.696270392Z ==> Installing dependencies with pnpm...
+2026-06-27T04:18:31.788438485Z ==> Using Node.js version 24.14.1 (default)
+2026-06-27T04:18:31.788455615Z ==> Docs on specifying a Node.js version: https://render.com/docs/node-version
+2026-06-27T04:18:33.474174181Z ==> Running build command 'npx --yes pnpm@10 install && npx pnpm@10 --filter @workspace/anime-site run build'...
+2026-06-27T04:18:40.096429273Z 
+2026-06-27T04:18:40.096451744Z > @workspace/anime-site@0.0.0 build /opt/render/project/src/artifacts/anime-site
+2026-06-27T04:18:40.096456644Z > vite build --config vite.config.ts
+2026-06-27T04:18:40.096459144Z 
+2026-06-27T04:18:40.39523577Z vite v7.3.3 building client environment for production...
+2026-06-27T04:18:40.465403942Z transforming...
+2026-06-27T04:18:40.96740918Z src/components/ui/tooltip.tsx (2:0): Error when using sourcemap for reporting an error: Can't resolve original location of error.
+2026-06-27T04:18:44.713427964Z ✓ 2206 modules transformed.
+2026-06-27T04:18:45.257586883Z rendering chunks...
+2026-06-27T04:18:45.275025771Z computing gzip size...
+2026-06-27T04:18:45.312247141Z dist/index.html                     1.38 kB │ gzip:   0.55 kB
+2026-06-27T04:18:45.312273561Z dist/assets/index-BCNSy-XV.css    185.00 kB │ gzip:  26.38 kB
+2026-06-27T04:18:45.312347023Z dist/assets/index-DjjSZ7OZ.js   1,398.49 kB │ gzip: 404.10 kB
+2026-06-27T04:18:45.312396593Z 
+2026-06-27T04:18:45.312404004Z (!) Some chunks are larger than 500 kB after minification. Consider:
+2026-06-27T04:18:45.312407274Z - Using dynamic import() to code-split the application
+2026-06-27T04:18:45.312410424Z - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+2026-06-27T04:18:45.312412984Z - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+2026-06-27T04:18:45.312659958Z ✓ built in 4.89s
+2026-06-27T04:18:46.676192941Z ==> Uploading build...
+2026-06-27T04:18:46.841323877Z ==> Your site is live 🎉
