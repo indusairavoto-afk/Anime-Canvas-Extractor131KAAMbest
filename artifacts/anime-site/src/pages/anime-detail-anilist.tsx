@@ -311,12 +311,45 @@ export default function AnimeDetailAniList() {
   const characterEdges = anime.characters?.edges ?? [];
   const streamLink = getBestStreamLink(anime.externalLinks ?? [], anime.id);
 
+  const isUpcoming = anime.status === "NOT_YET_RELEASED";
+  const hasYouTubeTrailer = anime.trailer?.site === "youtube" && !!anime.trailer?.id;
+  const showVideoHero = isUpcoming && hasYouTubeTrailer;
+
   return (
     <>
     <div className="bg-black text-white min-h-screen -mt-14">
       {/* Banner hero */}
       <div className="relative h-[55vh] sm:h-[70vh] overflow-hidden">
-        {anime.bannerImage ? (
+
+        {/* ── Video background for upcoming ── */}
+        {showVideoHero ? (
+          <>
+            <div className="absolute inset-0 overflow-hidden bg-black">
+              <iframe
+                src={`https://www.youtube-nocookie.com/embed/${anime.trailer!.id}?autoplay=1&mute=1&loop=1&playlist=${anime.trailer!.id}&controls=0&modestbranding=1&showinfo=0&rel=0&iv_load_policy=3&disablekb=1&fs=0`}
+                allow="autoplay; encrypted-media"
+                className="absolute pointer-events-none border-0"
+                style={{
+                  top: "50%",
+                  left: "50%",
+                  transform: "translate(-50%, -50%)",
+                  width: "max(177.78vh, calc(100% + 120px))",
+                  height: "max(56.25vw, calc(100% + 120px))",
+                  minWidth: "100%",
+                  minHeight: "100%",
+                  filter: "brightness(0.52) contrast(1.08) saturate(1.1)",
+                }}
+              />
+            </div>
+            {/* Upcoming badge */}
+            <div className="absolute top-20 right-4 sm:right-8 lg:right-16 z-10">
+              <span className="flex items-center gap-1.5 bg-white/10 backdrop-blur border border-white/20 text-white text-[10px] font-mono uppercase tracking-widest px-3 py-1.5 rounded-full">
+                <span className="w-1.5 h-1.5 bg-orange-400 rounded-full animate-pulse" />
+                Upcoming · Trailer
+              </span>
+            </div>
+          </>
+        ) : anime.bannerImage ? (
           <img
             src={anime.bannerImage}
             alt={title}
@@ -335,6 +368,7 @@ export default function AnimeDetailAniList() {
             }}
           />
         )}
+
         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/30 to-transparent" />
         <div className="absolute inset-0 bg-gradient-to-r from-black/50 to-transparent" />
         <div className="absolute top-24 sm:top-24 left-4 sm:left-8 lg:left-16">
@@ -406,25 +440,49 @@ export default function AnimeDetailAniList() {
 
               {/* CTAs */}
               <div className="flex flex-wrap gap-2 sm:gap-3">
-                <Link href={`/watch/al/${anime.id}/1`}>
-                  <motion.button
-                    whileTap={{ scale: 0.97 }}
-                    className="flex items-center gap-2 sm:gap-3 bg-white text-black px-5 sm:px-8 py-3 sm:py-3.5 font-bold text-xs sm:text-sm uppercase tracking-widest hover:bg-white/90 transition-colors"
-                  >
-                    <Play className="w-3.5 h-3.5 sm:w-4 sm:h-4 fill-black" />
-                    Watch EP 1
-                  </motion.button>
-                </Link>
+                {isUpcoming ? (
+                  /* ── Upcoming: trailer as primary, no Watch EP 1 ── */
+                  <>
+                    {hasYouTubeTrailer && (
+                      <a href={`https://youtube.com/watch?v=${anime.trailer!.id}`} target="_blank" rel="noopener noreferrer">
+                        <motion.button
+                          whileTap={{ scale: 0.97 }}
+                          className="flex items-center gap-2 sm:gap-3 bg-white text-black px-5 sm:px-8 py-3 sm:py-3.5 font-bold text-xs sm:text-sm uppercase tracking-widest hover:bg-white/90 transition-colors"
+                        >
+                          <Play className="w-3.5 h-3.5 sm:w-4 sm:h-4 fill-black" />
+                          Watch Trailer
+                        </motion.button>
+                      </a>
+                    )}
+                    <div className="flex items-center gap-2 border border-white/10 px-4 sm:px-6 py-3 sm:py-3.5 text-xs font-mono uppercase tracking-widest text-white/35">
+                      <span className="w-1.5 h-1.5 bg-orange-400 rounded-full animate-pulse" />
+                      Not yet released
+                    </div>
+                  </>
+                ) : (
+                  /* ── Released: Watch EP 1 + optional Trailer ── */
+                  <>
+                    <Link href={`/watch/al/${anime.id}/1`}>
+                      <motion.button
+                        whileTap={{ scale: 0.97 }}
+                        className="flex items-center gap-2 sm:gap-3 bg-white text-black px-5 sm:px-8 py-3 sm:py-3.5 font-bold text-xs sm:text-sm uppercase tracking-widest hover:bg-white/90 transition-colors"
+                      >
+                        <Play className="w-3.5 h-3.5 sm:w-4 sm:h-4 fill-black" />
+                        Watch EP 1
+                      </motion.button>
+                    </Link>
 
-                {anime.trailer?.site === "youtube" && (
-                  <a href={`https://youtube.com/watch?v=${anime.trailer.id}`} target="_blank" rel="noopener noreferrer">
-                    <motion.button
-                      whileTap={{ scale: 0.97 }}
-                      className="flex items-center gap-2 border border-white/20 text-white px-4 sm:px-6 py-3 sm:py-3.5 text-xs sm:text-sm font-medium uppercase tracking-widest hover:bg-white/5 transition-colors"
-                    >
-                      Trailer
-                    </motion.button>
-                  </a>
+                    {anime.trailer?.site === "youtube" && (
+                      <a href={`https://youtube.com/watch?v=${anime.trailer.id}`} target="_blank" rel="noopener noreferrer">
+                        <motion.button
+                          whileTap={{ scale: 0.97 }}
+                          className="flex items-center gap-2 border border-white/20 text-white px-4 sm:px-6 py-3 sm:py-3.5 text-xs sm:text-sm font-medium uppercase tracking-widest hover:bg-white/5 transition-colors"
+                        >
+                          Trailer
+                        </motion.button>
+                      </a>
+                    )}
+                  </>
                 )}
 
                 <motion.button
