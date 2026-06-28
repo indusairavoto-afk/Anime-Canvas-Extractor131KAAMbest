@@ -570,56 +570,82 @@ ${env2Inline ? `// env2.js inlined synchronously to ensure window.env is set bef
   }
 
   // ── Hide download button (Vidstack renders it dynamically after React mounts) ──
+  function _naKillEl(el) {
+    try {
+      el.style.setProperty('display', 'none', 'important');
+      el.style.setProperty('visibility', 'hidden', 'important');
+      el.style.setProperty('width', '0', 'important');
+      el.style.setProperty('height', '0', 'important');
+      el.style.setProperty('overflow', 'hidden', 'important');
+      el.style.setProperty('pointer-events', 'none', 'important');
+      el.style.setProperty('max-width', '0', 'important');
+      el.style.setProperty('max-height', '0', 'important');
+      el.style.setProperty('opacity', '0', 'important');
+      el.style.setProperty('position', 'absolute', 'important');
+      // Mark so we don't keep reprocessing it
+      el.setAttribute('data-na-hidden', '1');
+    } catch(e) {}
+  }
   function _naHideDownload() {
-    // Selector list covers Vidstack web components, React version class names,
-    // aria-labels (exact and partial), and raw <a download> anchor tags.
+    // 1. Selector-based: cover Vidstack web-component names + data attrs + raw download anchors
     var sels = [
       'media-download-button',
       '.vds-download-button',
       '[data-media-download-button]',
       'a[download]',
-      'button[aria-label="Download"]',
-      'a[aria-label="Download"]',
-      'button[aria-label="download"]',
-      'a[aria-label="download"]',
     ];
     for (var s = 0; s < sels.length; s++) {
       try {
         var els = document.querySelectorAll(sels[s]);
-        for (var e = 0; e < els.length; e++) {
-          // Use setProperty with 'important' priority so Vidstack styles can't override
-          els[e].style.setProperty('display', 'none', 'important');
-          els[e].style.setProperty('visibility', 'hidden', 'important');
-          els[e].style.setProperty('width', '0', 'important');
-          els[e].style.setProperty('height', '0', 'important');
-          els[e].style.setProperty('overflow', 'hidden', 'important');
-          els[e].style.setProperty('pointer-events', 'none', 'important');
-        }
-      } catch(e2) {}
+        for (var e = 0; e < els.length; e++) _naKillEl(els[e]);
+      } catch(ex) {}
     }
-    // Broad scan: hide any button/anchor whose aria-label contains "download"
+    // 2. Broad scan: check aria-label AND title attributes on all interactive elements.
+    //    Vidstack v2 uses aria-label; older/custom builds use title; cover both.
     try {
-      var all = document.querySelectorAll('button,a,[role="button"]');
+      var all = document.querySelectorAll('button,a,[role="button"],media-download-button,[class*="download"]');
       for (var i = 0; i < all.length; i++) {
         var lbl = (all[i].getAttribute('aria-label') || '').toLowerCase();
-        if (lbl.indexOf('download') !== -1) {
-          all[i].style.setProperty('display', 'none', 'important');
-          all[i].style.setProperty('visibility', 'hidden', 'important');
-          all[i].style.setProperty('width', '0', 'important');
-          all[i].style.setProperty('height', '0', 'important');
+        var ttl = (all[i].getAttribute('title') || '').toLowerCase();
+        var txt = (all[i].textContent || '').trim().toLowerCase();
+        if (
+          lbl.indexOf('download') !== -1 ||
+          ttl.indexOf('download') !== -1 ||
+          (txt === 'download' && all[i].tagName !== 'BODY')
+        ) {
+          _naKillEl(all[i]);
         }
       }
     } catch(e3) {}
+    // 3. Inject a dynamic <style> block that targets whatever class Vidstack assigns.
+    //    Re-inject if it was removed by React's hydration pass.
+    try {
+      if (!document.getElementById('na-dl-css')) {
+        var st = document.createElement('style');
+        st.id = 'na-dl-css';
+        st.textContent =
+          'media-download-button,[data-media-download-button],.vds-download-button,' +
+          'a[download],button[aria-label*="ownload" i],a[aria-label*="ownload" i],' +
+          '[title*="ownload" i],[class*="download"]{' +
+          'display:none!important;visibility:hidden!important;width:0!important;' +
+          'height:0!important;overflow:hidden!important;opacity:0!important;' +
+          'pointer-events:none!important;max-width:0!important;max-height:0!important}';
+        (document.head || document.documentElement).appendChild(st);
+      }
+    } catch(e4) {}
   }
   _naHideDownload();
-  // MutationObserver: fires whenever Vidstack re-renders controls
+  // MutationObserver: fires whenever Vidstack re-renders or hydrates controls
   var _naDlObs = new MutationObserver(_naHideDownload);
-  _naDlObs.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['aria-label', 'download'] });
-  // Belt-and-suspenders: interval for the first 10s to catch lazy renders
+  _naDlObs.observe(document.documentElement, {
+    childList: true, subtree: true,
+    attributes: true, attributeFilter: ['aria-label', 'title', 'download', 'class'],
+  });
+  // Interval for 30s to catch anything that slips through the observer
   var _naDlTick = 0;
   var _naDlInterval = setInterval(function() {
     _naHideDownload();
-    if (++_naDlTick >= 20) clearInterval(_naDlInterval);
+    if (++_naDlTick >= 60) clearInterval(_naDlInterval);
   }, 500);
 })();
 </script>`;
