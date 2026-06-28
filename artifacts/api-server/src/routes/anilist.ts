@@ -43,8 +43,19 @@ router.post("/anilist", async (req, res) => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(req.body),
     });
-    const data = await response.json();
-    setCache(cacheKey, data);
+
+    if (!response.ok) {
+      res.status(response.status).json({ error: `AniList returned ${response.status}` });
+      return;
+    }
+
+    const data = await response.json() as Record<string, unknown>;
+
+    const hasErrors = Array.isArray((data as { errors?: unknown[] }).errors) && (data as { errors?: unknown[] }).errors!.length > 0;
+    if (!hasErrors) {
+      setCache(cacheKey, data);
+    }
+
     res.json(data);
   } catch (err) {
     res.status(502).json({ error: "AniList request failed" });

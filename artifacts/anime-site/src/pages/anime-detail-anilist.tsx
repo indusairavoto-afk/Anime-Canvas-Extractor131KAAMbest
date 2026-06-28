@@ -300,10 +300,34 @@ export default function AnimeDetailAniList() {
   if (error || !anime) {
     return (
       <div className="min-h-screen bg-black flex flex-col items-center justify-center gap-4">
-        <p className="text-white/40 font-mono">Anime not found</p>
-        <Link href="/browse" className="text-[10px] font-mono uppercase tracking-widest border border-white/10 text-white/40 hover:text-white px-4 py-2 transition-colors">
-          Back to Browse
-        </Link>
+        <p className="text-white/40 font-mono text-sm">Failed to load anime</p>
+        <p className="text-white/20 font-mono text-xs">AniList may be temporarily unavailable</p>
+        <div className="flex items-center gap-3 mt-2">
+          <button
+            onClick={() => {
+              setError(false);
+              setLoading(true);
+              fetch(apiUrl("/api/anilist"), {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ query: DETAIL_QUERY, variables: { id: anilistId } }),
+              })
+                .then((r) => r.json())
+                .then((json) => {
+                  if (json?.data?.Media) setAnime(json.data.Media);
+                  else setError(true);
+                })
+                .catch(() => setError(true))
+                .finally(() => setLoading(false));
+            }}
+            className="text-[10px] font-mono uppercase tracking-widest border border-white/20 text-white/60 hover:text-white hover:border-white/50 px-4 py-2 transition-colors"
+          >
+            Retry
+          </button>
+          <Link href="/browse" className="text-[10px] font-mono uppercase tracking-widest border border-white/10 text-white/40 hover:text-white px-4 py-2 transition-colors">
+            Back to Browse
+          </Link>
+        </div>
       </div>
     );
   }
