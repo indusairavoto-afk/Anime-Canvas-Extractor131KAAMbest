@@ -231,8 +231,11 @@ export default function Schedule() {
         const grouped: Record<Day, AiringAnime[]> = {
           MON: [], TUE: [], WED: [], THU: [], FRI: [], SAT: [], SUN: [],
         };
+        const seen = new Set<number>();
         for (const m of media) {
           if (!m.nextAiringEpisode) continue;
+          if (seen.has(m.id)) continue;
+          seen.add(m.id);
           const day = getDay(m.nextAiringEpisode.airingAt);
           grouped[day].push({
             id: m.id,
