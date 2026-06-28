@@ -231,15 +231,20 @@ export default function Schedule() {
         const grouped: Record<Day, AiringAnime[]> = {
           MON: [], TUE: [], WED: [], THU: [], FRI: [], SAT: [], SUN: [],
         };
-        const seen = new Set<number>();
+        const seenIds = new Set<number>();
+        const seenSlots = new Set<string>();
         for (const m of media) {
           if (!m.nextAiringEpisode) continue;
-          if (seen.has(m.id)) continue;
-          seen.add(m.id);
+          if (seenIds.has(m.id)) continue;
+          const title = (m.title.english || m.title.romaji || "").trim();
+          const slotKey = `${title}|${m.nextAiringEpisode.airingAt}`;
+          if (seenSlots.has(slotKey)) continue;
+          seenIds.add(m.id);
+          seenSlots.add(slotKey);
           const day = getDay(m.nextAiringEpisode.airingAt);
           grouped[day].push({
             id: m.id,
-            title: m.title.english || m.title.romaji,
+            title,
             episode: m.nextAiringEpisode.episode,
             day,
             airingAt: m.nextAiringEpisode.airingAt,
