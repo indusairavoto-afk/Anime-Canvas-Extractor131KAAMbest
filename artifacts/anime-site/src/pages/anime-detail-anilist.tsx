@@ -160,6 +160,7 @@ export default function AnimeDetailAniList() {
   const [anime, setAnime] = useState<AniMedia | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [trailerFailed, setTrailerFailed] = useState(false);
 
   const [selectedRating, setSelectedRating] = useState<RatingOption | null>(null);
   const [reviewText, setReviewText] = useState("");
@@ -313,7 +314,7 @@ export default function AnimeDetailAniList() {
 
   const isUpcoming = anime.status === "NOT_YET_RELEASED";
   const hasYouTubeTrailer = anime.trailer?.site === "youtube" && !!anime.trailer?.id;
-  const showVideoHero = hasYouTubeTrailer;
+  const showVideoHero = hasYouTubeTrailer && !trailerFailed;
 
   return (
     <>
