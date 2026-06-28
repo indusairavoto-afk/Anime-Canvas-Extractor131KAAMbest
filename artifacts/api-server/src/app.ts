@@ -51,7 +51,7 @@ if (existsSync(frontendDist)) {
   app.use(express.static(frontendDist));
   // SPA fallback — serve index.html for any non-API route so client-side
   // routing (wouter) works on hard refreshes and direct URL navigation.
-  app.get("*", (_req, res) => {
+  app.get("/{*splat}", (_req, res) => {
     res.sendFile(path.join(frontendDist, "index.html"));
   });
 }
