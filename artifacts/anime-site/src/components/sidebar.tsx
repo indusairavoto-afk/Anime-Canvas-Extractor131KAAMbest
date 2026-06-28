@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Home, Search, Calendar, Users, Bookmark, Trophy, ChevronRight, ChevronDown, BookOpen, Mic } from "lucide-react";
 import { useSidebar } from "@/contexts/sidebar-context";
 import { useWatchlist } from "@/hooks/useWatchlist";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 const NAV_ITEMS = [
   { icon: Home, label: "Home", href: "/" },
@@ -43,6 +43,35 @@ function useAiringCount() {
   return count;
 }
 
+function useScrollDirection(threshold = 60) {
+  const [scrolledDown, setScrolledDown] = useState(false);
+  const lastY = useRef(0);
+  const ticking = useRef(false);
+
+  useEffect(() => {
+    const onScroll = () => {
+      if (ticking.current) return;
+      ticking.current = true;
+      requestAnimationFrame(() => {
+        const y = window.scrollY;
+        if (y < threshold) {
+          setScrolledDown(false);
+        } else if (y > lastY.current + 8) {
+          setScrolledDown(true);
+        } else if (y < lastY.current - 8) {
+          setScrolledDown(false);
+        }
+        lastY.current = y;
+        ticking.current = false;
+      });
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [threshold]);
+
+  return scrolledDown;
+}
+
 const SIDE_ITEMS = [
   { icon: Home,     label: "Home",    href: "/" },
   { icon: Search,   label: "Browse",  href: "/browse" },
@@ -59,10 +88,13 @@ function MobileBottomNav({
 }) {
   const airingCount = useAiringCount();
   const calActive = isActive("/schedule");
+  const scrolledDown = useScrollDirection(80);
 
   return (
-    <nav
+    <motion.nav
       className="md:hidden fixed bottom-0 left-0 right-0 z-50 flex items-end"
+      animate={{ y: scrolledDown ? 100 : 0 }}
+      transition={{ type: "spring", stiffness: 380, damping: 36 }}
       style={{
         background: "rgba(6,6,6,0.96)",
         backdropFilter: "blur(24px)",
@@ -113,7 +145,6 @@ function MobileBottomNav({
                 className={`w-6 h-6 ${calActive ? "text-black" : "text-white/80"}`}
                 strokeWidth={calActive ? 2.2 : 1.7}
               />
-              {/* Airing today badge */}
               {airingCount !== null && (
                 <motion.span
                   initial={{ scale: 0, opacity: 0 }}
@@ -163,7 +194,7 @@ function MobileBottomNav({
           </Link>
         );
       })}
-    </nav>
+    </motion.nav>
   );
 }
 
@@ -171,22 +202,26 @@ export function Sidebar() {
   const [location] = useLocation();
   const { hidden, show, hide } = useSidebar();
   const { ids } = useWatchlist();
+  const scrolledDown = useScrollDirection(80);
+  const [manuallyHidden, setManuallyHidden] = useState(false);
 
   const isActive = (href: string) =>
     location === href || (href !== "/" && location.startsWith(href));
+
+  const isVisible = !manuallyHidden && !scrolledDown;
 
   return (
     <>
       <div className="hidden md:block">
         <AnimatePresence>
           {/* ── Floating pill ── */}
-          {!hidden && (
+          {isVisible && (
             <motion.aside
               key="float"
               initial={{ x: -180, opacity: 0 }}
               animate={{ x: 0, opacity: 1 }}
               exit={{ x: -180, opacity: 0 }}
-              transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
+              transition={{ duration: 0.28, ease: [0.4, 0, 0.2, 1] }}
               className="fixed left-3 top-1/2 -translate-y-1/2 z-40 flex flex-col bg-zinc-900/90 backdrop-blur-xl border border-white/[0.08] shadow-2xl overflow-hidden"
               style={{ borderRadius: 26, width: 52 }}
             >
@@ -248,7 +283,7 @@ export function Sidebar() {
 
               <div className="mx-3 border-t border-white/[0.08]" />
               <button
-                onClick={hide}
+                onClick={() => setManuallyHidden(true)}
                 className="flex items-center justify-center py-3 text-white/25 hover:text-white/60 transition-colors"
                 title="Hide sidebar"
               >
@@ -257,15 +292,15 @@ export function Sidebar() {
             </motion.aside>
           )}
 
-          {/* ── Show tab when hidden ── */}
-          {hidden && (
+          {/* ── Show tab when hidden (manual or scrolled) ── */}
+          {!isVisible && (
             <motion.button
               key="show-tab"
               initial={{ x: -24, opacity: 0 }}
               animate={{ x: 0, opacity: 1 }}
               exit={{ x: -24, opacity: 0 }}
               transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
-              onClick={show}
+              onClick={() => { setManuallyHidden(false); }}
               className="fixed left-0 top-1/2 -translate-y-1/2 z-40 flex items-center justify-center bg-zinc-900/90 backdrop-blur-xl border border-white/[0.08] border-l-0 text-white/30 hover:text-white/70 transition-colors shadow-xl"
               style={{ width: 20, height: 56, borderRadius: "0 10px 10px 0" }}
               title="Show sidebar"
