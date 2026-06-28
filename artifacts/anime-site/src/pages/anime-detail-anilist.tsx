@@ -379,7 +379,7 @@ export default function AnimeDetailAniList() {
 
         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/30 to-transparent" />
         <div className="absolute inset-0 bg-gradient-to-r from-black/50 to-transparent" />
-        <div className="absolute top-24 sm:top-24 left-4 sm:left-8 lg:left-16">
+        <div className="absolute top-24 sm:top-24 left-4 sm:left-8 lg:left-16 z-[2]">
           <Link href="/browse" className="flex items-center gap-2 text-white/50 hover:text-white text-xs sm:text-sm font-mono uppercase tracking-widest transition-colors">
             <ArrowLeft className="w-4 h-4" /> Browse
           </Link>
