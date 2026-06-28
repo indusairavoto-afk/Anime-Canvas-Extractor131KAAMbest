@@ -4,7 +4,7 @@ import { Link, useParams } from "wouter";
 import { SeriesRatingGauge } from "@/components/SeriesRatingGauge";
 import {
   ArrowLeft, Star, Calendar, Tv, Bookmark, BookmarkCheck,
-  Play, Film, ThumbsUp, MessageCircle, Send, X,
+  Play, Film, ThumbsUp, MessageCircle, Send, X, Volume2, VolumeX,
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { useWatchlist } from "@/hooks/useWatchlist";
@@ -162,6 +162,8 @@ export default function AnimeDetailAniList() {
   const [error, setError] = useState(false);
   const [trailerFailed, setTrailerFailed] = useState(false);
   const [showBannerOverlay, setShowBannerOverlay] = useState(true);
+  const [isMuted, setIsMuted] = useState(true);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
 
   const [selectedRating, setSelectedRating] = useState<RatingOption | null>(null);
   const [reviewText, setReviewText] = useState("");
@@ -261,6 +263,7 @@ export default function AnimeDetailAniList() {
     setLoading(true);
     setError(false);
     setShowBannerOverlay(true);
+    setIsMuted(true);
     fetch(apiUrl("/api/anilist"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -334,7 +337,8 @@ export default function AnimeDetailAniList() {
             {/* Container clips iframe edges where YouTube logo/controls appear */}
             <div className="absolute inset-0 overflow-hidden bg-black">
               <iframe
-                src={`https://www.youtube-nocookie.com/embed/${anime.trailer!.id}?autoplay=1&mute=1&loop=1&playlist=${anime.trailer!.id}&controls=0&modestbranding=1&showinfo=0&rel=0&iv_load_policy=3&disablekb=1&fs=0&cc_load_policy=3&enablejsapi=0&origin=${encodeURIComponent(window.location.origin)}`}
+                ref={iframeRef}
+                src={`https://www.youtube-nocookie.com/embed/${anime.trailer!.id}?autoplay=1&mute=1&loop=1&playlist=${anime.trailer!.id}&controls=0&modestbranding=1&showinfo=0&rel=0&iv_load_policy=3&disablekb=1&fs=0&cc_load_policy=3&enablejsapi=1&origin=${encodeURIComponent(window.location.origin)}`}
                 allow="autoplay; encrypted-media"
                 className="absolute border-0"
                 style={{
@@ -370,6 +374,33 @@ export default function AnimeDetailAniList() {
                 />
               </motion.div>
             )}
+
+            {/* Mute / unmute button — appears once banner fades away */}
+            <AnimatePresence>
+              {!showBannerOverlay && (
+                <motion.button
+                  key="mute-btn"
+                  initial={{ opacity: 0, scale: 0.85 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.85 }}
+                  transition={{ duration: 0.4 }}
+                  onClick={() => {
+                    const cmd = isMuted ? "unMute" : "mute";
+                    iframeRef.current?.contentWindow?.postMessage(
+                      JSON.stringify({ event: "command", func: cmd, args: [] }),
+                      "*"
+                    );
+                    setIsMuted((prev) => !prev);
+                  }}
+                  className="absolute bottom-6 right-6 z-[3] flex items-center justify-center w-10 h-10 rounded-full bg-black/50 backdrop-blur border border-white/20 text-white hover:bg-black/70 hover:border-white/40 transition-all"
+                  title={isMuted ? "Unmute trailer" : "Mute trailer"}
+                >
+                  {isMuted
+                    ? <VolumeX className="w-4 h-4" />
+                    : <Volume2 className="w-4 h-4" />}
+                </motion.button>
+              )}
+            </AnimatePresence>
 
             {/* Upcoming badge */}
             {isUpcoming && (
