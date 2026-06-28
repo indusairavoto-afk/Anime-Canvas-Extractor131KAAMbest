@@ -290,10 +290,8 @@ export default function AnimeDetailAniList() {
     return (
       <div className="min-h-screen bg-black flex flex-col items-center justify-center gap-4">
         <p className="text-white/40 font-mono">Anime not found</p>
-        <Link href="/browse">
-          <button className="text-[10px] font-mono uppercase tracking-widest border border-white/10 text-white/40 hover:text-white px-4 py-2 transition-colors">
-            Back to Browse
-          </button>
+        <Link href="/browse" className="text-[10px] font-mono uppercase tracking-widest border border-white/10 text-white/40 hover:text-white px-4 py-2 transition-colors">
+          Back to Browse
         </Link>
       </div>
     );
@@ -382,10 +380,8 @@ export default function AnimeDetailAniList() {
         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/30 to-transparent" />
         <div className="absolute inset-0 bg-gradient-to-r from-black/50 to-transparent" />
         <div className="absolute top-24 sm:top-24 left-4 sm:left-8 lg:left-16">
-          <Link href="/browse">
-            <button className="flex items-center gap-2 text-white/50 hover:text-white text-xs sm:text-sm font-mono uppercase tracking-widest transition-colors">
-              <ArrowLeft className="w-4 h-4" /> Browse
-            </button>
+          <Link href="/browse" className="flex items-center gap-2 text-white/50 hover:text-white text-xs sm:text-sm font-mono uppercase tracking-widest transition-colors">
+            <ArrowLeft className="w-4 h-4" /> Browse
           </Link>
         </div>
       </div>

@@ -192,10 +192,8 @@ export default function AnimeDetail() {
         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent" />
         <div className="absolute inset-0 bg-gradient-to-r from-black/60 to-transparent" />
         <div className="absolute top-4 sm:top-6 left-4 sm:left-8 lg:left-16">
-          <Link href="/browse">
-            <button className="flex items-center gap-2 text-white/50 hover:text-white text-xs sm:text-sm font-mono uppercase tracking-widest transition-colors" data-testid="button-back">
-              <ArrowLeft className="w-4 h-4" /> Browse
-            </button>
+          <Link href="/browse" className="flex items-center gap-2 text-white/50 hover:text-white text-xs sm:text-sm font-mono uppercase tracking-widest transition-colors" data-testid="button-back">
+            <ArrowLeft className="w-4 h-4" /> Browse
           </Link>
         </div>
       </div>
