@@ -313,7 +313,7 @@ export default function AnimeDetailAniList() {
 
   const isUpcoming = anime.status === "NOT_YET_RELEASED";
   const hasYouTubeTrailer = anime.trailer?.site === "youtube" && !!anime.trailer?.id;
-  const showVideoHero = isUpcoming && hasYouTubeTrailer;
+  const showVideoHero = hasYouTubeTrailer;
 
   return (
     <>
@@ -321,33 +321,42 @@ export default function AnimeDetailAniList() {
       {/* Banner hero */}
       <div className="relative h-[55vh] sm:h-[70vh] overflow-hidden">
 
-        {/* ── Video background for upcoming ── */}
+        {/* ── Video background (all anime with trailer) ── */}
         {showVideoHero ? (
           <>
+            {/* Container clips iframe edges where YouTube logo/controls appear */}
             <div className="absolute inset-0 overflow-hidden bg-black">
               <iframe
-                src={`https://www.youtube-nocookie.com/embed/${anime.trailer!.id}?autoplay=1&mute=1&loop=1&playlist=${anime.trailer!.id}&controls=0&modestbranding=1&showinfo=0&rel=0&iv_load_policy=3&disablekb=1&fs=0`}
+                src={`https://www.youtube-nocookie.com/embed/${anime.trailer!.id}?autoplay=1&mute=1&loop=1&playlist=${anime.trailer!.id}&controls=0&modestbranding=1&showinfo=0&rel=0&iv_load_policy=3&disablekb=1&fs=0&cc_load_policy=3&enablejsapi=0&origin=${encodeURIComponent(window.location.origin)}`}
                 allow="autoplay; encrypted-media"
-                className="absolute pointer-events-none border-0"
+                className="absolute border-0"
                 style={{
                   top: "50%",
                   left: "50%",
                   transform: "translate(-50%, -50%)",
-                  width: "max(177.78vh, calc(100% + 120px))",
-                  height: "max(56.25vw, calc(100% + 120px))",
-                  minWidth: "100%",
-                  minHeight: "100%",
+                  /* Oversized so YouTube UI at edges is clipped by overflow:hidden */
+                  width: "max(177.78vh, 140%)",
+                  height: "max(56.25vw, 140%)",
+                  minWidth: "140%",
+                  minHeight: "140%",
+                  pointerEvents: "none",
                   filter: "brightness(0.52) contrast(1.08) saturate(1.1)",
                 }}
               />
+              {/* Transparent blocker: sits above the iframe, intercepts any
+                  mouse events so YouTube never receives hover → controls stay hidden */}
+              <div className="absolute inset-0 z-[1]" style={{ pointerEvents: "auto", background: "transparent" }} />
             </div>
-            {/* Upcoming badge */}
-            <div className="absolute top-20 right-4 sm:right-8 lg:right-16 z-10">
-              <span className="flex items-center gap-1.5 bg-white/10 backdrop-blur border border-white/20 text-white text-[10px] font-mono uppercase tracking-widest px-3 py-1.5 rounded-full">
-                <span className="w-1.5 h-1.5 bg-orange-400 rounded-full animate-pulse" />
-                Upcoming · Trailer
-              </span>
-            </div>
+
+            {/* Upcoming badge — only for upcoming status */}
+            {isUpcoming && (
+              <div className="absolute top-20 right-4 sm:right-8 lg:right-16 z-10">
+                <span className="flex items-center gap-1.5 bg-white/10 backdrop-blur border border-white/20 text-white text-[10px] font-mono uppercase tracking-widest px-3 py-1.5 rounded-full">
+                  <span className="w-1.5 h-1.5 bg-orange-400 rounded-full animate-pulse" />
+                  Upcoming · Trailer
+                </span>
+              </div>
+            )}
           </>
         ) : anime.bannerImage ? (
           <img
