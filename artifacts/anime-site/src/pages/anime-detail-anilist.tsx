@@ -372,6 +372,14 @@ export default function AnimeDetailAniList() {
                   className="absolute inset-0 w-full h-full object-cover"
                   style={{ filter: "brightness(0.62) contrast(1.05)" }}
                 />
+                {/* Heavy bottom smoke fade into page */}
+                <div className="absolute inset-0" style={{
+                  background: "linear-gradient(to top, #000 0%, #000 12%, rgba(0,0,0,0.85) 28%, rgba(0,0,0,0.5) 50%, rgba(0,0,0,0.15) 72%, transparent 100%)"
+                }} />
+                {/* Side fades */}
+                <div className="absolute inset-0" style={{
+                  background: "linear-gradient(to right, rgba(0,0,0,0.6) 0%, transparent 40%, transparent 70%, rgba(0,0,0,0.3) 100%)"
+                }} />
               </motion.div>
             )}
 
