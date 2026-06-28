@@ -4,6 +4,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Topbar } from "@/components/topbar";
 import { Sidebar } from "@/components/sidebar";
+import { EmailVerifyBanner } from "@/components/EmailVerifyBanner";
 import { SidebarProvider } from "@/contexts/sidebar-context";
 import { AuthProvider } from "@/contexts/auth-context";
 import { ScrollToTop } from "@/components/scroll-to-top";
@@ -25,6 +26,7 @@ import ProfilePage from "@/pages/profile";
 import MangaPage from "@/pages/manga";
 import MangaDetail from "@/pages/manga-detail";
 import ResetPasswordPage from "@/pages/reset-password";
+import VerifyEmailPage from "@/pages/verify-email";
 import Dubbed from "@/pages/dubbed";
 
 const queryClient = new QueryClient();
@@ -50,6 +52,7 @@ function Router() {
       <Route path="/manga" component={MangaPage} />
       <Route path="/manga/al/:id" component={MangaDetail} />
       <Route path="/reset/:token" component={ResetPasswordPage} />
+      <Route path="/verify-email/:token" component={VerifyEmailPage} />
       <Route path="/dubbed" component={Dubbed} />
       <Route component={NotFound} />
     </Switch>
@@ -67,6 +70,7 @@ function App() {
               <Topbar />
               <Sidebar />
               <div className="pt-14">
+                <EmailVerifyBanner />
                 <Router />
               </div>
             </SidebarProvider>

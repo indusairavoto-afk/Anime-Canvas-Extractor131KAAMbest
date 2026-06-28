@@ -103,8 +103,7 @@ router.get("/auth/verify-email/:token", async (req, res) => {
     await db.update(userTable).set({ emailVerified: true }).where(eq(userTable.id, record.userId));
     await db.update(emailVerificationTable).set({ usedAt: new Date() }).where(eq(emailVerificationTable.id, record.id));
 
-    // Redirect to frontend with success flag
-    res.redirect(`${getBaseUrl(req)}/login?verified=1`);
+    res.json({ ok: true });
   } catch (err) {
     req.log.error(err);
     res.status(500).json({ error: "Internal server error" });

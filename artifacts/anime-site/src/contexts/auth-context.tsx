@@ -8,6 +8,7 @@ export interface AuthUser {
   email: string;
   bio: string | null;
   avatarUrl: string;
+  emailVerified: boolean;
   createdAt: string;
 }
 
