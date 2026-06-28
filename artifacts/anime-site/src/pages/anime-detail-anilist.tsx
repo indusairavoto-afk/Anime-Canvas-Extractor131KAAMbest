@@ -161,6 +161,7 @@ export default function AnimeDetailAniList() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [trailerFailed, setTrailerFailed] = useState(false);
+  const [showBannerOverlay, setShowBannerOverlay] = useState(true);
 
   const [selectedRating, setSelectedRating] = useState<RatingOption | null>(null);
   const [reviewText, setReviewText] = useState("");
@@ -259,6 +260,7 @@ export default function AnimeDetailAniList() {
     if (!anilistId) return;
     setLoading(true);
     setError(false);
+    setShowBannerOverlay(true);
     fetch(apiUrl("/api/anilist"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -271,6 +273,12 @@ export default function AnimeDetailAniList() {
       })
       .catch(() => setError(true))
       .finally(() => setLoading(false));
+  }, [anilistId]);
+
+  useEffect(() => {
+    if (!showBannerOverlay) return;
+    const timer = setTimeout(() => setShowBannerOverlay(false), 5000);
+    return () => clearTimeout(timer);
   }, [anilistId]);
 
   if (loading) {
@@ -333,7 +341,6 @@ export default function AnimeDetailAniList() {
                   top: "50%",
                   left: "50%",
                   transform: "translate(-50%, -50%)",
-                  /* Oversized so YouTube UI at edges is clipped by overflow:hidden */
                   width: "max(177.78vh, 140%)",
                   height: "max(56.25vw, 140%)",
                   minWidth: "140%",
@@ -342,12 +349,29 @@ export default function AnimeDetailAniList() {
                   filter: "brightness(0.52) contrast(1.08) saturate(1.1)",
                 }}
               />
-              {/* Transparent blocker: sits above the iframe, intercepts any
-                  mouse events so YouTube never receives hover → controls stay hidden */}
+              {/* Transparent blocker */}
               <div className="absolute inset-0 z-[1]" style={{ pointerEvents: "auto", background: "transparent" }} />
             </div>
 
-            {/* Upcoming badge — only for upcoming status */}
+            {/* Banner image overlay — shown for 5 s then fades to reveal video */}
+            {(anime.bannerImage || cover) && (
+              <motion.div
+                className="absolute inset-0 z-[2]"
+                initial={{ opacity: 1 }}
+                animate={{ opacity: showBannerOverlay ? 1 : 0 }}
+                transition={{ duration: 1.2, ease: "easeInOut" }}
+                style={{ pointerEvents: "none" }}
+              >
+                <img
+                  src={anime.bannerImage || cover}
+                  alt={title}
+                  className="absolute inset-0 w-full h-full object-cover"
+                  style={{ filter: "brightness(0.62) contrast(1.05)" }}
+                />
+              </motion.div>
+            )}
+
+            {/* Upcoming badge */}
             {isUpcoming && (
               <div className="absolute top-20 right-4 sm:right-8 lg:right-16 z-10">
                 <span className="flex items-center gap-1.5 bg-white/10 backdrop-blur border border-white/20 text-white text-[10px] font-mono uppercase tracking-widest px-3 py-1.5 rounded-full">
