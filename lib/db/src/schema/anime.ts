@@ -106,6 +106,15 @@ export const passwordResetTable = pgTable("password_reset", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+export const magicCodeTable = pgTable("magic_code", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => userTable.id, { onDelete: "cascade" }),
+  code: text("code").notNull().unique(),
+  expiresAt: timestamp("expires_at").notNull(),
+  usedAt: timestamp("used_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 export const reviewReplyTable = pgTable("review_reply", {
   id: serial("id").primaryKey(),
   reviewId: integer("review_id").notNull(),

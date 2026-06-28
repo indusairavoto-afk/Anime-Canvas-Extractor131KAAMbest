@@ -2,7 +2,7 @@ import { Router } from "express";
 import bcrypt from "bcryptjs";
 import crypto from "node:crypto";
 import { db } from "@workspace/db";
-import { userTable, passwordResetTable } from "@workspace/db/schema";
+import { userTable, passwordResetTable, magicCodeTable } from "@workspace/db/schema";
 import { eq, or, and, gt, isNull } from "drizzle-orm";
 import { authLimiter } from "../lib/rate-limiters";
 
@@ -148,6 +148,64 @@ router.post("/auth/login", authLimiter, async (req, res) => {
       return;
     }
     res.json(toPublicUser(row));
+  } catch (err) {
+    req.log.error(err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── Magic Code (passwordless login) ────────────────────────────────────────
+
+router.post("/auth/magic-code/request", authLimiter, async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) { res.status(400).json({ error: "email is required" }); return; }
+
+    const [user] = await db.select().from(userTable)
+      .where(eq(userTable.email, email.trim().toLowerCase())).limit(1);
+    if (!user) {
+      res.status(404).json({ error: "No account found with that email" });
+      return;
+    }
+
+    // Generate a 8-char uppercase alphanumeric code
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    const bytes = crypto.randomBytes(8);
+    const code = Array.from(bytes).map(b => chars[b % chars.length]).join("");
+
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+    await db.insert(magicCodeTable).values({ userId: user.id, code, expiresAt });
+
+    res.json({ code, expiresAt: expiresAt.toISOString() });
+  } catch (err) {
+    req.log.error(err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/auth/magic-code/verify", authLimiter, async (req, res) => {
+  try {
+    const { code } = req.body;
+    if (!code) { res.status(400).json({ error: "code is required" }); return; }
+
+    const [record] = await db.select().from(magicCodeTable)
+      .where(and(
+        eq(magicCodeTable.code, code.trim().toUpperCase()),
+        isNull(magicCodeTable.usedAt),
+        gt(magicCodeTable.expiresAt, new Date()),
+      )).limit(1);
+
+    if (!record) {
+      res.status(400).json({ error: "Invalid or expired code" });
+      return;
+    }
+
+    await db.update(magicCodeTable).set({ usedAt: new Date() }).where(eq(magicCodeTable.id, record.id));
+
+    const [user] = await db.select().from(userTable).where(eq(userTable.id, record.userId)).limit(1);
+    if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+    res.json(toPublicUser(user));
   } catch (err) {
     req.log.error(err);
     res.status(500).json({ error: "Internal server error" });
