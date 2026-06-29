@@ -10,12 +10,32 @@ if (!process.env.DATABASE_URL) {
   );
 }
 
+// Determine SSL config from the URL itself rather than guessing from NODE_ENV.
+// - If the URL already has sslmode=disable → no SSL.
+// - If the URL has sslmode=require / render.com / supabase → SSL without cert validation.
+// - If NODE_ENV is production and no explicit mode → SSL without cert validation (safe default).
+// - Otherwise (local dev) → no SSL.
+function getSsl(url: string): boolean | { rejectUnauthorized: boolean } {
+  if (url.includes("sslmode=disable")) return false;
+  if (
+    url.includes("sslmode=require") ||
+    url.includes("sslmode=no-verify") ||
+    url.includes(".render.com") ||
+    url.includes("supabase")
+  ) {
+    return { rejectUnauthorized: false };
+  }
+  if (process.env.NODE_ENV === "production") {
+    return { rejectUnauthorized: false };
+  }
+  return false;
+}
+
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === "production"
-    ? { rejectUnauthorized: false }
-    : false,
+  ssl: getSsl(process.env.DATABASE_URL),
 });
+
 export const db = drizzle(pool, { schema });
 
 export * from "./schema";
