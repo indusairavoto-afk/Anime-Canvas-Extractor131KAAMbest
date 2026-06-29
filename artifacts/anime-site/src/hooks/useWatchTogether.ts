@@ -86,6 +86,7 @@ export function useWatchTogether(opts: UseWatchTogetherOptions) {
   const [joinNotice, setJoinNotice] = useState<{ name: string; color: string } | null>(null);
   const [leftNotice, setLeftNotice] = useState<{ name: string; color: string } | null>(null);
   const [syncNotice, setSyncNotice] = useState<string | null>(null);
+  const [syncRequest, setSyncRequest] = useState<{ from: string; name: string; color: string } | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
   const userRef = useRef(authUser ? buildUser(authUser) : { id: "", name: "", color: "" });
@@ -159,6 +160,9 @@ export function useWatchTogether(opts: UseWatchTogetherOptions) {
             })();
         setSyncNotice(senderName);
         setTimeout(() => setSyncNotice(null), 2500);
+      } else if (msg.type === "sync_requested") {
+        setSyncRequest({ from: msg.from as string, name: msg.name as string, color: msg.color as string });
+        setTimeout(() => setSyncRequest(null), 7000);
       } else if (msg.type === "chat") {
         setChat((prev) => [...prev.slice(-99), msg as unknown as WTChatMsg]);
       }
@@ -219,6 +223,10 @@ export function useWatchTogether(opts: UseWatchTogetherOptions) {
     wsSend({ type: "sync", time });
   }, [wsSend]);
 
+  const sendSyncRequest = useCallback(() => {
+    wsSend({ type: "sync_request" });
+  }, [wsSend]);
+
   const sendChat = useCallback((text: string) => {
     wsSend({ type: "chat", text });
   }, [wsSend]);
@@ -257,6 +265,7 @@ export function useWatchTogether(opts: UseWatchTogetherOptions) {
     joinNotice,
     leftNotice,
     syncNotice,
+    syncRequest,
     createRoom,
     joinRoom,
     leaveRoom,
@@ -264,6 +273,7 @@ export function useWatchTogether(opts: UseWatchTogetherOptions) {
     sendPause,
     sendSeek,
     sendSync,
+    sendSyncRequest,
     sendChat,
     setUserName,
   };

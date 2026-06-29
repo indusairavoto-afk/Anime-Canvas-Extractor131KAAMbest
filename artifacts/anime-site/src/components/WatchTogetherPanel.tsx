@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Users, X, Copy, Check, Send, Crown, LogOut, Link2, ChevronDown, ChevronUp, Radio, LogIn } from "lucide-react";
+import { Users, X, Copy, Check, Send, Crown, LogOut, Link2, ChevronDown, ChevronUp, Radio, LogIn, Bell } from "lucide-react";
 import { Link } from "wouter";
 import type { WTMember, WTChatMsg, WTStatus } from "@/hooks/useWatchTogether";
 
@@ -15,11 +15,13 @@ interface Props {
   joinNotice: { name: string; color: string } | null;
   leftNotice: { name: string; color: string } | null;
   syncNotice: string | null;
+  syncRequest: { from: string; name: string; color: string } | null;
   onCreateRoom: () => void;
   onJoinRoom: (id: string) => void;
   onLeave: () => void;
   onSendChat: (text: string) => void;
   onSyncNow: () => void;
+  onRequestSync: () => void;
 }
 
 function Avatar({ member, size = 28 }: { member: WTMember; size?: number }) {
@@ -33,6 +35,30 @@ function Avatar({ member, size = 28 }: { member: WTMember; size?: number }) {
         <Crown className="absolute -top-1.5 -right-1 text-yellow-400 drop-shadow" style={{ width: 11, height: 11 }} />
       )}
     </div>
+  );
+}
+
+function RequestSyncButton({ onRequestSync }: { onRequestSync: () => void }) {
+  const [sent, setSent] = useState(false);
+  const handle = () => {
+    if (sent) return;
+    onRequestSync();
+    setSent(true);
+    setTimeout(() => setSent(false), 4000);
+  };
+  return (
+    <button
+      onClick={handle}
+      disabled={sent}
+      className={`w-full flex items-center justify-center gap-2 py-2 rounded-xl border text-[12px] font-semibold transition-all ${
+        sent
+          ? "bg-green-500/10 border-green-500/20 text-green-400 cursor-default"
+          : "bg-white/5 border-white/10 text-white/50 hover:bg-amber-500/10 hover:border-amber-500/20 hover:text-amber-300"
+      }`}
+    >
+      <Bell className="w-3.5 h-3.5" />
+      {sent ? "Sync request sent!" : "Request Sync from host"}
+    </button>
   );
 }
 
@@ -60,7 +86,7 @@ function RoomLink({ roomId }: { roomId: string }) {
 
 export function WatchTogetherPanel({
   status, roomId, members, chat, isHost, isLoggedIn, user, joinNotice, leftNotice, syncNotice,
-  onCreateRoom, onJoinRoom, onLeave, onSendChat, onSyncNow,
+  syncRequest, onCreateRoom, onJoinRoom, onLeave, onSendChat, onSyncNow, onRequestSync,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [joinInput, setJoinInput] = useState("");
@@ -309,15 +335,54 @@ export function WatchTogetherPanel({
                     </p>
                   </div>
 
-                  {/* Sync Now */}
-                  <div className="px-3 pb-2">
-                    <button
-                      onClick={onSyncNow}
-                      className="w-full flex items-center justify-center gap-2 py-2 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-300 text-[12px] font-semibold hover:bg-blue-500/20 hover:border-blue-400/30 transition-colors"
-                    >
-                      <Radio className="w-3.5 h-3.5" />
-                      Sync Now — pull everyone to my timestamp
-                    </button>
+                  {/* Sync controls — host vs non-host */}
+                  <div className="px-3 pb-2 flex flex-col gap-2">
+                    {isHost ? (
+                      <>
+                        {/* Host: sync request alert */}
+                        <AnimatePresence>
+                          {syncRequest && (
+                            <motion.div
+                              key="sync-req-banner"
+                              initial={{ opacity: 0, scale: 0.95, y: -4 }}
+                              animate={{ opacity: 1, scale: 1, y: 0 }}
+                              exit={{ opacity: 0, scale: 0.95, y: -4 }}
+                              transition={{ type: "spring", stiffness: 360, damping: 28 }}
+                              className="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/25"
+                            >
+                              <span
+                                className="w-6 h-6 rounded-full shrink-0 flex items-center justify-center text-[10px] font-bold text-black"
+                                style={{ background: syncRequest.color }}
+                              >
+                                {syncRequest.name[0].toUpperCase()}
+                              </span>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-[11px] text-amber-200/90 font-semibold leading-tight truncate">
+                                  {syncRequest.name}
+                                </p>
+                                <p className="text-[10px] text-amber-300/60 leading-tight">is asking you to sync</p>
+                              </div>
+                              <button
+                                onClick={() => { onSyncNow(); }}
+                                className="shrink-0 px-2.5 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/35 border border-amber-500/30 text-amber-300 text-[11px] font-bold transition-colors"
+                              >
+                                Sync
+                              </button>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                        {/* Host: standard sync now */}
+                        <button
+                          onClick={onSyncNow}
+                          className="w-full flex items-center justify-center gap-2 py-2 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-300 text-[12px] font-semibold hover:bg-blue-500/20 hover:border-blue-400/30 transition-colors"
+                        >
+                          <Radio className="w-3.5 h-3.5" />
+                          Sync Now — pull everyone to my time
+                        </button>
+                      </>
+                    ) : (
+                      <RequestSyncButton onRequestSync={onRequestSync} />
+                    )}
                   </div>
 
                   {/* Members list */}

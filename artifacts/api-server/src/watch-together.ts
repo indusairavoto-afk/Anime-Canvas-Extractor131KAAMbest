@@ -31,6 +31,7 @@ type ClientMsg =
   | { type: "pause"; time: number }
   | { type: "seek"; time: number }
   | { type: "sync"; time: number }
+  | { type: "sync_request" }
   | { type: "chat"; text: string }
   | { type: "ping" };
 
@@ -199,6 +200,24 @@ export function attachWatchTogether(server: Server) {
         currentRoom.updatedAt = Date.now();
         // Broadcast to ALL members including the sender so everyone seeks
         broadcastAll(currentRoom, { type: "sync", from: currentUserId, time: msg.time });
+        return;
+      }
+
+      if (msg.type === "sync_request") {
+        const member = currentRoom.members.get(currentUserId);
+        if (!member || currentRoom.hostId === currentUserId) return; // host can't request from themselves
+        // Send the request only to the host
+        if (currentRoom.hostId) {
+          const hostSocket = currentRoom.sockets.get(currentRoom.hostId);
+          if (hostSocket?.readyState === WebSocket.OPEN) {
+            hostSocket.send(JSON.stringify({
+              type: "sync_requested",
+              from: currentUserId,
+              name: member.name,
+              color: member.color,
+            }));
+          }
+        }
         return;
       }
 

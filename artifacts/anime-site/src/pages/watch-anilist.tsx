@@ -3013,11 +3013,13 @@ export default function WatchAniList() {
                 joinNotice={wt.joinNotice}
                 leftNotice={wt.leftNotice}
                 syncNotice={wt.syncNotice}
+                syncRequest={wt.syncRequest}
                 onCreateRoom={wt.createRoom}
                 onJoinRoom={wt.joinRoom}
                 onLeave={wt.leaveRoom}
                 onSendChat={wt.sendChat}
                 onSyncNow={() => wt.sendSync(playerTimeRef.current)}
+                onRequestSync={wt.sendSyncRequest}
               />
             </div>
             <div className="flex items-center gap-1.5">
