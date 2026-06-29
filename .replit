@@ -72,6 +72,3 @@ channel = "stable-25_05"
 [userenv]
 
 [userenv.shared]
-GMAIL_USER = "indusairavoto@gmail.com"
-GMAIL_APP_PASSWORD = "zrgl azjr zucb xcro"
-OPENROUTER_API_KEY = "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"
