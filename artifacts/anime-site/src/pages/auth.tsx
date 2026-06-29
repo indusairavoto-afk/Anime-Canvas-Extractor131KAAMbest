@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
-import { Eye, EyeOff, Check, ArrowLeft, AlertCircle, Loader2, Zap, RefreshCw } from "lucide-react";
+import { Eye, EyeOff, Check, ArrowLeft, AlertCircle, Loader2, Zap, RefreshCw, ShieldAlert } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { apiUrl } from "@/lib/api";
 import nexaLogo from "/favicon.png";
@@ -243,7 +243,7 @@ function MagicCodePanel({ onSuccess }: { onSuccess: (user: unknown) => void }) {
 
 // ── Main Auth Page ──────────────────────────────────────────────────────────
 
-type AuthTab = "login" | "register" | "magic";
+type AuthTab = "login" | "register" | "magic" | "recover";
 
 export default function AuthPage() {
   const [tab, setTab] = useState<AuthTab>("login");
@@ -272,6 +272,35 @@ export default function AuthPage() {
   const [showConfirmPw, setShowConfirmPw] = useState(false);
   const [backupCode, setBackupCode] = useState<string | null>(null);
   const [pendingNav, setPendingNav] = useState<string | null>(null);
+
+  const [recoverIdentifier, setRecoverIdentifier] = useState("");
+  const [recoverCode, setRecoverCode] = useState("");
+  const [recoverError, setRecoverError] = useState("");
+  const [recoverLoading, setRecoverLoading] = useState(false);
+  const [newBackupCode, setNewBackupCode] = useState<string | null>(null);
+  const [recoveredUsername, setRecoveredUsername] = useState("");
+
+  async function handleRecover(e: React.FormEvent) {
+    e.preventDefault();
+    setRecoverError("");
+    setRecoverLoading(true);
+    try {
+      const res = await fetch(apiUrl("/api/auth/recover"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ emailOrUsername: recoverIdentifier.trim(), backupCode: recoverCode.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setRecoverError(data.error ?? "Recovery failed"); return; }
+      loginWithUser(data);
+      setRecoveredUsername(data.username ?? "");
+      setNewBackupCode(data.newBackupCode ?? null);
+    } catch {
+      setRecoverError("Network error — try again");
+    } finally {
+      setRecoverLoading(false);
+    }
+  }
 
   async function handleForgot(e: React.FormEvent) {
     e.preventDefault();
@@ -332,6 +361,7 @@ export default function AuthPage() {
     { key: "login", label: "Sign In" },
     { key: "magic", label: "⚡ Code" },
     { key: "register", label: "Sign Up" },
+    { key: "recover", label: "🔑 Recover" },
   ];
 
   return (
@@ -347,7 +377,7 @@ export default function AuthPage() {
           <img src={nexaLogo} alt="Nexa Anime" className="w-12 h-12 mx-auto mb-3 drop-shadow-lg" />
           <h1 className="text-white font-semibold text-lg tracking-wide">Nexa Anime</h1>
           <p className="text-white/30 text-sm mt-1">
-            {tab === "login" ? "Welcome back" : tab === "magic" ? "Passwordless sign in" : "Join the community"}
+            {tab === "login" ? "Welcome back" : tab === "magic" ? "Passwordless sign in" : tab === "recover" ? "Recover your account" : "Join the community"}
           </p>
         </motion.div>
 
@@ -450,6 +480,56 @@ export default function AuthPage() {
               </motion.div>
             )}
 
+            {/* ── RECOVER ACCOUNT ── */}
+            {tab === "recover" && (
+              <motion.form key="recover" initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -12 }} transition={{ duration: 0.2 }} onSubmit={handleRecover} className="space-y-4">
+                <div className="bg-amber-500/5 border border-amber-500/15 rounded-xl px-4 py-3 flex gap-3 items-start">
+                  <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                  <p className="text-amber-200/70 text-xs leading-relaxed">
+                    Enter your email or username and the backup code you downloaded when you signed up. A new backup code will be generated — save it immediately.
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-[11px] text-white/40 mb-1.5 uppercase tracking-widest font-mono">Email or Username</label>
+                  <input
+                    type="text"
+                    value={recoverIdentifier}
+                    onChange={e => setRecoverIdentifier(e.target.value)}
+                    placeholder="you@example.com or @handle"
+                    required
+                    autoFocus
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] text-white/40 mb-1.5 uppercase tracking-widest font-mono">Backup Code</label>
+                  <input
+                    type="text"
+                    value={recoverCode}
+                    onChange={e => setRecoverCode(e.target.value.toUpperCase())}
+                    placeholder="XXXXX-XXXXX-XXXXX-XXXXX"
+                    required
+                    autoComplete="off"
+                    spellCheck={false}
+                    className={`${inputClass} font-mono tracking-widest`}
+                  />
+                </div>
+                <AnimatePresence>
+                  {recoverError && (
+                    <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
+                      className="flex items-center gap-2 text-red-400 text-sm bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2.5">
+                      <AlertCircle className="w-4 h-4 shrink-0" />{recoverError}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+                <button type="submit" disabled={recoverLoading}
+                  className="w-full bg-white text-black font-semibold py-3 rounded-xl text-sm hover:bg-white/90 active:scale-[0.99] transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+                  {recoverLoading ? <><Loader2 className="w-4 h-4 animate-spin" />Recovering…</> : <><ShieldAlert className="w-4 h-4" />Recover Account</>}
+                </button>
+                <p className="text-center text-sm text-white/30 pt-1">Remembered your password?{" "}<button type="button" onClick={() => setTab("login")} className="text-white/70 hover:text-white transition-colors underline underline-offset-2">Sign in</button></p>
+              </motion.form>
+            )}
+
             {/* ── SIGN UP ── */}
             {tab === "register" && (
               <motion.form key="register" initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -12 }} transition={{ duration: 0.2 }} onSubmit={handleRegister} className="space-y-4">
@@ -519,6 +599,17 @@ export default function AuthPage() {
           onClose={() => {
             setBackupCode(null);
             if (pendingNav) navigate(pendingNav);
+          }}
+        />
+      )}
+
+      {newBackupCode && (
+        <BackupCodeModal
+          code={newBackupCode}
+          username={recoveredUsername}
+          onClose={() => {
+            setNewBackupCode(null);
+            navigate(`/u/${recoveredUsername}`);
           }}
         />
       )}
