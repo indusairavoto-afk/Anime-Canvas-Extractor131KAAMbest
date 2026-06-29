@@ -19,13 +19,20 @@ function getBaseUrl(req: Request): string {
 }
 
 function toPublicUser(row: typeof userTable.$inferSelect) {
+  let avatarUrl: string;
+  if (row.avatarSeed.startsWith("lorelei:")) {
+    const seed = row.avatarSeed.slice("lorelei:".length);
+    avatarUrl = `https://api.dicebear.com/9.x/lorelei/svg?seed=${encodeURIComponent(seed)}&backgroundColor=transparent`;
+  } else {
+    avatarUrl = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(row.avatarSeed)}`;
+  }
   return {
     id: row.id,
     username: row.username,
     displayName: row.displayName,
     email: row.email,
     bio: row.bio ?? null,
-    avatarUrl: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(row.avatarSeed)}`,
+    avatarUrl,
     emailVerified: row.emailVerified,
     createdAt: row.createdAt.toISOString(),
   };
@@ -295,6 +302,32 @@ router.post("/auth/magic-code/verify", authLimiter, async (req, res) => {
     if (!user) { res.status(404).json({ error: "User not found" }); return; }
 
     res.json(toPublicUser(user));
+  } catch (err) {
+    req.log.error(err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.patch("/auth/avatar", async (req, res) => {
+  try {
+    const { userId, seed } = req.body as { userId?: unknown; seed?: unknown };
+    if (!userId || !seed || typeof seed !== "string") {
+      res.status(400).json({ error: "userId and seed are required" });
+      return;
+    }
+    if (!seed.startsWith("lorelei:") || seed.length <= "lorelei:".length) {
+      res.status(400).json({ error: "Invalid seed format" });
+      return;
+    }
+    const uid = Number(userId);
+    if (!Number.isInteger(uid) || uid <= 0) {
+      res.status(400).json({ error: "Invalid userId" });
+      return;
+    }
+    await db.update(userTable).set({ avatarSeed: seed }).where(eq(userTable.id, uid));
+    const [row] = await db.select().from(userTable).where(eq(userTable.id, uid)).limit(1);
+    if (!row) { res.status(404).json({ error: "User not found" }); return; }
+    res.json(toPublicUser(row));
   } catch (err) {
     req.log.error(err);
     res.status(500).json({ error: "Internal server error" });

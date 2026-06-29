@@ -83,7 +83,7 @@ export function useWatchTogether(opts: UseWatchTogetherOptions) {
   const [members, setMembers] = useState<WTMember[]>([]);
   const [chat, setChat] = useState<WTChatMsg[]>([]);
   const [hostId, setHostId] = useState<string | null>(null);
-  const [joinNotice, setJoinNotice] = useState<string | null>(null);
+  const [joinNotice, setJoinNotice] = useState<{ name: string; color: string } | null>(null);
   const [syncNotice, setSyncNotice] = useState<string | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
@@ -130,8 +130,8 @@ export function useWatchTogether(opts: UseWatchTogetherOptions) {
         setMembers((msg.members as WTMember[]) ?? []);
         const m = msg.member as WTMember;
         if (m.id !== userRef.current.id) {
-          setJoinNotice(`${m.name} joined`);
-          setTimeout(() => setJoinNotice(null), 3000);
+          setJoinNotice({ name: m.name, color: m.color });
+          setTimeout(() => setJoinNotice(null), 3500);
         }
       } else if (msg.type === "left") {
         setMembers((msg.members as WTMember[]) ?? []);

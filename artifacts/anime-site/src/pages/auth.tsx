@@ -6,6 +6,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { apiUrl } from "@/lib/api";
 import nexaLogo from "/favicon.png";
 import { BackupCodeModal } from "@/components/BackupCodeModal";
+import { AvatarPickerModal } from "@/components/AvatarPickerModal";
 
 function PasswordStrength({ password }: { password: string }) {
   const strength = useMemo(() => {
@@ -272,6 +273,8 @@ export default function AuthPage() {
   const [showConfirmPw, setShowConfirmPw] = useState(false);
   const [backupCode, setBackupCode] = useState<string | null>(null);
   const [pendingNav, setPendingNav] = useState<string | null>(null);
+  const [pendingUserId, setPendingUserId] = useState<number | null>(null);
+  const [showAvatarPicker, setShowAvatarPicker] = useState(false);
 
   const [recoverIdentifier, setRecoverIdentifier] = useState("");
   const [recoverCode, setRecoverCode] = useState("");
@@ -341,12 +344,15 @@ export default function AuthPage() {
     const { error, backupCode: code } = await register(regDisplay.trim(), regUsername.trim(), regEmail.trim(), regPassword);
     setRegLoading(false);
     if (error) { setRegError(error); return; }
+    const raw = localStorage.getItem("na_auth_user");
+    const uid: number | null = raw ? (JSON.parse(raw) as { id: number }).id ?? null : null;
+    setPendingUserId(uid);
     const dest = `/u/${regUsername.trim().toLowerCase().replace(/[^a-z0-9_]/g, "")}`;
+    setPendingNav(dest);
     if (code) {
       setBackupCode(code);
-      setPendingNav(dest);
     } else {
-      navigate(dest);
+      setShowAvatarPicker(true);
     }
   }
 
@@ -598,6 +604,21 @@ export default function AuthPage() {
           username={regUsername.trim().toLowerCase().replace(/[^a-z0-9_]/g, "")}
           onClose={() => {
             setBackupCode(null);
+            setShowAvatarPicker(true);
+          }}
+        />
+      )}
+
+      {showAvatarPicker && pendingUserId != null && (
+        <AvatarPickerModal
+          userId={pendingUserId}
+          onSave={(updatedUser) => {
+            loginWithUser(updatedUser);
+            setShowAvatarPicker(false);
+            if (pendingNav) navigate(pendingNav);
+          }}
+          onSkip={() => {
+            setShowAvatarPicker(false);
             if (pendingNav) navigate(pendingNav);
           }}
         />

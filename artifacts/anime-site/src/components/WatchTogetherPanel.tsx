@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Users, X, Copy, Check, Send, Crown, LogOut, Link2, ChevronDown, ChevronUp, Radio, LogIn } from "lucide-react";
 import { Link } from "wouter";
@@ -12,7 +12,7 @@ interface Props {
   isHost: boolean;
   isLoggedIn: boolean;
   user: { id: string; name: string; color: string };
-  joinNotice: string | null;
+  joinNotice: { name: string; color: string } | null;
   syncNotice: string | null;
   onCreateRoom: () => void;
   onJoinRoom: (id: string) => void;
@@ -76,6 +76,29 @@ export function WatchTogetherPanel({
     if (status === "connected") setOpen(true);
   }, [status]);
 
+  // Ping sound when someone joins
+  const playJoinSound = useCallback(() => {
+    try {
+      const ctx = new AudioContext();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(880, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(660, ctx.currentTime + 0.15);
+      gain.gain.setValueAtTime(0.07, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.55);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.55);
+      osc.onended = () => ctx.close();
+    } catch { /* ignore — unsupported or autoplay policy */ }
+  }, []);
+
+  useEffect(() => {
+    if (joinNotice) playJoinSound();
+  }, [joinNotice, playJoinSound]);
+
   const handleSendChat = () => {
     const t = chatInput.trim();
     if (!t) return;
@@ -93,12 +116,21 @@ export function WatchTogetherPanel({
         {joinNotice && (
           <motion.div
             key="join-notice"
-            initial={{ opacity: 0, y: -12 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -12 }}
-            className="fixed top-16 left-1/2 -translate-x-1/2 z-[100] px-4 py-2 rounded-full bg-white/10 backdrop-blur-xl border border-white/15 text-sm text-white font-medium shadow-xl pointer-events-none"
+            initial={{ opacity: 0, y: -16, scale: 0.92 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -12, scale: 0.95 }}
+            transition={{ type: "spring", stiffness: 340, damping: 26 }}
+            className="fixed top-16 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-2.5 px-4 py-2.5 rounded-full bg-[#1a1a1a]/90 backdrop-blur-xl border border-white/12 text-sm text-white font-medium shadow-2xl pointer-events-none"
           >
-            👋 {joinNotice}
+            <span
+              className="w-5 h-5 rounded-full shrink-0 flex items-center justify-center text-[10px] font-bold text-black"
+              style={{ background: joinNotice.color }}
+            >
+              {joinNotice.name[0].toUpperCase()}
+            </span>
+            <span className="text-white/80">
+              <span className="text-white font-semibold">{joinNotice.name}</span> joined the room
+            </span>
           </motion.div>
         )}
       </AnimatePresence>
