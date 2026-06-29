@@ -1,0 +1,57 @@
+2026-06-29T06:20:14.044476624Z ==> Downloaded 134MB in 3s. Extraction took 6s.
+2026-06-29T06:20:24.61183631Z ==> Using Node.js version 24.14.1 (default)
+2026-06-29T06:20:24.611849431Z ==> Docs on specifying a Node.js version: https://render.com/docs/node-version
+2026-06-29T06:20:24.656776179Z ==> Running build command 'npx --yes pnpm@10 install --frozen-lockfile && npx --yes pnpm@10 --filter @workspace/anime-site run build && npx --yes pnpm@10 --filter @workspace/api-server run build'...
+2026-06-29T06:20:28.138915892Z 
+2026-06-29T06:20:28.138946764Z > @workspace/anime-site@0.0.0 build /opt/render/project/src/artifacts/anime-site
+2026-06-29T06:20:28.138976395Z > vite build --config vite.config.ts
+2026-06-29T06:20:28.138980925Z 
+2026-06-29T06:20:28.512948164Z vite v7.3.3 building client environment for production...
+2026-06-29T06:20:28.585378455Z transforming...
+2026-06-29T06:20:29.083588125Z src/components/ui/tooltip.tsx (2:0): Error when using sourcemap for reporting an error: Can't resolve original location of error.
+2026-06-29T06:20:33.038240522Z ✓ 2209 modules transformed.
+2026-06-29T06:20:33.58729479Z rendering chunks...
+2026-06-29T06:20:33.60425198Z computing gzip size...
+2026-06-29T06:20:33.64274398Z dist/index.html                     1.59 kB │ gzip:   0.58 kB
+2026-06-29T06:20:33.642788133Z dist/assets/index-bafjWXFn.css    190.23 kB │ gzip:  26.95 kB
+2026-06-29T06:20:33.642813354Z dist/assets/index-BxADFv7e.js   1,432.08 kB │ gzip: 411.05 kB
+2026-06-29T06:20:33.642875967Z 
+2026-06-29T06:20:33.642887638Z (!) Some chunks are larger than 500 kB after minification. Consider:
+2026-06-29T06:20:33.642893718Z - Using dynamic import() to code-split the application
+2026-06-29T06:20:33.642900299Z - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+2026-06-29T06:20:33.642906459Z - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+2026-06-29T06:20:33.643127291Z ✓ built in 5.10s
+2026-06-29T06:20:34.65442231Z 
+2026-06-29T06:20:34.654451532Z > @workspace/api-server@0.0.0 build /opt/render/project/src/artifacts/api-server
+2026-06-29T06:20:34.654457102Z > node ./build.mjs
+2026-06-29T06:20:34.654461113Z 
+2026-06-29T06:20:35.190646976Z 
+2026-06-29T06:20:35.190673847Z   dist/index.mjs                       2.7mb ⚠️
+2026-06-29T06:20:35.190679337Z   dist/pino-worker.mjs               153.4kb
+2026-06-29T06:20:35.190683677Z   dist/pino-file.mjs                 142.1kb
+2026-06-29T06:20:35.190687478Z   dist/pino-pretty.mjs               114.6kb
+2026-06-29T06:20:35.190691308Z   dist/thread-stream-worker.mjs        7.3kb
+2026-06-29T06:20:35.190695108Z   dist/index.mjs.map                   4.6mb
+2026-06-29T06:20:35.190698868Z   dist/pino-worker.mjs.map           256.9kb
+2026-06-29T06:20:35.190702708Z   dist/pino-file.mjs.map             229.0kb
+2026-06-29T06:20:35.190706808Z   dist/pino-pretty.mjs.map           204.0kb
+2026-06-29T06:20:35.190710669Z   dist/thread-stream-worker.mjs.map   12.0kb
+2026-06-29T06:20:35.190714359Z 
+2026-06-29T06:20:35.190718879Z ⚡ Done in 481ms
+2026-06-29T06:20:36.501603514Z ==> Uploading build...
+2026-06-29T06:20:49.330394138Z ==> Uploaded in 8.7s. Compression took 4.1s
+2026-06-29T06:20:49.417557083Z ==> Build successful 🎉
+2026-06-29T06:20:52.312100146Z ==> Deploying...
+2026-06-29T06:20:52.384393884Z ==> Setting WEB_CONCURRENCY=1 by default, based on available CPUs in the instance
+2026-06-29T06:21:20.751588223Z ==> Running 'node artifacts/api-server/dist/index.mjs'
+2026-06-29T06:21:22.94640711Z {"level":30,"time":1782714082857,"pid":70,"hostname":"srv-d8mjr5btqb8s73c6c7g0-hibernate-7d4f954df7-h4j7s","msg":"watch-together WebSocket attached"}
+2026-06-29T06:21:22.958013203Z {"level":30,"time":1782714082947,"pid":70,"hostname":"srv-d8mjr5btqb8s73c6c7g0-hibernate-7d4f954df7-h4j7s","port":10000,"msg":"Server listening"}
+2026-06-29T06:21:23.048440385Z {"level":40,"time":1782714083047,"pid":70,"hostname":"srv-d8mjr5btqb8s73c6c7g0-hibernate-7d4f954df7-h4j7s","err":{"type":"_DrizzleQueryError","message":"Failed query: select count(*) from \"anime\"\nparams: : getaddrinfo ENOTFOUND dpg-d8mj86m7r5hc739rsbd0-a","stack":"Error: Failed query: select count(*) from \"anime\"\nparams: \n    at NodePgPreparedQuery.queryWithCache (file:///opt/render/project/src/artifacts/api-server/dist/index.mjs:50018:15)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async file:///opt/render/project/src/artifacts/api-server/dist/index.mjs:50251:22\n    at async runAndSchedule (file:///opt/render/project/src/artifacts/api-server/dist/index.mjs:70657:21)\ncaused by: Error: getaddrinfo ENOTFOUND dpg-d8mj86m7r5hc739rsbd0-a\n    at file:///opt/render/project/src/artifacts/api-server/dist/index.mjs:32702:15\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async file:///opt/render/project/src/artifacts/api-server/dist/index.mjs:50258:18\n    at async NodePgPreparedQuery.queryWithCache (file:///opt/render/project/src/artifacts/api-server/dist/index.mjs:50016:16)\n    at async file:///opt/render/project/src/artifacts/api-server/dist/index.mjs:50251:22\n    at async runAndSchedule (file:///opt/render/project/src/artifacts/api-server/dist/index.mjs:70657:21)","query":"select count(*) from \"anime\"","params":[]},"msg":"AniList auto-sync: initial check failed"}
+2026-06-29T06:21:23.581318304Z {"level":30,"time":1782714083580,"pid":70,"hostname":"srv-d8mjr5btqb8s73c6c7g0-hibernate-7d4f954df7-h4j7s","req":{"id":1,"method":"HEAD","url":"/"},"res":{"statusCode":200},"responseTime":7,"msg":"request completed"}
+2026-06-29T06:21:33.555499786Z ==> Your service is live 🎉
+2026-06-29T06:21:33.620354096Z ==> 
+2026-06-29T06:21:33.623158994Z ==> ///////////////////////////////////////////////////////////
+2026-06-29T06:21:33.626129735Z ==> 
+2026-06-29T06:21:33.629228539Z ==> Available at your primary URL https://nnanime-mxkt.onrender.com
+2026-06-29T06:21:33.63318068Z ==> 
+2026-06-29T06:21:33.636119Z ==> ///////////////////////////////////////////////////////////
