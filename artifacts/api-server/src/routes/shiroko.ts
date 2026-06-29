@@ -34,6 +34,18 @@ router.all("/shiroko/pass/*path", async (req, res) => {
 
   try {
     const isPost = req.method === "POST" || req.method === "PUT" || req.method === "PATCH";
+
+    let bodyInit: BodyInit | undefined;
+    if (isPost) {
+      if (Buffer.isBuffer(req.body)) {
+        bodyInit = req.body;
+      } else if (typeof req.body === "string") {
+        bodyInit = req.body;
+      } else if (req.body !== undefined && req.body !== null) {
+        bodyInit = JSON.stringify(req.body);
+      }
+    }
+
     const upstream = await fetch(upstreamUrl, {
       method: req.method,
       headers: {
@@ -43,7 +55,7 @@ router.all("/shiroko/pass/*path", async (req, res) => {
         ...(req.headers["cookie"] ? { Cookie: req.headers["cookie"] as string } : {}),
         ...(req.headers["authorization"] ? { Authorization: req.headers["authorization"] as string } : {}),
       },
-      body: isPost ? req : undefined,
+      body: bodyInit,
       redirect: "follow",
       signal: AbortSignal.timeout(15000),
     });
