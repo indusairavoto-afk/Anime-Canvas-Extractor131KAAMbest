@@ -2202,6 +2202,7 @@ export default function WatchAniList() {
                     syncCommand={wtSyncCmd}
                     onPlayStateChange={(playing, time) => playing ? wt.sendPlay(time) : wt.sendPause(time)}
                     onSeek={(t) => wt.sendSeek(t)}
+                    onBuffering={wt.sendBuffering}
                     onTimeUpdate={(t) => { playerTimeRef.current = t; }}
                   />
                 )}
@@ -2232,6 +2233,7 @@ export default function WatchAniList() {
                     syncCommand={wtSyncCmd}
                     onPlayStateChange={(playing, time) => playing ? wt.sendPlay(time) : wt.sendPause(time)}
                     onSeek={(t) => wt.sendSeek(t)}
+                    onBuffering={wt.sendBuffering}
                     onTimeUpdate={(t) => { playerTimeRef.current = t; }}
                   />
                 )}
@@ -2262,6 +2264,7 @@ export default function WatchAniList() {
                     syncCommand={wtSyncCmd}
                     onPlayStateChange={(playing, time) => playing ? wt.sendPlay(time) : wt.sendPause(time)}
                     onSeek={(t) => wt.sendSeek(t)}
+                    onBuffering={wt.sendBuffering}
                     onTimeUpdate={(t) => { playerTimeRef.current = t; }}
                   />
                 )}
@@ -2293,6 +2296,10 @@ export default function WatchAniList() {
                     key={`gogo-hls-${animeId}-${currentEp}-${gogoHlsUrl}`}
                     hlsUrl={gogoHlsUrl}
                     syncCommand={wtSyncCmd}
+                    onPlayStateChange={(playing, time) => playing ? wt.sendPlay(time) : wt.sendPause(time)}
+                    onSeek={(t) => wt.sendSeek(t)}
+                    onBuffering={wt.sendBuffering}
+                    onTimeUpdate={(t) => { playerTimeRef.current = t; }}
                   />
                 )}
 
@@ -3014,6 +3021,7 @@ export default function WatchAniList() {
                 leftNotice={wt.leftNotice}
                 syncNotice={wt.syncNotice}
                 syncRequest={wt.syncRequest}
+                bufferingMembers={wt.bufferingMembers}
                 onCreateRoom={wt.createRoom}
                 onJoinRoom={wt.joinRoom}
                 onLeave={wt.leaveRoom}

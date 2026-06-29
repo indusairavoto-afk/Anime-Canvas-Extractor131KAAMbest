@@ -87,6 +87,7 @@ export function useWatchTogether(opts: UseWatchTogetherOptions) {
   const [leftNotice, setLeftNotice] = useState<{ name: string; color: string } | null>(null);
   const [syncNotice, setSyncNotice] = useState<string | null>(null);
   const [syncRequest, setSyncRequest] = useState<{ from: string; name: string; color: string } | null>(null);
+  const [bufferingMembers, setBufferingMembers] = useState<Set<string>>(new Set());
 
   const wsRef = useRef<WebSocket | null>(null);
   const userRef = useRef(authUser ? buildUser(authUser) : { id: "", name: "", color: "" });
@@ -168,6 +169,14 @@ export function useWatchTogether(opts: UseWatchTogetherOptions) {
       } else if (msg.type === "sync_requested") {
         setSyncRequest({ from: msg.from as string, name: msg.name as string, color: msg.color as string });
         setTimeout(() => setSyncRequest(null), 7000);
+      } else if (msg.type === "member_buffering") {
+        const uid = msg.userId as string;
+        const isBuf = msg.isBuffering as boolean;
+        setBufferingMembers(prev => {
+          const next = new Set(prev);
+          if (isBuf) next.add(uid); else next.delete(uid);
+          return next;
+        });
       } else if (msg.type === "chat") {
         setChat((prev) => [...prev.slice(-99), msg as unknown as WTChatMsg]);
       }
@@ -232,6 +241,10 @@ export function useWatchTogether(opts: UseWatchTogetherOptions) {
     wsSend({ type: "sync_request" });
   }, [wsSend]);
 
+  const sendBuffering = useCallback((isBuffering: boolean) => {
+    wsSend({ type: "buffering", isBuffering });
+  }, [wsSend]);
+
   const sendChat = useCallback((text: string) => {
     wsSend({ type: "chat", text });
   }, [wsSend]);
@@ -271,6 +284,7 @@ export function useWatchTogether(opts: UseWatchTogetherOptions) {
     leftNotice,
     syncNotice,
     syncRequest,
+    bufferingMembers,
     createRoom,
     joinRoom,
     leaveRoom,
@@ -279,6 +293,7 @@ export function useWatchTogether(opts: UseWatchTogetherOptions) {
     sendSeek,
     sendSync,
     sendSyncRequest,
+    sendBuffering,
     sendChat,
     setUserName,
   };

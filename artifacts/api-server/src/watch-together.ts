@@ -32,6 +32,7 @@ type ClientMsg =
   | { type: "seek"; time: number }
   | { type: "sync"; time: number }
   | { type: "sync_request" }
+  | { type: "buffering"; isBuffering: boolean }
   | { type: "chat"; text: string }
   | { type: "ping" };
 
@@ -200,6 +201,16 @@ export function attachWatchTogether(server: Server) {
         currentRoom.updatedAt = Date.now();
         // Broadcast to ALL members including the sender so everyone seeks
         broadcastAll(currentRoom, { type: "sync", from: currentUserId, time: msg.time });
+        return;
+      }
+
+      if (msg.type === "buffering") {
+        // Relay buffering state to all other room members
+        broadcastAll(currentRoom, {
+          type: "member_buffering",
+          userId: currentUserId,
+          isBuffering: msg.isBuffering,
+        });
         return;
       }
 

@@ -16,6 +16,7 @@ interface Props {
   leftNotice: { name: string; color: string } | null;
   syncNotice: string | null;
   syncRequest: { from: string; name: string; color: string } | null;
+  bufferingMembers: Set<string>;
   onCreateRoom: () => void;
   onJoinRoom: (id: string) => void;
   onLeave: () => void;
@@ -24,15 +25,20 @@ interface Props {
   onRequestSync: () => void;
 }
 
-function Avatar({ member, size = 28 }: { member: WTMember; size?: number }) {
+function Avatar({ member, size = 28, isBuffering = false }: { member: WTMember; size?: number; isBuffering?: boolean }) {
   return (
-    <div
-      className="rounded-full flex items-center justify-center font-bold text-black shrink-0 relative"
-      style={{ width: size, height: size, background: member.color, fontSize: size * 0.38 }}
-    >
-      {(member.name?.[0] ?? "?").toUpperCase()}
-      {member.isHost && (
-        <Crown className="absolute -top-1.5 -right-1 text-yellow-400 drop-shadow" style={{ width: 11, height: 11 }} />
+    <div className="relative shrink-0" style={{ width: size, height: size }}>
+      <div
+        className="rounded-full flex items-center justify-center font-bold text-black w-full h-full relative"
+        style={{ background: member.color, fontSize: size * 0.38 }}
+      >
+        {(member.name?.[0] ?? "?").toUpperCase()}
+        {member.isHost && (
+          <Crown className="absolute -top-1.5 -right-1 text-yellow-400 drop-shadow" style={{ width: 11, height: 11 }} />
+        )}
+      </div>
+      {isBuffering && (
+        <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-orange-400 border border-black/60 animate-pulse" />
       )}
     </div>
   );
@@ -86,7 +92,7 @@ function RoomLink({ roomId }: { roomId: string }) {
 
 export function WatchTogetherPanel({
   status, roomId, members, chat, isHost, isLoggedIn, user, joinNotice, leftNotice, syncNotice,
-  syncRequest, onCreateRoom, onJoinRoom, onLeave, onSendChat, onSyncNow, onRequestSync,
+  syncRequest, bufferingMembers, onCreateRoom, onJoinRoom, onLeave, onSendChat, onSyncNow, onRequestSync,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [joinInput, setJoinInput] = useState("");
@@ -389,13 +395,17 @@ export function WatchTogetherPanel({
                   <div className="px-3 pb-2">
                     <p className="text-[10px] text-white/30 uppercase tracking-widest mb-2 font-mono">Viewers ({members.length})</p>
                     <div className="flex flex-col gap-1.5 max-h-28 overflow-y-auto">
-                      {members.map((m) => (
-                        <div key={m.id} className="flex items-center gap-2">
-                          <Avatar member={m} size={26} />
-                          <span className="text-[12px] text-white/80 flex-1 truncate">{m.name}</span>
-                          {m.id === user.id && <span className="text-[9px] text-white/30 font-mono">YOU</span>}
-                        </div>
-                      ))}
+                      {members.map((m) => {
+                        const isBuf = bufferingMembers.has(m.id);
+                        return (
+                          <div key={m.id} className="flex items-center gap-2">
+                            <Avatar member={m} size={26} isBuffering={isBuf} />
+                            <span className="text-[12px] text-white/80 flex-1 truncate">{m.name}</span>
+                            {isBuf && <span className="text-[9px] text-orange-400/80 font-mono animate-pulse">buf</span>}
+                            {m.id === user.id && !isBuf && <span className="text-[9px] text-white/30 font-mono">YOU</span>}
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
 

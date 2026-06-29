@@ -54,6 +54,7 @@ interface Props {
   onPlayStateChange?: (playing: boolean, time: number) => void;
   onTimeUpdate?: (time: number) => void;
   onSeek?: (time: number) => void;
+  onBuffering?: (isBuffering: boolean) => void;
   syncCommand?: HlsSyncCommand | null;
 }
 
@@ -98,7 +99,7 @@ export function getEpisodeProgressPct(progressKey: string): number | null {
   return pct;
 }
 
-export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, preferDub = false, onEnded, onFatalError, onPlayStateChange, onTimeUpdate: onTimeUpdateProp, onSeek, syncCommand }: Props) {
+export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, preferDub = false, onEnded, onFatalError, onPlayStateChange, onTimeUpdate: onTimeUpdateProp, onSeek, onBuffering, syncCommand }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -117,6 +118,7 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
   const [showControls, setShowControls] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [wtPlayBlocked, setWtPlayBlocked] = useState(false);
   const [levels, setLevels] = useState<Level[]>([]);
   const [currentLevel, setCurrentLevel] = useState(-1);
   const [showSettings, setShowSettings] = useState(false);
@@ -361,8 +363,8 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
       }
     };
     const onDuration = () => setDuration(video.duration);
-    const onWaiting = () => setLoading(true);
-    const onCanPlay = () => setLoading(false);
+    const onWaiting = () => { setLoading(true); onBuffering?.(true); };
+    const onCanPlay = () => { setLoading(false); onBuffering?.(false); };
     const onEnded_ = () => {
       setPlaying(false);
       if (progressKey) clearProgress(progressKey);
@@ -420,10 +422,18 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
       video.currentTime = time;
     }
     if (type === "play") {
-      video.play().catch(() => {}).finally(() => {
+      video.play().then(() => {
+        setWtPlayBlocked(false);
+        setTimeout(() => { suppressWtBroadcastRef.current = false; }, 150);
+      }).catch((err: unknown) => {
+        // Browser autoplay policy blocked play — show click-to-play overlay
+        if (err instanceof Error && err.name === "NotAllowedError") {
+          setWtPlayBlocked(true);
+        }
         setTimeout(() => { suppressWtBroadcastRef.current = false; }, 150);
       });
     } else if (type === "pause") {
+      setWtPlayBlocked(false);
       video.pause();
       setTimeout(() => { suppressWtBroadcastRef.current = false; }, 150);
     } else {
@@ -560,8 +570,34 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
         </div>
       )}
 
+      {/* WT play-blocked overlay — host is playing but autoplay blocked */}
+      {wtPlayBlocked && !error && (
+        <div
+          className="absolute inset-0 flex items-center justify-center z-20 cursor-pointer"
+          onClick={() => {
+            suppressWtBroadcastRef.current = true;
+            const video = videoRef.current;
+            if (video) {
+              video.play().then(() => {
+                setWtPlayBlocked(false);
+              }).catch(() => {}).finally(() => {
+                setTimeout(() => { suppressWtBroadcastRef.current = false; }, 150);
+              });
+            }
+          }}
+        >
+          <div className="flex flex-col items-center gap-2.5 bg-black/75 backdrop-blur-sm px-7 py-5 rounded-2xl border border-purple-500/30">
+            <div className="w-14 h-14 rounded-full bg-purple-500/20 border border-purple-500/40 flex items-center justify-center">
+              <Play className="w-6 h-6 text-purple-300 fill-purple-300 ml-0.5" />
+            </div>
+            <p className="text-white text-sm font-semibold">Host is playing</p>
+            <p className="text-white/50 text-xs">Click here to join</p>
+          </div>
+        </div>
+      )}
+
       {/* Click-to-play overlay (center) */}
-      {!loading && !error && !playing && (
+      {!wtPlayBlocked && !loading && !error && !playing && (
         <div
           className="absolute inset-0 flex items-center justify-center z-10 cursor-pointer"
           onClick={togglePlay}
