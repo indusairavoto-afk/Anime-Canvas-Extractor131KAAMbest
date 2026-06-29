@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Users, X, Copy, Check, Send, Crown, LogOut, Link2, ChevronDown, ChevronUp, Radio } from "lucide-react";
+import { Users, X, Copy, Check, Send, Crown, LogOut, Link2, ChevronDown, ChevronUp, Radio, LogIn } from "lucide-react";
+import { Link } from "wouter";
 import type { WTMember, WTChatMsg, WTStatus } from "@/hooks/useWatchTogether";
 
 interface Props {
@@ -9,6 +10,7 @@ interface Props {
   members: WTMember[];
   chat: WTChatMsg[];
   isHost: boolean;
+  isLoggedIn: boolean;
   user: { id: string; name: string; color: string };
   joinNotice: string | null;
   syncNotice: string | null;
@@ -56,7 +58,7 @@ function RoomLink({ roomId }: { roomId: string }) {
 }
 
 export function WatchTogetherPanel({
-  status, roomId, members, chat, isHost, user, joinNotice, syncNotice,
+  status, roomId, members, chat, isHost, isLoggedIn, user, joinNotice, syncNotice,
   onCreateRoom, onJoinRoom, onLeave, onSendChat, onSyncNow,
 }: Props) {
   const [open, setOpen] = useState(false);
@@ -181,31 +183,51 @@ export function WatchTogetherPanel({
               {/* Not connected state */}
               {!isConnected && !isConnecting && (
                 <div className="p-4 flex flex-col gap-3">
-                  <p className="text-[12px] text-white/50 leading-relaxed">
-                    Watch anime in sync with friends — play, pause, and seek together in real time.
-                  </p>
-                  <button
-                    onClick={onCreateRoom}
-                    className="w-full py-2.5 rounded-xl bg-white text-black text-[13px] font-bold hover:bg-white/90 transition-colors"
-                  >
-                    Create Room
-                  </button>
-                  <div className="flex gap-2">
-                    <input
-                      value={joinInput}
-                      onChange={(e) => setJoinInput(e.target.value.toUpperCase().slice(0, 6))}
-                      placeholder="Room code (6 chars)"
-                      className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-[12px] text-white placeholder-white/25 outline-none focus:border-white/25 font-mono uppercase tracking-widest"
-                      onKeyDown={(e) => e.key === "Enter" && joinInput.length === 6 && onJoinRoom(joinInput)}
-                    />
-                    <button
-                      disabled={joinInput.length !== 6}
-                      onClick={() => onJoinRoom(joinInput)}
-                      className="px-3 py-2 rounded-xl bg-white/10 text-white text-[12px] font-semibold border border-white/10 hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                    >
-                      Join
-                    </button>
-                  </div>
+                  {!isLoggedIn ? (
+                    <div className="flex flex-col items-center gap-3 py-2">
+                      <div className="w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center">
+                        <Users className="w-5 h-5 text-white/30" />
+                      </div>
+                      <p className="text-[12px] text-white/50 leading-relaxed text-center">
+                        Sign in to watch anime in sync with friends — play, pause, and seek together in real time.
+                      </p>
+                      <Link
+                        href="/login"
+                        className="w-full py-2.5 rounded-xl bg-white text-black text-[13px] font-bold hover:bg-white/90 transition-colors text-center flex items-center justify-center gap-2"
+                      >
+                        <LogIn className="w-4 h-4" />
+                        Sign in to Watch Together
+                      </Link>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="text-[12px] text-white/50 leading-relaxed">
+                        Watch anime in sync with friends — play, pause, and seek together in real time.
+                      </p>
+                      <button
+                        onClick={onCreateRoom}
+                        className="w-full py-2.5 rounded-xl bg-white text-black text-[13px] font-bold hover:bg-white/90 transition-colors"
+                      >
+                        Create Room
+                      </button>
+                      <div className="flex gap-2">
+                        <input
+                          value={joinInput}
+                          onChange={(e) => setJoinInput(e.target.value.toUpperCase().slice(0, 6))}
+                          placeholder="Room code (6 chars)"
+                          className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-[12px] text-white placeholder-white/25 outline-none focus:border-white/25 font-mono uppercase tracking-widest"
+                          onKeyDown={(e) => e.key === "Enter" && joinInput.length === 6 && onJoinRoom(joinInput)}
+                        />
+                        <button
+                          disabled={joinInput.length !== 6}
+                          onClick={() => onJoinRoom(joinInput)}
+                          className="px-3 py-2 rounded-xl bg-white/10 text-white text-[12px] font-semibold border border-white/10 hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                        >
+                          Join
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
 

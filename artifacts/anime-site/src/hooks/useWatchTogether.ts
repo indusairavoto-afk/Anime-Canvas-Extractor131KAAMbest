@@ -21,6 +21,7 @@ export type WTStatus = "idle" | "connecting" | "connected" | "disconnected";
 interface UseWatchTogetherOptions {
   animeId: number;
   episode: number;
+  authUser?: { id: number; displayName: string; username: string } | null;
   onPlay?: (time: number, fromSelf: boolean) => void;
   onPause?: (time: number, fromSelf: boolean) => void;
   onSeek?: (time: number, fromSelf: boolean) => void;
@@ -43,14 +44,18 @@ function generateRoomId() {
   return Math.random().toString(36).slice(2, 8).toUpperCase();
 }
 
-function getOrCreateUser(): { id: string; name: string; color: string } {
-  const stored = localStorage.getItem("wt_user");
-  if (stored) {
-    try { return JSON.parse(stored); } catch { /* ignore */ }
-  }
-  const user = { id: crypto.randomUUID(), name: randomName(), color: randomColor() };
-  localStorage.setItem("wt_user", JSON.stringify(user));
-  return user;
+function colorForUsername(username: string): string {
+  let hash = 0;
+  for (let i = 0; i < username.length; i++) hash = username.charCodeAt(i) + ((hash << 5) - hash);
+  return COLORS[Math.abs(hash) % COLORS.length];
+}
+
+function buildUser(authUser: { id: number; displayName: string; username: string }): { id: string; name: string; color: string } {
+  return {
+    id: String(authUser.id),
+    name: authUser.displayName,
+    color: colorForUsername(authUser.username),
+  };
 }
 
 // Derive WebSocket URL from the Vite env API base
@@ -69,7 +74,9 @@ function getWsUrl(roomId: string) {
 }
 
 export function useWatchTogether(opts: UseWatchTogetherOptions) {
-  const { animeId, episode, onPlay, onPause, onSeek, onSync } = opts;
+  const { animeId, episode, authUser, onPlay, onPause, onSeek, onSync } = opts;
+
+  const isLoggedIn = !!authUser;
 
   const [status, setStatus] = useState<WTStatus>("idle");
   const [roomId, setRoomId] = useState<string | null>(null);
@@ -80,7 +87,7 @@ export function useWatchTogether(opts: UseWatchTogetherOptions) {
   const [syncNotice, setSyncNotice] = useState<string | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
-  const userRef = useRef(getOrCreateUser());
+  const userRef = useRef(authUser ? buildUser(authUser) : { id: "", name: "", color: "" });
   const roomIdRef = useRef<string | null>(null);
   const pingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -160,14 +167,16 @@ export function useWatchTogether(opts: UseWatchTogetherOptions) {
   }, [animeId, episode, onPlay, onPause, onSeek, onSync]);
 
   const createRoom = useCallback(() => {
+    if (!isLoggedIn) return "";
     const rid = generateRoomId();
     connect(rid);
     return rid;
-  }, [connect]);
+  }, [connect, isLoggedIn]);
 
   const joinRoom = useCallback((rid: string) => {
+    if (!isLoggedIn) return;
     connect(rid.toUpperCase().trim());
-  }, [connect]);
+  }, [connect, isLoggedIn]);
 
   const leaveRoom = useCallback(() => {
     wsRef.current?.close();
@@ -211,8 +220,9 @@ export function useWatchTogether(opts: UseWatchTogetherOptions) {
     localStorage.setItem("wt_user", JSON.stringify(userRef.current));
   }, []);
 
-  // Auto-join from URL param
+  // Auto-join from URL param (only when logged in)
   useEffect(() => {
+    if (!isLoggedIn) return;
     const params = new URLSearchParams(window.location.search);
     const rid = params.get("room");
     if (rid && rid.length === 6) {
@@ -222,7 +232,7 @@ export function useWatchTogether(opts: UseWatchTogetherOptions) {
       wsRef.current?.close();
       if (pingRef.current) clearInterval(pingRef.current);
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isLoggedIn]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const user = userRef.current;
   const isHost = hostId === user.id;
@@ -234,6 +244,7 @@ export function useWatchTogether(opts: UseWatchTogetherOptions) {
     chat,
     hostId,
     isHost,
+    isLoggedIn,
     user,
     joinNotice,
     syncNotice,

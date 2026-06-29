@@ -15,6 +15,7 @@ import { apiUrl } from "@/lib/api";
 import { EpisodeRatingMeter } from "@/components/EpisodeRatingMeter";
 import { useWatchTogether } from "@/hooks/useWatchTogether";
 import { WatchTogetherPanel } from "@/components/WatchTogetherPanel";
+import { useAuth } from "@/contexts/auth-context";
 
 interface StreamEpisode {
   title: string;
@@ -344,9 +345,12 @@ export default function WatchAniList() {
     setWtSyncCmd({ type: "seek", time, nonce: crypto.randomUUID() });
   }, []);
 
+  const { user: authUser } = useAuth();
+
   const wt = useWatchTogether({
     animeId,
     episode: currentEp,
+    authUser,
     onPlay: handleWtPlay,
     onPause: handleWtPause,
     onSeek: handleWtSeek,
@@ -3001,6 +3005,7 @@ export default function WatchAniList() {
                 members={wt.members}
                 chat={wt.chat}
                 isHost={wt.isHost}
+                isLoggedIn={wt.isLoggedIn}
                 user={wt.user}
                 joinNotice={wt.joinNotice}
                 syncNotice={wt.syncNotice}
