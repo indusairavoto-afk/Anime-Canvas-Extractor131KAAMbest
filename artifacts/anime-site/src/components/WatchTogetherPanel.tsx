@@ -30,7 +30,7 @@ function Avatar({ member, size = 28 }: { member: WTMember; size?: number }) {
       className="rounded-full flex items-center justify-center font-bold text-black shrink-0 relative"
       style={{ width: size, height: size, background: member.color, fontSize: size * 0.38 }}
     >
-      {member.name[0].toUpperCase()}
+      {(member.name?.[0] ?? "?").toUpperCase()}
       {member.isHost && (
         <Crown className="absolute -top-1.5 -right-1 text-yellow-400 drop-shadow" style={{ width: 11, height: 11 }} />
       )}
@@ -354,7 +354,7 @@ export function WatchTogetherPanel({
                                 className="w-6 h-6 rounded-full shrink-0 flex items-center justify-center text-[10px] font-bold text-black"
                                 style={{ background: syncRequest.color }}
                               >
-                                {syncRequest.name[0].toUpperCase()}
+                                {(syncRequest.name?.[0] ?? "?").toUpperCase()}
                               </span>
                               <div className="flex-1 min-w-0">
                                 <p className="text-[11px] text-amber-200/90 font-semibold leading-tight truncate">
