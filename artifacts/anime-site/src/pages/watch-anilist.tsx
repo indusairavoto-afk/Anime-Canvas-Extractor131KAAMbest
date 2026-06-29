@@ -178,6 +178,7 @@ export default function WatchAniList() {
   const [reportSent, setReportSent] = useState(false);
   const epListRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const serverDropRef = useRef<HTMLDivElement>(null);
   const aoProxyPopupRef = useRef<Window | null>(null);
   const [cdnUrl, setCdnUrl] = useState<string | null>(null);
   const [gogoHlsUrl, setGogoHlsUrl] = useState<string | null>(null);
@@ -213,7 +214,7 @@ export default function WatchAniList() {
   const [shirokoLoading, setShirokoLoading] = useState(false);
   const [shirokoError, setShirokoError] = useState<string | null>(null);
   const [shirokoProvider, setShirokoProvider] = useState("zen");
-  const [shirokoProviderOpen, setShirokoProviderOpen] = useState(false);
+  const [serverDropOpen, setServerDropOpen] = useState(false);
   const [animeonsenIdInput, setAnimeonsenIdInput] = useState<string>("");
   // When true, a popup is open establishing Cloudflare clearance — show a connecting overlay
   const [animeonsenInitializing, setAnimeonsenInitializing] = useState(false);
@@ -293,6 +294,18 @@ export default function WatchAniList() {
 
   // ── Auto-switch countdown when current server has an error ───────────────
   const [failCountdown, setFailCountdown] = useState<number | null>(null);
+
+  // Close server dropdown on click outside
+  useEffect(() => {
+    if (!serverDropOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (serverDropRef.current && !serverDropRef.current.contains(e.target as Node)) {
+        setServerDropOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [serverDropOpen]);
 
   useEffect(() => {
     const hasError =
@@ -3097,114 +3110,108 @@ export default function WatchAniList() {
                   </button>
                 ))}
               </div>
-              {([
-                { key: "GOGO",       label: "GOGO",       color: "orange", onClick: () => { userPickedRef.current = true; setServer("GOGO"); setCdnNotFound(false); setIframeLoaded(false); setGogoStreamError(false); bridgeLiveRef.current = false; setBridgeLive(false); } },
-                { key: "KOTO",       label: "KOTO",       color: "teal",   onClick: () => { userPickedRef.current = true; setServer("KOTO"); setIframeLoaded(false); } },
-                { key: "ANIZONE",    label: "ANIZONE",    color: "blue",   onClick: () => { userPickedRef.current = true; setServer("ANIZONE"); setIframeLoaded(false); } },
-                { key: "MIRURO",     label: "MIRURO",     color: "purple", onClick: () => { userPickedRef.current = true; setServer("MIRURO"); setIframeLoaded(false); } },
-                { key: "ANIMEONSEN", label: "ANIMEONSEN", color: "green", onClick: () => {
-                  userPickedRef.current = true;
-                  setServer("ANIMEONSEN");
-                  setIframeLoaded(false);
-                  // If CF already done this session, just switch — the "Connect" overlay handles first-time setup
-                  if (aoCfReady) setAnimeonsenInitializing(false);
-                }},
-                { key: "ANINEKO",  label: "ANINEKO",  color: "pink", onClick: () => { userPickedRef.current = true; setServer("ANINEKO"); setIframeLoaded(false); } },
-                { key: "SHIROKO",  label: "SHIROKO",  color: "sky",  onClick: () => { userPickedRef.current = true; setServer("SHIROKO"); setIframeLoaded(false); } },
-              ] as const).map(({ key, label, color, onClick }) => {
-                const active = server === key;
-                const health = serverHealth[key];
-                const isFailed = health === "fail" && !active;
-                const borderColorMap = {
-                  orange: { active: "border-orange-400 bg-orange-400 text-black", idle: "border-orange-400/30 text-orange-400/60 hover:border-orange-400/70 hover:text-orange-400" },
-                  teal:   { active: "border-teal-400 bg-teal-400 text-black",     idle: "border-teal-400/30 text-teal-400/60 hover:border-teal-400/70 hover:text-teal-400" },
-                  blue:   { active: "border-blue-400 bg-blue-400 text-black",     idle: "border-blue-400/30 text-blue-400/60 hover:border-blue-400/70 hover:text-blue-400" },
-                  purple: { active: "border-purple-400 bg-purple-400 text-black", idle: "border-purple-400/30 text-purple-400/60 hover:border-purple-400/70 hover:text-purple-400" },
-                  green:  { active: "border-green-400 bg-green-400 text-black",   idle: "border-green-400/30 text-green-400/60 hover:border-green-400/70 hover:text-green-400" },
-                  pink:   { active: "border-pink-400 bg-pink-400 text-black",     idle: "border-pink-400/30 text-pink-400/60 hover:border-pink-400/70 hover:text-pink-400" },
-                  sky:    { active: "border-sky-400 bg-sky-400 text-black",       idle: "border-sky-400/30 text-sky-400/60 hover:border-sky-400/70 hover:text-sky-400" },
-                };
-                const dotClass =
-                  health === "ok"       ? "bg-green-400" :
-                  health === "fail"     ? "bg-red-500" :
-                  health === "checking" ? "bg-yellow-400 animate-pulse" :
-                  "bg-white/25";
-                const dotTitle =
-                  health === "ok"       ? "Available" :
-                  health === "fail"     ? "Unavailable for this episode" :
-                  health === "checking" ? "Checking…" :
-                  "Not checked yet";
-                const c = borderColorMap[color];
-                return (
-                  <button
-                    key={key}
-                    onClick={onClick}
-                    className={`relative text-[10px] font-mono px-2.5 py-1 border transition-all ${active ? c.active : c.idle} ${isFailed ? "opacity-40" : ""}`}
-                  >
-                    {label}
-                    {raceWinnerServer === key && (
-                      <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 text-[8px] leading-none" title="Fastest server this episode">⚡</span>
-                    )}
-                    <span
-                      title={dotTitle}
-                      className={`absolute -top-1 -right-1 w-2 h-2 rounded-full border border-black ${dotClass}`}
-                    />
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* SHIROKO sub-provider dropdown — only visible when SHIROKO server is active */}
-            {server === "SHIROKO" && (
-              <div className="relative flex items-center gap-2 mt-2">
-                <span className="text-[9px] font-mono text-sky-400/50 uppercase tracking-widest shrink-0">Provider:</span>
-                <div className="relative">
-                  <button
-                    onClick={() => setShirokoProviderOpen(o => !o)}
-                    className="flex items-center gap-1.5 text-[10px] font-mono px-2.5 py-1 border border-sky-400/40 text-sky-300/80 hover:border-sky-400/70 hover:text-sky-300 transition-colors"
-                  >
-                    {[
-                      { id: "zen", label: "Zen" },
-                      { id: "hianime", label: "HiAnime" },
-                      { id: "gogoanime", label: "GogoAnime" },
-                      { id: "animepahe", label: "AnimePahe" },
-                      { id: "animerulz", label: "AnimeRulz" },
-                    ].find(p => p.id === shirokoProvider)?.label ?? shirokoProvider}
-                    <ChevronDown className="w-3 h-3" />
-                  </button>
-                  {shirokoProviderOpen && (
-                    <div className="absolute top-full left-0 mt-1 z-50 bg-[#0d0d0d] border border-white/10 shadow-xl min-w-[120px]">
-                      {[
-                        { id: "zen",        label: "Zen"        },
-                        { id: "hianime",    label: "HiAnime"    },
-                        { id: "gogoanime",  label: "GogoAnime"  },
-                        { id: "animepahe",  label: "AnimePahe"  },
-                        { id: "animerulz",  label: "AnimeRulz"  },
-                      ].map(p => (
+              {/* Server dropdown */}
+              <div className="relative" ref={serverDropRef}>
+                <button
+                  onClick={() => setServerDropOpen(o => !o)}
+                  className={`flex items-center gap-2 text-[10px] font-mono px-3 py-1 border transition-colors ${
+                    serverDropOpen
+                      ? "border-white/40 text-white bg-white/5"
+                      : "border-white/20 text-white/60 hover:border-white/40 hover:text-white"
+                  }`}
+                >
+                  <span className="text-white/30">Server</span>
+                  <span className={
+                    server === "GOGO"       ? "text-orange-400" :
+                    server === "KOTO"       ? "text-teal-400" :
+                    server === "ANIZONE"    ? "text-blue-400" :
+                    server === "MIRURO"     ? "text-purple-400" :
+                    server === "ANIMEONSEN" ? "text-green-400" :
+                    server === "ANINEKO"    ? "text-pink-400" :
+                    server === "SHIROKO"    ? "text-sky-400" :
+                    "text-white"
+                  }>{server}</span>
+                  <ChevronDown className={`w-3 h-3 transition-transform ${serverDropOpen ? "rotate-180" : ""}`} />
+                </button>
+                {serverDropOpen && (
+                  <div className="absolute top-full right-0 mt-1 z-50 bg-[#0d0d0d] border border-white/10 shadow-2xl min-w-[170px]">
+                    {([
+                      { key: "GOGO",       label: "GOGO",       color: "orange" as const, onClick: () => { userPickedRef.current = true; setServer("GOGO"); setCdnNotFound(false); setIframeLoaded(false); setGogoStreamError(false); bridgeLiveRef.current = false; setBridgeLive(false); } },
+                      { key: "KOTO",       label: "KOTO",       color: "teal"   as const, onClick: () => { userPickedRef.current = true; setServer("KOTO"); setIframeLoaded(false); } },
+                      { key: "ANIZONE",    label: "ANIZONE",    color: "blue"   as const, onClick: () => { userPickedRef.current = true; setServer("ANIZONE"); setIframeLoaded(false); } },
+                      { key: "MIRURO",     label: "MIRURO",     color: "purple" as const, onClick: () => { userPickedRef.current = true; setServer("MIRURO"); setIframeLoaded(false); } },
+                      { key: "ANIMEONSEN", label: "ANIMEONSEN", color: "green"  as const, onClick: () => { userPickedRef.current = true; setServer("ANIMEONSEN"); setIframeLoaded(false); if (aoCfReady) setAnimeonsenInitializing(false); } },
+                      { key: "ANINEKO",    label: "ANINEKO",    color: "pink"   as const, onClick: () => { userPickedRef.current = true; setServer("ANINEKO"); setIframeLoaded(false); } },
+                      { key: "SHIROKO",    label: "SHIROKO",    color: "sky"    as const, onClick: () => { userPickedRef.current = true; setServer("SHIROKO"); setIframeLoaded(false); } },
+                    ]).map(({ key, label, color, onClick }) => {
+                      const active = server === key;
+                      const health = serverHealth[key as keyof typeof serverHealth];
+                      const colorText = {
+                        orange: active ? "text-orange-400" : "text-orange-400/50",
+                        teal:   active ? "text-teal-400"   : "text-teal-400/50",
+                        blue:   active ? "text-blue-400"   : "text-blue-400/50",
+                        purple: active ? "text-purple-400" : "text-purple-400/50",
+                        green:  active ? "text-green-400"  : "text-green-400/50",
+                        pink:   active ? "text-pink-400"   : "text-pink-400/50",
+                        sky:    active ? "text-sky-400"    : "text-sky-400/50",
+                      }[color];
+                      const dotClass =
+                        health === "ok"       ? "bg-green-400" :
+                        health === "fail"     ? "bg-red-500" :
+                        health === "checking" ? "bg-yellow-400 animate-pulse" :
+                        "bg-white/20";
+                      return (
                         <button
-                          key={p.id}
-                          onClick={() => {
-                            setShirokoProvider(p.id);
-                            setShirokoProviderOpen(false);
-                            setShirokoIframeUrl(null);
-                            setShirokoError(null);
-                            setIframeLoaded(false);
-                          }}
-                          className={`w-full text-left px-3 py-1.5 text-[10px] font-mono transition-colors ${
-                            shirokoProvider === p.id
-                              ? "text-sky-300 bg-sky-400/10"
-                              : "text-white/50 hover:text-white/80 hover:bg-white/5"
+                          key={key}
+                          onClick={() => { onClick(); setServerDropOpen(false); }}
+                          className={`w-full flex items-center gap-2.5 px-3 py-2 transition-colors text-left ${
+                            active ? "bg-white/5" : "hover:bg-white/5"
                           }`}
                         >
-                          {shirokoProvider === p.id && <span className="mr-1 text-sky-400">✓</span>}
-                          {p.label}
+                          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotClass}`} />
+                          <span className={`text-[10px] font-mono flex-1 ${colorText}`}>{label}</span>
+                          {raceWinnerServer === key && <span className="text-[9px]" title="Fastest server">⚡</span>}
+                          {active && <span className="text-[9px] text-white/30">✓</span>}
                         </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                      );
+                    })}
+                    {/* SHIROKO sub-provider — shown when SHIROKO is the active server */}
+                    {server === "SHIROKO" && (
+                      <div className="border-t border-white/10 pt-1 pb-1">
+                        <div className="px-3 py-1 text-[9px] font-mono text-sky-400/40 uppercase tracking-widest">Provider</div>
+                        {[
+                          { id: "zen",        label: "Zen"       },
+                          { id: "hianime",    label: "HiAnime"   },
+                          { id: "gogoanime",  label: "GogoAnime" },
+                          { id: "animepahe",  label: "AnimePahe" },
+                          { id: "animerulz",  label: "AnimeRulz" },
+                        ].map(p => (
+                          <button
+                            key={p.id}
+                            onClick={() => {
+                              setShirokoProvider(p.id);
+                              setShirokoIframeUrl(null);
+                              setShirokoError(null);
+                              setIframeLoaded(false);
+                            }}
+                            className={`w-full flex items-center gap-2 px-5 py-1.5 text-[10px] font-mono transition-colors ${
+                              shirokoProvider === p.id
+                                ? "text-sky-300 bg-sky-400/10"
+                                : "text-white/40 hover:text-white/70 hover:bg-white/5"
+                            }`}
+                          >
+                            {shirokoProvider === p.id
+                              ? <span className="text-sky-400 text-[9px] shrink-0">✓</span>
+                              : <span className="w-[9px] shrink-0" />}
+                            {p.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-            )}
+            </div>
           </div>
 
           {/* DUB-not-available warning — shown when DUB was requested but stream fell back to SUB */}
