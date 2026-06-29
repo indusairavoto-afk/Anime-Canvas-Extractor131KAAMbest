@@ -58,7 +58,7 @@ router.post("/auth/register", authLimiter, async (req, res) => {
       return;
     }
     const passwordHash = await bcrypt.hash(password, 10);
-    const [row] = await db.insert(userTable).values({
+    const rows = await db.insert(userTable).values({
       username: uname,
       displayName: displayName.trim(),
       email: email.trim().toLowerCase(),
@@ -66,15 +66,23 @@ router.post("/auth/register", authLimiter, async (req, res) => {
       avatarSeed: uname,
     }).returning();
 
-    // Send verification email (fire-and-forget — don't block registration)
-    try {
-      const token = crypto.randomBytes(32).toString("hex");
-      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
-      await db.insert(emailVerificationTable).values({ userId: row.id, token, expiresAt });
-      await sendVerificationEmail(row.email, row.displayName, token, getBaseUrl(req));
-    } catch (mailErr) {
-      req.log.warn({ mailErr }, "Failed to send verification email");
+    const row = rows[0];
+    if (!row) {
+      res.status(500).json({ error: "Account creation failed — please try again" });
+      return;
     }
+
+    // Send verification email — fire-and-forget, never blocks or fails registration
+    setImmediate(async () => {
+      try {
+        const token = crypto.randomBytes(32).toString("hex");
+        const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+        await db.insert(emailVerificationTable).values({ userId: row.id, token, expiresAt });
+        await sendVerificationEmail(row.email, row.displayName, token, getBaseUrl(req));
+      } catch (mailErr) {
+        console.warn("[auth] Failed to send verification email:", mailErr);
+      }
+    });
 
     res.status(201).json(toPublicUser(row));
   } catch (err) {
