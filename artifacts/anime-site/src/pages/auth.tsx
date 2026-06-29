@@ -612,6 +612,7 @@ export default function AuthPage() {
       {showAvatarPicker && pendingUserId != null && (
         <AvatarPickerModal
           userId={pendingUserId}
+          showStep
           onSave={(updatedUser) => {
             loginWithUser(updatedUser);
             setShowAvatarPicker(false);

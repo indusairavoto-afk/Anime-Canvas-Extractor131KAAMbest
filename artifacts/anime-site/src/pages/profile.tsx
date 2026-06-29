@@ -2,8 +2,9 @@ import { useState, useEffect, useRef } from "react";
 import { apiUrl } from "@/lib/api";
 import { useParams, Link, useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
-import { Calendar, Users, Edit3, LogOut, ThumbsUp, X, Check, Loader2, Clock, Play, Tv } from "lucide-react";
+import { Calendar, Users, Edit3, LogOut, ThumbsUp, X, Check, Loader2, Clock, Play, Tv, Camera } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
+import { AvatarPickerModal } from "@/components/AvatarPickerModal";
 
 interface UserProfile {
   id: number;
@@ -69,7 +70,7 @@ type ProfileTab = "reviews" | "history";
 
 export default function ProfilePage() {
   const { username } = useParams<{ username: string }>();
-  const { user: authUser, logout } = useAuth();
+  const { user: authUser, logout, loginWithUser } = useAuth();
   const [, navigate] = useLocation();
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -82,6 +83,9 @@ export default function ProfilePage() {
   const [ratingFilter, setRatingFilter] = useState<RatingFilter>("all");
   const [revealedIds, setRevealedIds] = useState<Set<number>>(new Set());
   const [activeTab, setActiveTab] = useState<ProfileTab>("reviews");
+
+  // Avatar picker
+  const [avatarPickerOpen, setAvatarPickerOpen] = useState(false);
 
   // Edit modal
   const [editOpen, setEditOpen] = useState(false);
@@ -180,11 +184,23 @@ export default function ProfilePage() {
           <div className="lg:w-64 flex-shrink-0">
             <div className="bg-zinc-900 rounded-2xl p-6 flex flex-col items-center text-center sticky top-20">
               {/* Avatar */}
-              <img
-                src={profile.avatarUrl}
-                alt={profile.displayName}
-                className="w-24 h-24 rounded-full object-cover bg-zinc-700 mb-4 border border-white/10"
-              />
+              <div className="relative mb-4 group">
+                <img
+                  src={profile.avatarUrl}
+                  alt={profile.displayName}
+                  className="w-24 h-24 rounded-full object-cover bg-zinc-700 border border-white/10"
+                  style={profile.avatarUrl.includes("lorelei") ? { filter: "grayscale(1) contrast(1.1)" } : undefined}
+                />
+                {isOwn && (
+                  <button
+                    onClick={() => setAvatarPickerOpen(true)}
+                    className="absolute inset-0 rounded-full flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity"
+                    title="Change avatar"
+                  >
+                    <Camera className="w-6 h-6 text-white" />
+                  </button>
+                )}
+              </div>
 
               {/* Name + handle */}
               <h1 className="text-lg font-bold text-white">{profile.displayName}</h1>
@@ -442,6 +458,19 @@ export default function ProfilePage() {
           </div>
         </div>
       </div>
+
+      {/* ── Avatar Picker Modal ── */}
+      {avatarPickerOpen && profile && (
+        <AvatarPickerModal
+          userId={profile.id}
+          onSave={(updatedUser) => {
+            setProfile(p => p ? { ...p, avatarUrl: updatedUser.avatarUrl } : p);
+            loginWithUser(updatedUser);
+            setAvatarPickerOpen(false);
+          }}
+          onSkip={() => setAvatarPickerOpen(false)}
+        />
+      )}
 
       {/* ── Edit Profile Modal ── */}
       <AnimatePresence>

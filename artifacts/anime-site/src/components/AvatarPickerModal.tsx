@@ -19,9 +19,10 @@ interface Props {
   userId: number;
   onSave: (updatedUser: AuthUser) => void;
   onSkip: () => void;
+  showStep?: boolean;
 }
 
-export function AvatarPickerModal({ userId, onSave, onSkip }: Props) {
+export function AvatarPickerModal({ userId, onSave, onSkip, showStep }: Props) {
   const [selected, setSelected] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -64,7 +65,9 @@ export function AvatarPickerModal({ userId, onSave, onSkip }: Props) {
           className="relative w-full max-w-sm bg-[#111] border border-white/10 rounded-2xl shadow-2xl p-6 z-10"
         >
           <div className="text-center mb-5">
-            <p className="text-[10px] text-white/30 uppercase tracking-[0.2em] font-mono mb-1">Step 2 of 2</p>
+            {showStep && (
+              <p className="text-[10px] text-white/30 uppercase tracking-[0.2em] font-mono mb-1">Step 2 of 2</p>
+            )}
             <h2 className="text-white font-semibold text-lg">Choose your avatar</h2>
             <p className="text-white/40 text-sm mt-1">Pick an anime-style profile picture</p>
           </div>
