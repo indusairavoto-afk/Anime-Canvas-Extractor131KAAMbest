@@ -16,7 +16,7 @@ interface AuthContextValue {
   user: AuthUser | null;
   loading: boolean;
   login: (emailOrUsername: string, password: string) => Promise<{ error?: string }>;
-  register: (displayName: string, username: string, email: string, password: string) => Promise<{ error?: string }>;
+  register: (displayName: string, username: string, email: string, password: string) => Promise<{ error?: string; backupCode?: string }>;
   loginWithUser: (user: AuthUser) => void;
   logout: () => void;
 }
@@ -80,9 +80,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
       const data = await res.json();
       if (!res.ok) return { error: data.error || "Registration failed" };
-      setUser(data);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-      return {};
+      const { backupCode, ...userData } = data;
+      setUser(userData);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(userData));
+      return { backupCode };
     } catch {
       return { error: "Network error" };
     }

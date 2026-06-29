@@ -2,12 +2,11 @@ import { Router, type Request } from "express";
 import bcrypt from "bcryptjs";
 import crypto from "node:crypto";
 import { db } from "@workspace/db";
-import { userTable, passwordResetTable, magicCodeTable, emailVerificationTable } from "@workspace/db/schema";
+import { userTable, passwordResetTable, magicCodeTable, accountRecoveryTable } from "@workspace/db/schema";
 import { eq, or, and, gt, isNull } from "drizzle-orm";
 import { authLimiter } from "../lib/rate-limiters";
 import {
   sendMagicCodeEmail,
-  sendVerificationEmail,
   sendPasswordResetEmail,
 } from "../lib/mailer";
 
@@ -30,6 +29,13 @@ function toPublicUser(row: typeof userTable.$inferSelect) {
     emailVerified: row.emailVerified,
     createdAt: row.createdAt.toISOString(),
   };
+}
+
+function generateBackupCode(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const bytes = crypto.randomBytes(16);
+  const raw = Array.from(bytes).map(b => chars[b % chars.length]).join("");
+  return `${raw.slice(0, 5)}-${raw.slice(5, 10)}-${raw.slice(10, 15)}-${raw.slice(15, 20)}`;
 }
 
 // ── Register ────────────────────────────────────────────────────────────────
@@ -64,6 +70,7 @@ router.post("/auth/register", authLimiter, async (req, res) => {
       email: email.trim().toLowerCase(),
       passwordHash,
       avatarSeed: uname,
+      emailVerified: true,
     }).returning();
 
     const row = rows[0];
@@ -72,69 +79,63 @@ router.post("/auth/register", authLimiter, async (req, res) => {
       return;
     }
 
-    // Send verification email — fire-and-forget, never blocks or fails registration
-    setImmediate(async () => {
-      try {
-        const token = crypto.randomBytes(32).toString("hex");
-        const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
-        await db.insert(emailVerificationTable).values({ userId: row.id, token, expiresAt });
-        await sendVerificationEmail(row.email, row.displayName, token, getBaseUrl(req));
-      } catch (mailErr) {
-        console.warn("[auth] Failed to send verification email:", mailErr);
-      }
-    });
+    // Generate a backup recovery code — store hash, return plaintext once
+    const backupCode = generateBackupCode();
+    const codeHash = await bcrypt.hash(backupCode, 10);
+    await db.insert(accountRecoveryTable).values({ userId: row.id, codeHash });
 
-    res.status(201).json(toPublicUser(row));
+    res.status(201).json({ ...toPublicUser(row), backupCode });
   } catch (err) {
     req.log.error(err);
     res.status(500).json({ error: "Internal server error" });
   }
 });
 
-// ── Verify Email ────────────────────────────────────────────────────────────
+// ── Account Recovery (backup code) ──────────────────────────────────────────
 
-router.get("/auth/verify-email/:token", async (req, res) => {
+router.post("/auth/recover", authLimiter, async (req, res) => {
   try {
-    const { token } = req.params;
-    const [record] = await db.select().from(emailVerificationTable)
-      .where(and(
-        eq(emailVerificationTable.token, token),
-        isNull(emailVerificationTable.usedAt),
-        gt(emailVerificationTable.expiresAt, new Date()),
-      )).limit(1);
+    const { emailOrUsername, backupCode } = req.body;
+    if (!emailOrUsername || !backupCode) {
+      res.status(400).json({ error: "emailOrUsername and backupCode are required" });
+      return;
+    }
+    const identifier = emailOrUsername.trim().toLowerCase();
+    const [user] = await db.select().from(userTable).where(
+      or(eq(userTable.email, identifier), eq(userTable.username, identifier))
+    ).limit(1);
 
-    if (!record) {
-      res.status(400).json({ error: "Verification link is invalid or has expired" });
+    if (!user) {
+      res.status(401).json({ error: "Invalid credentials" });
       return;
     }
 
-    await db.update(userTable).set({ emailVerified: true }).where(eq(userTable.id, record.userId));
-    await db.update(emailVerificationTable).set({ usedAt: new Date() }).where(eq(emailVerificationTable.id, record.id));
+    const [recovery] = await db.select().from(accountRecoveryTable)
+      .where(eq(accountRecoveryTable.userId, user.id)).limit(1);
 
-    res.json({ ok: true });
-  } catch (err) {
-    req.log.error(err);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
+    if (!recovery) {
+      res.status(401).json({ error: "No backup code found for this account" });
+      return;
+    }
 
-// Resend verification email
-router.post("/auth/resend-verification", authLimiter, async (req, res) => {
-  try {
-    const { email } = req.body;
-    if (!email) { res.status(400).json({ error: "email is required" }); return; }
+    const normalised = backupCode.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+    const stored = recovery.codeHash;
+    const valid = await bcrypt.compare(
+      `${normalised.slice(0, 5)}-${normalised.slice(5, 10)}-${normalised.slice(10, 15)}-${normalised.slice(15, 20)}`,
+      stored
+    );
+    if (!valid) {
+      res.status(401).json({ error: "Invalid backup code" });
+      return;
+    }
 
-    const [user] = await db.select().from(userTable)
-      .where(eq(userTable.email, email.trim().toLowerCase())).limit(1);
-    if (!user) { res.status(404).json({ error: "No account found" }); return; }
-    if (user.emailVerified) { res.json({ ok: true, alreadyVerified: true }); return; }
+    // Rotate — generate a new backup code so old one can't be reused
+    const newCode = generateBackupCode();
+    const newHash = await bcrypt.hash(newCode, 10);
+    await db.update(accountRecoveryTable).set({ codeHash: newHash, createdAt: new Date() })
+      .where(eq(accountRecoveryTable.id, recovery.id));
 
-    const token = crypto.randomBytes(32).toString("hex");
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
-    await db.insert(emailVerificationTable).values({ userId: user.id, token, expiresAt });
-    await sendVerificationEmail(user.email, user.displayName, token, getBaseUrl(req));
-
-    res.json({ ok: true });
+    res.json({ ...toPublicUser(user), newBackupCode: newCode });
   } catch (err) {
     req.log.error(err);
     res.status(500).json({ error: "Internal server error" });
@@ -152,7 +153,6 @@ router.post("/auth/forgot-password", authLimiter, async (req, res) => {
       .where(eq(userTable.email, email.trim().toLowerCase())).limit(1);
 
     if (!user) {
-      // Don't reveal whether email exists
       res.json({ ok: true });
       return;
     }

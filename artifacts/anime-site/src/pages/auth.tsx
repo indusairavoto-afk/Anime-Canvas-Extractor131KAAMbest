@@ -5,6 +5,7 @@ import { Eye, EyeOff, Check, ArrowLeft, AlertCircle, Loader2, Zap, RefreshCw } f
 import { useAuth } from "@/contexts/auth-context";
 import { apiUrl } from "@/lib/api";
 import nexaLogo from "/favicon.png";
+import { BackupCodeModal } from "@/components/BackupCodeModal";
 
 function PasswordStrength({ password }: { password: string }) {
   const strength = useMemo(() => {
@@ -269,6 +270,8 @@ export default function AuthPage() {
   const [regLoading, setRegLoading] = useState(false);
   const [showRegPw, setShowRegPw] = useState(false);
   const [showConfirmPw, setShowConfirmPw] = useState(false);
+  const [backupCode, setBackupCode] = useState<string | null>(null);
+  const [pendingNav, setPendingNav] = useState<string | null>(null);
 
   async function handleForgot(e: React.FormEvent) {
     e.preventDefault();
@@ -306,10 +309,16 @@ export default function AuthPage() {
     if (regPassword !== regConfirm) { setRegError("Passwords do not match"); return; }
     if (regPassword.length < 6) { setRegError("Password must be at least 6 characters"); return; }
     setRegLoading(true);
-    const { error } = await register(regDisplay.trim(), regUsername.trim(), regEmail.trim(), regPassword);
+    const { error, backupCode: code } = await register(regDisplay.trim(), regUsername.trim(), regEmail.trim(), regPassword);
     setRegLoading(false);
     if (error) { setRegError(error); return; }
-    navigate(`/u/${regUsername.trim().toLowerCase().replace(/[^a-z0-9_]/g, "")}`);
+    const dest = `/u/${regUsername.trim().toLowerCase().replace(/[^a-z0-9_]/g, "")}`;
+    if (code) {
+      setBackupCode(code);
+      setPendingNav(dest);
+    } else {
+      navigate(dest);
+    }
   }
 
   function handleMagicSuccess(user: unknown) {
@@ -502,6 +511,17 @@ export default function AuthPage() {
 
         <p className="text-center text-[11px] text-white/20 mt-6">By continuing, you agree to Nexa Anime's terms of service</p>
       </div>
+
+      {backupCode && (
+        <BackupCodeModal
+          code={backupCode}
+          username={regUsername.trim().toLowerCase().replace(/[^a-z0-9_]/g, "")}
+          onClose={() => {
+            setBackupCode(null);
+            if (pendingNav) navigate(pendingNav);
+          }}
+        />
+      )}
     </div>
   );
 }

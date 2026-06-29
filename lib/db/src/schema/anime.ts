@@ -94,7 +94,14 @@ export const userTable = pgTable("user", {
   passwordHash: text("password_hash").notNull(),
   bio: text("bio"),
   avatarSeed: text("avatar_seed").notNull(),
-  emailVerified: boolean("email_verified").notNull().default(false),
+  emailVerified: boolean("email_verified").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const accountRecoveryTable = pgTable("account_recovery", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().unique().references(() => userTable.id, { onDelete: "cascade" }),
+  codeHash: text("code_hash").notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

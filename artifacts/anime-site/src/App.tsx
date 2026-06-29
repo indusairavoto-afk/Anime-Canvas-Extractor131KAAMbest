@@ -4,7 +4,6 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Topbar } from "@/components/topbar";
 import { Sidebar } from "@/components/sidebar";
-import { EmailVerifyBanner } from "@/components/EmailVerifyBanner";
 import { SidebarProvider } from "@/contexts/sidebar-context";
 import { AuthProvider } from "@/contexts/auth-context";
 import { ScrollToTop } from "@/components/scroll-to-top";
@@ -70,7 +69,6 @@ function App() {
               <Topbar />
               <Sidebar />
               <div className="pt-14">
-                <EmailVerifyBanner />
                 <Router />
               </div>
             </SidebarProvider>
