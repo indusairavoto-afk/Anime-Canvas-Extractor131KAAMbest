@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { apiUrl } from "@/lib/api";
 import { useParams, Link, useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
-import { Calendar, Users, Edit3, LogOut, ThumbsUp, X, Check, Loader2, Clock, Play, Tv, Camera } from "lucide-react";
+import { Calendar, Users, Edit3, LogOut, ThumbsUp, X, Check, Loader2, Clock, Play, Tv, Camera, UserPlus, UserCheck } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { AvatarPickerModal } from "@/components/AvatarPickerModal";
 
@@ -15,6 +15,18 @@ interface UserProfile {
   avatarUrl: string;
   createdAt: string;
   reviewCount: number;
+  followerCount: number;
+  followingCount: number;
+  isFollowing: boolean;
+}
+
+interface PublicUser {
+  id: number;
+  username: string;
+  displayName: string;
+  avatarUrl: string;
+  bio: string | null;
+  createdAt: string;
 }
 
 interface HistoryEntry {
@@ -87,6 +99,14 @@ export default function ProfilePage() {
   // Avatar picker
   const [avatarPickerOpen, setAvatarPickerOpen] = useState(false);
 
+  // Follow
+  const [followLoading, setFollowLoading] = useState(false);
+
+  // Followers/Following modal
+  const [listModal, setListModal] = useState<"followers" | "following" | null>(null);
+  const [listUsers, setListUsers] = useState<PublicUser[]>([]);
+  const [listLoading, setListLoading] = useState(false);
+
   // Edit modal
   const [editOpen, setEditOpen] = useState(false);
   const [editDisplayName, setEditDisplayName] = useState("");
@@ -101,7 +121,8 @@ export default function ProfilePage() {
     if (!username) return;
     setProfileLoading(true);
     setNotFound(false);
-    fetch(apiUrl(`/api/users/${username}`))
+    const viewerParam = authUser ? `?viewer=${encodeURIComponent(authUser.username)}` : "";
+    fetch(apiUrl(`/api/users/${username}${viewerParam}`))
       .then(r => r.ok ? r.json() : Promise.reject(r.status))
       .then(data => setProfile(data))
       .catch(code => { if (code === 404) setNotFound(true); })
@@ -119,6 +140,40 @@ export default function ProfilePage() {
       .then(setHistory)
       .finally(() => setHistoryLoading(false));
   }, [username]);
+
+  const openList = useCallback(async (kind: "followers" | "following") => {
+    if (!username) return;
+    setListModal(kind);
+    setListUsers([]);
+    setListLoading(true);
+    try {
+      const res = await fetch(apiUrl(`/api/users/${username}/${kind}`));
+      const data = res.ok ? await res.json() : [];
+      setListUsers(data);
+    } finally {
+      setListLoading(false);
+    }
+  }, [username]);
+
+  async function handleFollow() {
+    if (!authUser || !profile || !username) return;
+    setFollowLoading(true);
+    try {
+      const isCurrentlyFollowing = profile.isFollowing;
+      const method = isCurrentlyFollowing ? "DELETE" : "POST";
+      const res = await fetch(apiUrl(`/api/users/${username}/follow`), {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ followerUsername: authUser.username }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setProfile(p => p ? { ...p, isFollowing: data.isFollowing, followerCount: data.followerCount } : p);
+      }
+    } finally {
+      setFollowLoading(false);
+    }
+  }
 
   function openEdit() {
     if (!profile) return;
@@ -225,11 +280,20 @@ export default function ProfilePage() {
 
               {/* Followers row */}
               <div className="flex items-center gap-3 mt-4 text-xs text-white/40">
-                <span className="flex items-center gap-1">
-                  <Users className="w-3 h-3" /> 0 Followers
-                </span>
+                <button
+                  onClick={() => openList("followers")}
+                  className="flex items-center gap-1 hover:text-white transition-colors"
+                >
+                  <Users className="w-3 h-3" />
+                  <span className="font-semibold text-white/70">{profile.followerCount}</span>&nbsp;Followers
+                </button>
                 <span>·</span>
-                <span>0 Following</span>
+                <button
+                  onClick={() => openList("following")}
+                  className="hover:text-white transition-colors"
+                >
+                  <span className="font-semibold text-white/70">{profile.followingCount}</span>&nbsp;Following
+                </button>
               </div>
 
               {/* Joined */}
@@ -256,10 +320,29 @@ export default function ProfilePage() {
                       Sign Out
                     </button>
                   </>
-                ) : (
-                  <button className="w-full bg-white text-black text-sm py-2.5 rounded-xl font-semibold hover:bg-white/90 transition-colors">
-                    Follow
+                ) : authUser ? (
+                  <button
+                    onClick={handleFollow}
+                    disabled={followLoading}
+                    className={`w-full flex items-center justify-center gap-2 text-sm py-2.5 rounded-xl font-semibold transition-all ${
+                      profile.isFollowing
+                        ? "bg-zinc-800 hover:bg-red-900/30 hover:text-red-400 hover:border-red-400/30 border border-white/10 text-white/70"
+                        : "bg-white text-black hover:bg-white/90"
+                    } disabled:opacity-50`}
+                  >
+                    {followLoading
+                      ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      : profile.isFollowing
+                        ? <><UserCheck className="w-3.5 h-3.5" /> Following</>
+                        : <><UserPlus className="w-3.5 h-3.5" /> Follow</>
+                    }
                   </button>
+                ) : (
+                  <Link href="/register">
+                    <button className="w-full bg-white text-black text-sm py-2.5 rounded-xl font-semibold hover:bg-white/90 transition-colors">
+                      Follow
+                    </button>
+                  </Link>
                 )}
               </div>
             </div>
@@ -458,6 +541,79 @@ export default function ProfilePage() {
           </div>
         </div>
       </div>
+
+      {/* ── Followers / Following Modal ── */}
+      <AnimatePresence>
+        {listModal && (
+          <>
+            <motion.div
+              key="list-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/70 z-50"
+              onClick={() => setListModal(null)}
+            />
+            <motion.div
+              key="list-modal"
+              initial={{ opacity: 0, scale: 0.95, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 8 }}
+              transition={{ duration: 0.15 }}
+              className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none"
+            >
+              <div
+                className="bg-zinc-900 border border-white/10 rounded-2xl w-full max-w-sm p-0 pointer-events-auto overflow-hidden"
+                onClick={e => e.stopPropagation()}
+              >
+                {/* Header */}
+                <div className="flex items-center justify-between px-5 py-4 border-b border-white/8">
+                  <h2 className="text-sm font-semibold text-white capitalize">{listModal}</h2>
+                  <button
+                    onClick={() => setListModal(null)}
+                    className="text-white/40 hover:text-white/70 transition-colors"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* List */}
+                <div className="max-h-80 overflow-y-auto py-2">
+                  {listLoading ? (
+                    <div className="flex justify-center py-10">
+                      <Loader2 className="w-5 h-5 text-white/30 animate-spin" />
+                    </div>
+                  ) : listUsers.length === 0 ? (
+                    <div className="text-center py-10">
+                      <p className="text-white/25 text-sm">No {listModal} yet.</p>
+                    </div>
+                  ) : (
+                    listUsers.map(u => (
+                      <Link key={u.id} href={`/profile/${u.username}`}>
+                        <div
+                          className="flex items-center gap-3 px-5 py-3 hover:bg-zinc-800 transition-colors cursor-pointer"
+                          onClick={() => setListModal(null)}
+                        >
+                          <img
+                            src={u.avatarUrl}
+                            alt={u.displayName}
+                            className="w-9 h-9 rounded-full object-cover bg-zinc-700 border border-white/10 flex-shrink-0"
+                            style={u.avatarUrl.includes("lorelei") ? { filter: "grayscale(1) contrast(1.1)" } : undefined}
+                          />
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-white truncate">{u.displayName}</p>
+                            <p className="text-xs text-white/40 truncate">@{u.username}</p>
+                          </div>
+                        </div>
+                      </Link>
+                    ))
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
       {/* ── Avatar Picker Modal ── */}
       {avatarPickerOpen && profile && (

@@ -222,6 +222,15 @@ export const lnoriMappingTable = pgTable("lnori_mapping", {
 
 export type LnoriMapping = typeof lnoriMappingTable.$inferSelect;
 
+export const followsTable = pgTable("follows", {
+  id: serial("id").primaryKey(),
+  followerId: integer("follower_id").notNull().references(() => userTable.id, { onDelete: "cascade" }),
+  followingId: integer("following_id").notNull().references(() => userTable.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (t) => [unique().on(t.followerId, t.followingId)]);
+
+export type Follow = typeof followsTable.$inferSelect;
+
 export const insertAnimeSchema = createInsertSchema(animeTable).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertEpisodeSchema = createInsertSchema(episodeTable).omit({ id: true, createdAt: true });
 export const insertCommentSchema = createInsertSchema(commentTable).omit({ id: true, createdAt: true });
