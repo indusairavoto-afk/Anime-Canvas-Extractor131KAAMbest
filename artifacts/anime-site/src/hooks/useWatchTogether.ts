@@ -128,6 +128,11 @@ export function useWatchTogether(opts: UseWatchTogetherOptions) {
       if (msg.type === "state") {
         setMembers((msg.members as WTMember[]) ?? []);
         setHostId(msg.hostId as string ?? null);
+        // Seek the player to the room's current time so joiners sync up immediately
+        const roomTime = msg.time as number | undefined;
+        if (typeof roomTime === "number" && roomTime > 0) {
+          onSync?.(roomTime, false);
+        }
       } else if (msg.type === "joined") {
         setMembers((msg.members as WTMember[]) ?? []);
         const m = msg.member as WTMember;
