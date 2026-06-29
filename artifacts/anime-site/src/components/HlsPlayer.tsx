@@ -53,6 +53,7 @@ interface Props {
   onFatalError?: () => void;
   onPlayStateChange?: (playing: boolean, time: number) => void;
   onTimeUpdate?: (time: number) => void;
+  onSeek?: (time: number) => void;
   syncCommand?: HlsSyncCommand | null;
 }
 
@@ -97,12 +98,14 @@ export function getEpisodeProgressPct(progressKey: string): number | null {
   return pct;
 }
 
-export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, preferDub = false, onEnded, onFatalError, onPlayStateChange, onTimeUpdate: onTimeUpdateProp, syncCommand }: Props) {
+export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, preferDub = false, onEnded, onFatalError, onPlayStateChange, onTimeUpdate: onTimeUpdateProp, onSeek, syncCommand }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSavedAt = useRef<number>(0);
+  // Prevents re-broadcasting WT-triggered play/pause/seek back to the room
+  const suppressWtBroadcastRef = useRef(false);
 
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -335,8 +338,18 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
     const video = videoRef.current;
     if (!video) return;
 
-    const onPlay = () => { setPlaying(true); onPlayStateChange?.(true, video.currentTime); };
-    const onPause = () => { setPlaying(false); flushProgress(); onPlayStateChange?.(false, video.currentTime); };
+    const onPlay = () => {
+      setPlaying(true);
+      if (!suppressWtBroadcastRef.current) onPlayStateChange?.(true, video.currentTime);
+    };
+    const onPause = () => {
+      setPlaying(false);
+      flushProgress();
+      if (!suppressWtBroadcastRef.current) onPlayStateChange?.(false, video.currentTime);
+    };
+    const onSeeked = () => {
+      if (!suppressWtBroadcastRef.current) onSeek?.(video.currentTime);
+    };
     const onTimeUpdate = () => {
       setCurrentTime(video.currentTime);
       onTimeUpdateProp?.(video.currentTime);
@@ -358,6 +371,7 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
 
     video.addEventListener("play", onPlay);
     video.addEventListener("pause", onPause);
+    video.addEventListener("seeked", onSeeked);
     video.addEventListener("timeupdate", onTimeUpdate);
     video.addEventListener("durationchange", onDuration);
     video.addEventListener("waiting", onWaiting);
@@ -367,13 +381,14 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
     return () => {
       video.removeEventListener("play", onPlay);
       video.removeEventListener("pause", onPause);
+      video.removeEventListener("seeked", onSeeked);
       video.removeEventListener("timeupdate", onTimeUpdate);
       video.removeEventListener("durationchange", onDuration);
       video.removeEventListener("waiting", onWaiting);
       video.removeEventListener("canplay", onCanPlay);
       video.removeEventListener("ended", onEnded_);
     };
-  }, [onEnded, progressKey, flushProgress]);
+  }, [onEnded, progressKey, flushProgress, onPlayStateChange, onSeek]);
 
   // ── React to preferDub changes without restarting the stream ────────────
   // The main HLS useEffect only runs when hlsUrl changes. When the user
@@ -393,18 +408,26 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
   }, [preferDub, audioTracks]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── External sync command (Watch Together) ───────────────────────────────
+  // suppressWtBroadcastRef prevents the play/pause/seeked events triggered by
+  // an incoming WT sync from being re-broadcast back to the room (loop prevention).
   useEffect(() => {
     if (!syncCommand) return;
     const video = videoRef.current;
     if (!video) return;
+    suppressWtBroadcastRef.current = true;
     const { type, time } = syncCommand;
     if (type === "seek" || type === "play" || type === "pause") {
       video.currentTime = time;
     }
     if (type === "play") {
-      video.play().catch(() => {});
+      video.play().catch(() => {}).finally(() => {
+        setTimeout(() => { suppressWtBroadcastRef.current = false; }, 150);
+      });
     } else if (type === "pause") {
       video.pause();
+      setTimeout(() => { suppressWtBroadcastRef.current = false; }, 150);
+    } else {
+      setTimeout(() => { suppressWtBroadcastRef.current = false; }, 150);
     }
   }, [syncCommand]);
 

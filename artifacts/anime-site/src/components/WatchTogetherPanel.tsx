@@ -13,6 +13,7 @@ interface Props {
   isLoggedIn: boolean;
   user: { id: string; name: string; color: string };
   joinNotice: { name: string; color: string } | null;
+  leftNotice: { name: string; color: string } | null;
   syncNotice: string | null;
   onCreateRoom: () => void;
   onJoinRoom: (id: string) => void;
@@ -58,7 +59,7 @@ function RoomLink({ roomId }: { roomId: string }) {
 }
 
 export function WatchTogetherPanel({
-  status, roomId, members, chat, isHost, isLoggedIn, user, joinNotice, syncNotice,
+  status, roomId, members, chat, isHost, isLoggedIn, user, joinNotice, leftNotice, syncNotice,
   onCreateRoom, onJoinRoom, onLeave, onSendChat, onSyncNow,
 }: Props) {
   const [open, setOpen] = useState(false);
@@ -130,6 +131,30 @@ export function WatchTogetherPanel({
             </span>
             <span className="text-white/80">
               <span className="text-white font-semibold">{joinNotice.name}</span> joined the room
+            </span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Left notice toast */}
+      <AnimatePresence>
+        {leftNotice && (
+          <motion.div
+            key="left-notice"
+            initial={{ opacity: 0, y: -16, scale: 0.92 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -12, scale: 0.95 }}
+            transition={{ type: "spring", stiffness: 340, damping: 26 }}
+            className="fixed top-16 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-2.5 px-4 py-2.5 rounded-full bg-[#1a1a1a]/90 backdrop-blur-xl border border-white/12 text-sm text-white font-medium shadow-2xl pointer-events-none"
+          >
+            <span
+              className="w-5 h-5 rounded-full shrink-0 flex items-center justify-center text-[10px] font-bold text-black"
+              style={{ background: leftNotice.color }}
+            >
+              {leftNotice.name[0].toUpperCase()}
+            </span>
+            <span className="text-white/80">
+              <span className="text-white font-semibold">{leftNotice.name}</span> left the room
             </span>
           </motion.div>
         )}

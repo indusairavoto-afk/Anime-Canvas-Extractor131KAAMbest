@@ -2201,6 +2201,7 @@ export default function WatchAniList() {
                     progressKey={`al_${animeId}_${currentEp}`}
                     syncCommand={wtSyncCmd}
                     onPlayStateChange={(playing, time) => playing ? wt.sendPlay(time) : wt.sendPause(time)}
+                    onSeek={(t) => wt.sendSeek(t)}
                     onTimeUpdate={(t) => { playerTimeRef.current = t; }}
                   />
                 )}
@@ -2230,6 +2231,7 @@ export default function WatchAniList() {
                     onFatalError={() => setAnimeonsenStreamUrl(null)}
                     syncCommand={wtSyncCmd}
                     onPlayStateChange={(playing, time) => playing ? wt.sendPlay(time) : wt.sendPause(time)}
+                    onSeek={(t) => wt.sendSeek(t)}
                     onTimeUpdate={(t) => { playerTimeRef.current = t; }}
                   />
                 )}
@@ -2259,6 +2261,7 @@ export default function WatchAniList() {
                     onFatalError={() => setKotoHlsUrl(null)}
                     syncCommand={wtSyncCmd}
                     onPlayStateChange={(playing, time) => playing ? wt.sendPlay(time) : wt.sendPause(time)}
+                    onSeek={(t) => wt.sendSeek(t)}
                     onTimeUpdate={(t) => { playerTimeRef.current = t; }}
                   />
                 )}
@@ -3008,6 +3011,7 @@ export default function WatchAniList() {
                 isLoggedIn={wt.isLoggedIn}
                 user={wt.user}
                 joinNotice={wt.joinNotice}
+                leftNotice={wt.leftNotice}
                 syncNotice={wt.syncNotice}
                 onCreateRoom={wt.createRoom}
                 onJoinRoom={wt.joinRoom}

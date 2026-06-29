@@ -224,6 +224,7 @@ export function attachWatchTogether(server: Server) {
         type: "left",
         userId: currentUserId,
         members: memberList(currentRoom),
+        hostId: currentRoom.hostId,
       });
       logger.info({ roomId: currentRoom.id, userId: currentUserId }, "watch-together leave");
     });

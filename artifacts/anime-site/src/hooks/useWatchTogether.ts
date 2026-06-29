@@ -84,6 +84,7 @@ export function useWatchTogether(opts: UseWatchTogetherOptions) {
   const [chat, setChat] = useState<WTChatMsg[]>([]);
   const [hostId, setHostId] = useState<string | null>(null);
   const [joinNotice, setJoinNotice] = useState<{ name: string; color: string } | null>(null);
+  const [leftNotice, setLeftNotice] = useState<{ name: string; color: string } | null>(null);
   const [syncNotice, setSyncNotice] = useState<string | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
@@ -135,6 +136,13 @@ export function useWatchTogether(opts: UseWatchTogetherOptions) {
         }
       } else if (msg.type === "left") {
         setMembers((msg.members as WTMember[]) ?? []);
+        if (msg.hostId) setHostId(msg.hostId as string);
+        // Show left notice for other members
+        const leavingMember = members.find((m) => m.id === (msg.userId as string));
+        if (leavingMember && leavingMember.id !== userRef.current.id) {
+          setLeftNotice({ name: leavingMember.name, color: leavingMember.color });
+          setTimeout(() => setLeftNotice(null), 3500);
+        }
       } else if (msg.type === "play") {
         onPlay?.(msg.time as number, msg.from === userRef.current.id);
       } else if (msg.type === "pause") {
@@ -247,6 +255,7 @@ export function useWatchTogether(opts: UseWatchTogetherOptions) {
     isLoggedIn,
     user,
     joinNotice,
+    leftNotice,
     syncNotice,
     createRoom,
     joinRoom,
