@@ -160,7 +160,7 @@ export default function WatchAniList() {
   const [loading, setLoading] = useState(true);
   const [lang, setLang] = useState<"SUB" | "DUB">(initialLang as "SUB" | "DUB");
   const [actualLang, setActualLang] = useState<"SUB" | "DUB" | null>(null);
-  const [server, setServer] = useState<"GOGO" | "KOTO" | "ANIZONE" | "MIRURO" | "NEXUS" | "ANIMEONSEN" | "ANINEKO" | "CUSTOM">("GOGO");
+  const [server, setServer] = useState<"GOGO" | "KOTO" | "ANIZONE" | "MIRURO" | "NEXUS" | "ANIMEONSEN" | "ANINEKO" | "SHIROKO" | "CUSTOM">("GOGO");
   const [anizoneSlug, setAnizoneSlug] = useState("");
   const [anizoneSlugInput, setAnizoneSlugInput] = useState("");
   const [anizoneSearching, setAnizoneSearching] = useState(false);
@@ -209,6 +209,11 @@ export default function WatchAniList() {
   const [aninekoIframeUrl, setAninekoIframeUrl] = useState<string | null>(null);
   const [aninekoLoading, setAninekoLoading] = useState(false);
   const [aninekoError, setAninekoError] = useState<string | null>(null);
+  const [shirokoIframeUrl, setShirokoIframeUrl] = useState<string | null>(null);
+  const [shirokoLoading, setShirokoLoading] = useState(false);
+  const [shirokoError, setShirokoError] = useState<string | null>(null);
+  const [shirokoProvider, setShirokoProvider] = useState("zen");
+  const [shirokoProviderOpen, setShirokoProviderOpen] = useState(false);
   const [animeonsenIdInput, setAnimeonsenIdInput] = useState<string>("");
   // When true, a popup is open establishing Cloudflare clearance — show a connecting overlay
   const [animeonsenInitializing, setAnimeonsenInitializing] = useState(false);
@@ -242,12 +247,13 @@ export default function WatchAniList() {
     nexus?: { iframeUrl?: string } | null;
     animeonsen?: { iframeUrl?: string; contentId?: string } | null;
     anineko?: { iframeUrl?: string; slug?: string } | null;
+    shiroko?: { iframeUrl?: string } | null;
   }>({});
   const [autoDetecting, setAutoDetecting] = useState(false);
   const [autoSwitchMsg, setAutoSwitchMsg] = useState<string | null>(null);
   const [gogoMaybeBroken, setGogoMaybeBroken] = useState(false);
   const [gogoMaybeCountdown, setGogoMaybeCountdown] = useState<number | null>(null);
-  const [serverHealth, setServerHealth] = useState<{ GOGO: "unknown" | "checking" | "ok" | "fail"; KOTO: "unknown" | "checking" | "ok" | "fail"; ANIZONE: "unknown" | "checking" | "ok" | "fail"; MIRURO: "unknown" | "checking" | "ok" | "fail"; NEXUS: "unknown" | "checking" | "ok" | "fail"; ANIMEONSEN: "unknown" | "checking" | "ok" | "fail"; ANINEKO: "unknown" | "checking" | "ok" | "fail" }>({ GOGO: "unknown", KOTO: "unknown", ANIZONE: "unknown", MIRURO: "unknown", NEXUS: "unknown", ANIMEONSEN: "unknown", ANINEKO: "unknown" });
+  const [serverHealth, setServerHealth] = useState<{ GOGO: "unknown" | "checking" | "ok" | "fail"; KOTO: "unknown" | "checking" | "ok" | "fail"; ANIZONE: "unknown" | "checking" | "ok" | "fail"; MIRURO: "unknown" | "checking" | "ok" | "fail"; NEXUS: "unknown" | "checking" | "ok" | "fail"; ANIMEONSEN: "unknown" | "checking" | "ok" | "fail"; ANINEKO: "unknown" | "checking" | "ok" | "fail"; SHIROKO: "unknown" | "checking" | "ok" | "fail" }>({ GOGO: "unknown", KOTO: "unknown", ANIZONE: "unknown", MIRURO: "unknown", NEXUS: "unknown", ANIMEONSEN: "unknown", ANINEKO: "unknown", SHIROKO: "unknown" });
   const [sourcePageTitle, setSourcePageTitle] = useState<string | null>(null);
   const [verifyResult, setVerifyResult] = useState<{ correct: boolean; confidence: "high" | "medium" | "low"; reason: string; extractedEpisode: number | null } | null>(null);
   const [newEpNotice, setNewEpNotice] = useState<number | null>(null);
@@ -266,10 +272,11 @@ export default function WatchAniList() {
     MIRURO:     { label: "Miruro",     colorCls: "text-purple-400", borderCls: "border-purple-400/70", hoverCls: "hover:bg-purple-400/10" },
     ANIMEONSEN: { label: "AnimeonSen", colorCls: "text-green-400",  borderCls: "border-green-400/70",  hoverCls: "hover:bg-green-400/10" },
     ANINEKO:    { label: "AniNeko",    colorCls: "text-pink-400",   borderCls: "border-pink-400/70",   hoverCls: "hover:bg-pink-400/10" },
+    SHIROKO:    { label: "Shiroko",    colorCls: "text-sky-400",    borderCls: "border-sky-400/70",    hoverCls: "hover:bg-sky-400/10" },
   };
 
   const suggestedServer = useMemo(() => {
-    const priority = ["GOGO", "KOTO", "ANIZONE", "MIRURO", "ANINEKO", "ANIMEONSEN"] as const;
+    const priority = ["GOGO", "KOTO", "ANIZONE", "MIRURO", "ANINEKO", "ANIMEONSEN", "SHIROKO"] as const;
     return priority.find(s => s !== server && serverHealth[s] === "ok") ?? null;
   }, [server, serverHealth]);
 
@@ -292,7 +299,8 @@ export default function WatchAniList() {
       (server === "ANINEKO" && !!aninekoError) ||
       (server === "KOTO" && !!kotoPlayerError) ||
       (server === "MIRURO" && !!miruroError) ||
-      (server === "ANIMEONSEN" && !!animeonsenError);
+      (server === "ANIMEONSEN" && !!animeonsenError) ||
+      (server === "SHIROKO" && !!shirokoError);
 
     if (!hasError || !suggestedServer) { setFailCountdown(null); return; }
 
@@ -473,7 +481,7 @@ export default function WatchAniList() {
     userPickedRef.current = false;
     raceCache.current = {};
     setAutoDetecting(false);
-    setServerHealth({ GOGO: "unknown", KOTO: "unknown", ANIZONE: "unknown", MIRURO: "unknown", NEXUS: "unknown", ANIMEONSEN: "unknown", ANINEKO: "unknown" });
+    setServerHealth({ GOGO: "unknown", KOTO: "unknown", ANIZONE: "unknown", MIRURO: "unknown", NEXUS: "unknown", ANIMEONSEN: "unknown", ANINEKO: "unknown", SHIROKO: "unknown" });
     setSourcePageTitle(null);
     setVerifyResult(null);
   }, [animeId, currentEp]);
@@ -611,12 +619,12 @@ export default function WatchAniList() {
     let won = false;
     setAutoDetecting(true);
 
-    const preferred = localStorage.getItem(`na_preferred_${animeId}`) as "GOGO" | "KOTO" | "ANIZONE" | "MIRURO" | "NEXUS" | "ANIMEONSEN" | "ANINEKO" | null;
+    const preferred = localStorage.getItem(`na_preferred_${animeId}`) as "GOGO" | "KOTO" | "ANIZONE" | "MIRURO" | "NEXUS" | "ANIMEONSEN" | "ANINEKO" | "SHIROKO" | null;
     // Non-preferred servers wait this long before their fetch fires, giving preferred a head start
     const HEAD_START = preferred ? 800 : 0;
 
     setRaceWinnerServer(null);
-    const tryWin = (srv: "GOGO" | "KOTO" | "ANIZONE" | "MIRURO" | "NEXUS" | "ANIMEONSEN" | "ANINEKO") => {
+    const tryWin = (srv: "GOGO" | "KOTO" | "ANIZONE" | "MIRURO" | "NEXUS" | "ANIMEONSEN" | "ANINEKO" | "SHIROKO") => {
       if (cancelled || won || userPickedRef.current) return;
       won = true;
       setRaceWinnerServer(srv);
@@ -804,6 +812,26 @@ export default function WatchAniList() {
           }
         })
         .catch(() => { if (!cancelled) { raceCache.current.anineko = null; setServerHealth(h => ({ ...h, ANINEKO: "fail" })); } });
+    });
+
+    // SHIROKO — uses AniList ID directly, no slug resolution needed
+    setServerHealth(h => ({ ...h, SHIROKO: "checking" }));
+    schedule(preferred === "SHIROKO" ? 0 : HEAD_START + 200, () => {
+      const params = new URLSearchParams({ anilistId: String(animeId), ep: String(currentEp), dub: String(lang === "DUB"), provider: "zen" });
+      fetch(apiUrl(`/api/shiroko/stream?${params}`))
+        .then(r => r.json())
+        .then((data: { iframeUrl?: string; error?: string }) => {
+          if (cancelled) return;
+          if (data.iframeUrl) {
+            raceCache.current.shiroko = { iframeUrl: data.iframeUrl };
+            setServerHealth(h => ({ ...h, SHIROKO: "ok" }));
+            tryWin("SHIROKO");
+          } else {
+            raceCache.current.shiroko = null;
+            setServerHealth(h => ({ ...h, SHIROKO: "fail" }));
+          }
+        })
+        .catch(() => { if (!cancelled) { raceCache.current.shiroko = null; setServerHealth(h => ({ ...h, SHIROKO: "fail" })); } });
     });
 
     // If nothing wins after 15s, stop the spinner and stay on current server
@@ -1389,6 +1417,44 @@ export default function WatchAniList() {
       .finally(() => { if (!cancelled) setAninekoLoading(false); });
     return () => { cancelled = true; };
   }, [server, animeId, currentEp]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fetch Shiroko iframe URL when server is SHIROKO
+  useEffect(() => {
+    if (server !== "SHIROKO") {
+      setShirokoIframeUrl(null);
+      setShirokoError(null);
+      return;
+    }
+    const cached = raceCache.current.shiroko;
+    if (cached !== undefined) {
+      if (cached?.iframeUrl) {
+        setShirokoIframeUrl(cached.iframeUrl);
+        setShirokoLoading(false);
+        setShirokoError(null);
+        raceCache.current.shiroko = undefined;
+        return;
+      }
+      raceCache.current.shiroko = undefined;
+    }
+    let cancelled = false;
+    setShirokoIframeUrl(null);
+    setShirokoLoading(true);
+    setShirokoError(null);
+    const params = new URLSearchParams({ anilistId: String(animeId), ep: String(currentEp), dub: String(lang === "DUB"), provider: shirokoProvider });
+    fetch(apiUrl(`/api/shiroko/stream?${params}`))
+      .then(r => r.json())
+      .then((data: { iframeUrl?: string; error?: string }) => {
+        if (cancelled) return;
+        if (data.iframeUrl) {
+          setShirokoIframeUrl(data.iframeUrl);
+        } else {
+          setShirokoError(data.error ?? "Anime not found on Shiroko");
+        }
+      })
+      .catch((e: Error) => { if (!cancelled) setShirokoError(e.message); })
+      .finally(() => { if (!cancelled) setShirokoLoading(false); });
+    return () => { cancelled = true; };
+  }, [server, animeId, currentEp, shirokoProvider]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load saved AnimeonSen content ID from localStorage
   useEffect(() => {
@@ -2444,6 +2510,77 @@ export default function WatchAniList() {
                   </div>
                 )}
 
+                {/* SHIROKO — proxy-embedded shiroko.co player */}
+                {server === "SHIROKO" && shirokoIframeUrl && (
+                  <iframe
+                    ref={iframeRef}
+                    key={`shiroko-${animeId}-${currentEp}-${shirokoProvider}`}
+                    src={shirokoIframeUrl}
+                    allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
+                    allowFullScreen
+                    title="Shiroko Player"
+                    style={{ position: "absolute", inset: 0, width: "100%", height: "100%", border: "none", background: "#000" }}
+                    onLoad={() => setTimeout(() => setIframeLoaded(true), 300)}
+                  />
+                )}
+
+                {/* SHIROKO loading / error overlay */}
+                {server === "SHIROKO" && !shirokoIframeUrl && (
+                  <div className="absolute inset-0 z-10 flex flex-col items-center justify-center" style={{ background: "rgba(0,0,0,0.92)" }}>
+                    {banner && <img src={banner} alt="" className="absolute inset-0 w-full h-full object-cover opacity-10 scale-110 blur-sm" />}
+                    <div className="relative z-10 flex flex-col items-center gap-4">
+                      {shirokoError ? (
+                        <div className="text-center space-y-3">
+                          <div className="w-11 h-11 border border-yellow-400/40 bg-yellow-400/5 flex items-center justify-center mx-auto rounded-sm">
+                            <span className="text-yellow-400 text-xl">🔧</span>
+                          </div>
+                          <p className="text-white/80 text-sm font-semibold tracking-wide">Shiroko Unavailable</p>
+                          <p className="text-white/35 text-[11px] font-mono max-w-[260px] text-center leading-relaxed">
+                            This episode isn't available on Shiroko.<br/>Try switching the provider below or choose another server.
+                          </p>
+                          {suggestedServer && SERVER_META[suggestedServer] && (
+                            <>
+                              {failCountdown !== null && (
+                                <p className="text-yellow-400/80 text-[11px] font-mono animate-pulse">
+                                  Auto-switching to {SERVER_META[suggestedServer].label} in {failCountdown}s…
+                                </p>
+                              )}
+                              <div className="flex items-center gap-2 mt-1">
+                                <button
+                                  onClick={() => switchToServer(suggestedServer)}
+                                  className={`inline-flex items-center gap-2 text-[11px] font-mono font-bold px-5 py-2.5 border ${SERVER_META[suggestedServer].borderCls} ${SERVER_META[suggestedServer].colorCls} ${SERVER_META[suggestedServer].hoverCls} transition-all uppercase tracking-widest`}
+                                >
+                                  <Play className="w-3 h-3 fill-current" /> Try {SERVER_META[suggestedServer].label}
+                                </button>
+                                {failCountdown !== null && (
+                                  <button
+                                    onClick={() => setFailCountdown(null)}
+                                    className="text-[10px] font-mono px-3 py-2.5 border border-white/15 text-white/35 hover:border-white/40 hover:text-white/60 transition-colors uppercase tracking-widest"
+                                  >
+                                    Cancel
+                                  </button>
+                                )}
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      ) : (
+                        <>
+                          <div className="relative w-14 h-14">
+                            <div className="absolute inset-0 rounded-full border-2 border-white/10" />
+                            <div className="absolute inset-0 rounded-full border-2 border-t-sky-400 border-r-transparent border-b-transparent border-l-transparent animate-spin" />
+                            <div className="absolute inset-2 rounded-full border border-white/20 border-t-sky-400/60 animate-spin" style={{ animationDuration: "0.6s", animationDirection: "reverse" }} />
+                          </div>
+                          <p className="text-white/70 text-sm font-semibold tracking-wide">Loading Shiroko…</p>
+                        </>
+                      )}
+                      <p className="text-white/20 text-[11px] font-mono uppercase tracking-widest">
+                        Episode {currentEp} · {lang}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 {/* KOTO loading / error overlay — only shown when no URL at all */}
                 {server === "KOTO" && !kotoHlsUrl && !kotoPlayerUrl && (
                   <div className="absolute inset-0 z-10 flex flex-col items-center justify-center" style={{ background: "rgba(0,0,0,0.92)" }}>
@@ -2972,7 +3109,8 @@ export default function WatchAniList() {
                   // If CF already done this session, just switch — the "Connect" overlay handles first-time setup
                   if (aoCfReady) setAnimeonsenInitializing(false);
                 }},
-                { key: "ANINEKO", label: "ANINEKO", color: "pink", onClick: () => { userPickedRef.current = true; setServer("ANINEKO"); setIframeLoaded(false); } },
+                { key: "ANINEKO",  label: "ANINEKO",  color: "pink", onClick: () => { userPickedRef.current = true; setServer("ANINEKO"); setIframeLoaded(false); } },
+                { key: "SHIROKO",  label: "SHIROKO",  color: "sky",  onClick: () => { userPickedRef.current = true; setServer("SHIROKO"); setIframeLoaded(false); } },
               ] as const).map(({ key, label, color, onClick }) => {
                 const active = server === key;
                 const health = serverHealth[key];
@@ -2984,6 +3122,7 @@ export default function WatchAniList() {
                   purple: { active: "border-purple-400 bg-purple-400 text-black", idle: "border-purple-400/30 text-purple-400/60 hover:border-purple-400/70 hover:text-purple-400" },
                   green:  { active: "border-green-400 bg-green-400 text-black",   idle: "border-green-400/30 text-green-400/60 hover:border-green-400/70 hover:text-green-400" },
                   pink:   { active: "border-pink-400 bg-pink-400 text-black",     idle: "border-pink-400/30 text-pink-400/60 hover:border-pink-400/70 hover:text-pink-400" },
+                  sky:    { active: "border-sky-400 bg-sky-400 text-black",       idle: "border-sky-400/30 text-sky-400/60 hover:border-sky-400/70 hover:text-sky-400" },
                 };
                 const dotClass =
                   health === "ok"       ? "bg-green-400" :
@@ -3014,6 +3153,58 @@ export default function WatchAniList() {
                 );
               })}
             </div>
+
+            {/* SHIROKO sub-provider dropdown — only visible when SHIROKO server is active */}
+            {server === "SHIROKO" && (
+              <div className="relative flex items-center gap-2 mt-2">
+                <span className="text-[9px] font-mono text-sky-400/50 uppercase tracking-widest shrink-0">Provider:</span>
+                <div className="relative">
+                  <button
+                    onClick={() => setShirokoProviderOpen(o => !o)}
+                    className="flex items-center gap-1.5 text-[10px] font-mono px-2.5 py-1 border border-sky-400/40 text-sky-300/80 hover:border-sky-400/70 hover:text-sky-300 transition-colors"
+                  >
+                    {[
+                      { id: "zen", label: "Zen" },
+                      { id: "hianime", label: "HiAnime" },
+                      { id: "gogoanime", label: "GogoAnime" },
+                      { id: "animepahe", label: "AnimePahe" },
+                      { id: "animerulz", label: "AnimeRulz" },
+                    ].find(p => p.id === shirokoProvider)?.label ?? shirokoProvider}
+                    <ChevronDown className="w-3 h-3" />
+                  </button>
+                  {shirokoProviderOpen && (
+                    <div className="absolute top-full left-0 mt-1 z-50 bg-[#0d0d0d] border border-white/10 shadow-xl min-w-[120px]">
+                      {[
+                        { id: "zen",        label: "Zen"        },
+                        { id: "hianime",    label: "HiAnime"    },
+                        { id: "gogoanime",  label: "GogoAnime"  },
+                        { id: "animepahe",  label: "AnimePahe"  },
+                        { id: "animerulz",  label: "AnimeRulz"  },
+                      ].map(p => (
+                        <button
+                          key={p.id}
+                          onClick={() => {
+                            setShirokoProvider(p.id);
+                            setShirokoProviderOpen(false);
+                            setShirokoIframeUrl(null);
+                            setShirokoError(null);
+                            setIframeLoaded(false);
+                          }}
+                          className={`w-full text-left px-3 py-1.5 text-[10px] font-mono transition-colors ${
+                            shirokoProvider === p.id
+                              ? "text-sky-300 bg-sky-400/10"
+                              : "text-white/50 hover:text-white/80 hover:bg-white/5"
+                          }`}
+                        >
+                          {shirokoProvider === p.id && <span className="mr-1 text-sky-400">✓</span>}
+                          {p.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* DUB-not-available warning — shown when DUB was requested but stream fell back to SUB */}

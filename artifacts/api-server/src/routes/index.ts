@@ -31,6 +31,7 @@ import anilistRouter from "./anilist";
 import syncRouter from "./sync";
 import aninekoRouter from "./anineko";
 import lnoriRouter from "./lnori";
+import shirokoRouter from "./shiroko";
 
 const router: IRouter = Router();
 
@@ -66,5 +67,6 @@ router.use(anilistRouter);
 router.use(syncRouter);
 router.use(aninekoRouter);
 router.use(lnoriRouter);
+router.use(shirokoRouter);
 
 export default router;
