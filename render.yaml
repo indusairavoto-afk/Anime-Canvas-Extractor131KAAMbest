@@ -33,3 +33,10 @@ services:
         generateValue: true
       - key: OPENROUTER_API_KEY
         sync: false
+      # Optional: set these in Render dashboard to enable email features
+      # (verification emails, password reset, magic code login)
+      # If not set, registration/login still works — emails are simply skipped.
+      - key: GMAIL_USER
+        sync: false
+      - key: GMAIL_APP_PASSWORD
+        sync: false

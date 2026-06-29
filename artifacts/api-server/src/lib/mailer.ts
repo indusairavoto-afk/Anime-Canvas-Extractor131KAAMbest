@@ -1,14 +1,21 @@
 import nodemailer from "nodemailer";
 
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: process.env.GMAIL_USER,
-    pass: process.env.GMAIL_APP_PASSWORD,
-  },
-});
+const GMAIL_USER = process.env.GMAIL_USER;
+const GMAIL_PASS = process.env.GMAIL_APP_PASSWORD;
 
-const FROM = `"Nexa Anime" <${process.env.GMAIL_USER}>`;
+const isConfigured = !!(GMAIL_USER && GMAIL_PASS);
+
+const transporter = isConfigured
+  ? nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: GMAIL_USER,
+        pass: GMAIL_PASS,
+      },
+    })
+  : null;
+
+const FROM = `"Nexa Anime" <${GMAIL_USER ?? "noreply@nexaanime.com"}>`;
 
 function baseTemplate(title: string, body: string) {
   return `<!DOCTYPE html>
@@ -42,6 +49,10 @@ function baseTemplate(title: string, body: string) {
 }
 
 export async function sendMagicCodeEmail(to: string, displayName: string, code: string) {
+  if (!transporter) {
+    console.warn("[mailer] GMAIL_USER / GMAIL_APP_PASSWORD not set — skipping magic code email");
+    return;
+  }
   const html = baseTemplate("Your Nexa Anime login code", `
     <p style="margin:0 0 8px;font-size:16px;color:#e0e0e0;">Hi <strong style="color:#fff;">${displayName}</strong>,</p>
     <p style="margin:0 0 28px;font-size:14px;color:#888;line-height:1.6;">Here's your one-time login code for Nexa Anime. It expires in <strong style="color:#ccc;">10 minutes</strong>.</p>
@@ -56,6 +67,10 @@ export async function sendMagicCodeEmail(to: string, displayName: string, code: 
 }
 
 export async function sendVerificationEmail(to: string, displayName: string, token: string, baseUrl: string) {
+  if (!transporter) {
+    console.warn("[mailer] GMAIL_USER / GMAIL_APP_PASSWORD not set — skipping verification email");
+    return;
+  }
   const link = `${baseUrl}/verify-email/${token}`;
   const html = baseTemplate("Verify your Nexa Anime email", `
     <p style="margin:0 0 8px;font-size:16px;color:#e0e0e0;">Hi <strong style="color:#fff;">${displayName}</strong>,</p>
@@ -71,6 +86,10 @@ export async function sendVerificationEmail(to: string, displayName: string, tok
 }
 
 export async function sendPasswordResetEmail(to: string, displayName: string, token: string, baseUrl: string) {
+  if (!transporter) {
+    console.warn("[mailer] GMAIL_USER / GMAIL_APP_PASSWORD not set — skipping password reset email");
+    return;
+  }
   const link = `${baseUrl}/reset/${token}`;
   const html = baseTemplate("Reset your Nexa Anime password", `
     <p style="margin:0 0 8px;font-size:16px;color:#e0e0e0;">Hi <strong style="color:#fff;">${displayName}</strong>,</p>
