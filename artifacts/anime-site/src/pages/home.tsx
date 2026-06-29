@@ -67,10 +67,14 @@ const POPULAR_QUERY = `{
       id
       title { romaji english }
       coverImage { extraLarge large }
+      bannerImage
       averageScore
       status
       seasonYear
       format
+      episodes
+      genres
+      description(asHtml: false)
     }
   }
 }`;
@@ -97,10 +101,14 @@ function buildTop10Query(period: "DAY" | "WEEK" | "MONTH") {
       id
       title { romaji english }
       coverImage { extraLarge large }
+      bannerImage
       averageScore
       status
       seasonYear
       format
+      episodes
+      genres
+      description(asHtml: false)
     }
   }
 }`;
@@ -128,12 +136,15 @@ function buildSeasonQuery(season: string, year: number) {
       id
       title { romaji english }
       coverImage { extraLarge large }
+      bannerImage
       averageScore
       status
       seasonYear
       season
       format
       episodes
+      genres
+      description(asHtml: false)
     }
   }
 }`;
@@ -706,15 +717,29 @@ function UpcomingCard({ anime, index }: { anime: AniMedia; index: number }) {
 function PopularCard({ anime, index }: { anime: AniMedia; index: number }) {
   const cover = anime.coverImage?.extraLarge || anime.coverImage?.large || "";
   const title = anime.title.english || anime.title.romaji;
-  const score = anime.averageScore ? (anime.averageScore / 10).toFixed(1) : null;
+  const score = anime.averageScore ? Math.round(anime.averageScore) : null;
+  const [popupOpen, setPopupOpen] = useState(false);
+  const [popupSide, setPopupSide] = useState<"right" | "left">("right");
+  const cleanDesc = anime.description?.replace(/<[^>]*>/g, "") ?? "";
+  const statusLabel = anime.status === "RELEASING" ? "Ongoing" : anime.status === "FINISHED" ? "Completed" : (anime.status ?? "");
+
+  const handleMouseEnter = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setPopupSide(window.innerWidth - rect.right < 260 ? "left" : "right");
+    setPopupOpen(true);
+  };
+
   return (
     <motion.div
+      className="relative group"
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, delay: index * 0.05, ease: [0.16, 1, 0.3, 1] }}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={() => setPopupOpen(false)}
     >
       <Link href={`/anime/al/${anime.id}`}>
-        <div className="group relative cursor-pointer">
+        <div className="relative cursor-pointer">
           <div className="relative w-full aspect-[2/3] border border-white/5 bg-zinc-950 overflow-hidden">
             <img
               src={cover}
@@ -731,7 +756,7 @@ function PopularCard({ anime, index }: { anime: AniMedia; index: number }) {
               )}
               {score && (
                 <span className="flex items-center gap-0.5 px-1.5 py-0.5 bg-black/70 text-white text-[9px] font-mono">
-                  <Star className="w-2.5 h-2.5 fill-white/60 text-white/60" />{score}
+                  <Star className="w-2.5 h-2.5 fill-white/60 text-white/60" />{score}%
                 </span>
               )}
             </div>
@@ -740,12 +765,76 @@ function PopularCard({ anime, index }: { anime: AniMedia; index: number }) {
               <div className="flex items-center gap-1.5 text-[9px] font-mono text-white/50 uppercase tracking-widest">
                 {anime.seasonYear && <span>{anime.seasonYear}</span>}
                 {anime.seasonYear && <span className="w-0.5 h-0.5 rounded-full bg-white/30" />}
-                <span className={anime.status === "RELEASING" ? "text-white/70" : ""}>{anime.status === "RELEASING" ? "Ongoing" : anime.status === "FINISHED" ? "Completed" : anime.status}</span>
+                <span className={anime.status === "RELEASING" ? "text-white/70" : ""}>{statusLabel}</span>
               </div>
             </div>
           </div>
         </div>
       </Link>
+
+      {/* Detail popup */}
+      <AnimatePresence>
+        {popupOpen && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 4 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 4 }}
+            transition={{ duration: 0.13, ease: "easeOut" }}
+            className={`absolute top-0 z-[60] w-60 bg-[#0f0f0f] border border-white/10 shadow-2xl pointer-events-auto ${
+              popupSide === "right" ? "left-[calc(100%+6px)]" : "right-[calc(100%+6px)]"
+            }`}
+            onMouseEnter={() => setPopupOpen(true)}
+            onMouseLeave={() => setPopupOpen(false)}
+          >
+            <div className="relative h-28 overflow-hidden">
+              <img
+                src={anime.bannerImage || cover}
+                alt=""
+                className="w-full h-full object-cover"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-[#0f0f0f] via-[#0f0f0f]/30 to-transparent" />
+            </div>
+
+            <div className="p-3">
+              <h3 className="text-white font-serif text-sm leading-snug line-clamp-2 mb-2">{title}</h3>
+
+              <div className="flex flex-wrap gap-1 mb-2.5">
+                {anime.format && (
+                  <span className="px-1.5 py-0.5 bg-white/10 text-white/70 text-[8px] font-mono uppercase tracking-wide">{anime.format}</span>
+                )}
+                {anime.status && (
+                  <span className="px-1.5 py-0.5 bg-white/10 text-white/70 text-[8px] font-mono uppercase tracking-wide">{statusLabel}</span>
+                )}
+                {(anime.genres ?? []).slice(0, 3).map(g => (
+                  <span key={g} className="px-1.5 py-0.5 bg-white/[0.06] text-white/40 text-[8px] font-mono uppercase tracking-wide">{g}</span>
+                ))}
+              </div>
+
+              <div className="flex items-center gap-3 text-[10px] font-mono mb-2.5">
+                {score && (
+                  <span className="flex items-center gap-1 text-yellow-400/90">
+                    <Star className="w-3 h-3 fill-current" />
+                    {score}%
+                  </span>
+                )}
+                {anime.episodes && <span className="text-white/40">{anime.episodes} ep</span>}
+                {anime.seasonYear && <span className="text-white/40">{anime.seasonYear}</span>}
+              </div>
+
+              {cleanDesc && (
+                <p className="text-[11px] text-white/45 leading-relaxed line-clamp-3 mb-3">{cleanDesc}</p>
+              )}
+
+              <Link href={`/watch/al/${anime.id}/1`} onClick={(e) => e.stopPropagation()}>
+                <button className="w-full flex items-center justify-center gap-1.5 py-2 bg-white text-black text-[10px] font-bold uppercase tracking-wider hover:bg-white/90 transition-colors">
+                  <Play className="w-3 h-3 fill-current" />
+                  Watch now
+                </button>
+              </Link>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }
