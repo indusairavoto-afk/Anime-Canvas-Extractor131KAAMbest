@@ -835,13 +835,20 @@ function PopularCard({ anime, index }: { anime: AniMedia; index: number }) {
 
             <div className="border-t border-white/[0.06]" />
 
-            {/* Watch button */}
-            <Link href={`/watch/al/${anime.id}/1`}>
-              <button className="w-full flex items-center justify-center gap-1.5 py-2 bg-white text-black text-[10px] font-bold uppercase tracking-wider hover:bg-white/90 transition-colors">
-                <Play className="w-3 h-3 fill-current" />
-                Watch Now
-              </button>
-            </Link>
+            {/* Actions */}
+            <div className="flex flex-col gap-1.5">
+              <Link href={`/watch/al/${anime.id}/1`}>
+                <button className="w-full flex items-center justify-center gap-1.5 py-2 bg-white text-black text-[10px] font-bold uppercase tracking-wider hover:bg-white/90 transition-colors">
+                  <Play className="w-3 h-3 fill-current" />
+                  Watch Now
+                </button>
+              </Link>
+              <Link href={`/anime/al/${anime.id}`}>
+                <button className="w-full flex items-center justify-center gap-1.5 py-1.5 border border-white/20 text-white/60 text-[10px] font-bold uppercase tracking-wider hover:border-white hover:text-white transition-colors">
+                  Details
+                </button>
+              </Link>
+            </div>
           </div>
         </div>
       </div>
