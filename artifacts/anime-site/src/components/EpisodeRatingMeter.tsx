@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { apiUrl } from "@/lib/api";
 
@@ -147,12 +147,12 @@ function segmentPath(startDeg: number, endDeg: number) {
   ].join(" ");
 }
 
-// Segments: gauge spans from 180° (left/Skip) to 0° (right/Perfection)
-// Each of 4 cats = 45°
-const SEGMENTS = CATS.map((cat, i) => ({
+// Static equal segments (fallback / empty state)
+const SEGMENTS_EQUAL = CATS.map((cat, i) => ({
   ...cat,
+  startDeg: 180 - i * 45,
+  endDeg: 180 - (i + 1) * 45,
   path: segmentPath(180 - i * 45, 180 - (i + 1) * 45),
-  // Center angle for label placement
   labelDeg: 180 - i * 45 - 22.5,
 }));
 
@@ -165,25 +165,46 @@ function GaugeMeter({ counts, total, myVote, onVote }: {
   const isDraggingRef = useRef(false);
   const pointerHandledRef = useRef(false);
 
-  // Needle snaps to the segment with the most votes (dominant category).
-  // Segment center angles map to needle rotation:
-  //   Skip (i=0)       → needleRot = -67.5°
-  //   Timepass (i=1)   → needleRot = -22.5°
-  //   Go For It (i=2)  → needleRot =  22.5°
-  //   Perfection (i=3) → needleRot =  67.5°
-  // Formula: (i / 3) * 135 - 67.5
-  // No votes → point straight up (0°)
   const activeCat = myVote ? CAT_MAP[myVote] : null;
   const domIdx    = total > 0 ? CATS.reduce((best, _, i) => counts[CATS[i].key] > counts[CATS[best].key] ? i : best, 0) : -1;
   const domCat    = domIdx >= 0 ? CATS[domIdx] : null;
   const domPct    = domCat && total > 0 ? Math.round((counts[domCat.key] / total) * 100) : 0;
-  const needleRot = domIdx >= 0 ? (domIdx / (CATS.length - 1)) * 135 - 67.5 : 0;
   // Only show needle when there is one unambiguous leader (no ties for first)
   const hasClearWinner = domIdx >= 0 && CATS.every(
     (cat, i) => i === domIdx || counts[cat.key] < counts[CATS[domIdx].key]
   );
 
-  // Convert pointer event to gauge segment
+  // Dynamic segments: arc width is proportional to vote count.
+  // Falls back to equal 45° segments when no votes yet.
+  const SEGMENTS = useMemo(() => {
+    if (total === 0) return SEGMENTS_EQUAL;
+    let cur = 180;
+    return CATS.map((cat) => {
+      const sweep = (counts[cat.key] / total) * 180;
+      const startDeg = cur;
+      const endDeg   = cur - sweep;
+      const labelDeg = (startDeg + endDeg) / 2;
+      cur = endDeg;
+      return {
+        ...cat,
+        startDeg,
+        endDeg,
+        labelDeg,
+        path: sweep > 0.5 ? segmentPath(startDeg, endDeg) : "",
+      };
+    });
+  }, [counts, total]);
+
+  // Needle points to center of the winning segment
+  const needleRot = useMemo(() => {
+    if (domIdx < 0) return 0;
+    if (total === 0) return (domIdx / (CATS.length - 1)) * 135 - 67.5;
+    const winSeg = SEGMENTS[domIdx];
+    const centerDeg = (winSeg.startDeg + winSeg.endDeg) / 2;
+    return centerDeg - 90; // gauge angle → needle rotation
+  }, [domIdx, total, SEGMENTS]);
+
+  // Convert pointer event to gauge segment using dynamic angle boundaries
   function segFromPointer(e: React.PointerEvent<SVGSVGElement> | React.MouseEvent<SVGSVGElement>): VoteCategory | null {
     const svg = svgRef.current;
     if (!svg) return null;
@@ -197,10 +218,11 @@ function GaugeMeter({ counts, total, myVote, onVote }: {
     if (dy < -8) return null; // below baseline
     const angle = Math.atan2(dy, dx) * 180 / Math.PI;
     if (angle < 0 || angle > 180) return null;
-    if (angle >= 135) return "skip";
-    if (angle >= 90)  return "timepass";
-    if (angle >= 45)  return "go_for_it";
-    return "perfection";
+    // Find which dynamic segment contains this angle
+    for (const seg of SEGMENTS) {
+      if (angle <= seg.startDeg && angle >= seg.endDeg) return seg.key;
+    }
+    return null;
   }
 
   const displayCat = hoveredSeg ? CAT_MAP[hoveredSeg] : activeCat;
