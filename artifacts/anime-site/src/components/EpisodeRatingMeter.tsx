@@ -39,7 +39,74 @@ interface Props {
   animeId: string;
   episode: number;
   episodeTitle: string;
+  animeName?: string;
+  coverImage?: string;
   onPostReview?: (text: string, category: VoteCategory, spoiler: boolean) => void;
+}
+
+/* ── Canvas export helpers ──────────────────────────────────────────────── */
+function loadImg(url: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+
+function fillArcSegment(
+  ctx: CanvasRenderingContext2D,
+  cx: number, cy: number, rOut: number, rIn: number,
+  start: number, end: number, color: string, opacity: number,
+) {
+  if (end <= start) return;
+  ctx.beginPath();
+  ctx.arc(cx, cy, rOut, start, end, false);
+  ctx.arc(cx, cy, rIn, end, start, true);
+  ctx.closePath();
+  ctx.globalAlpha = opacity;
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.globalAlpha = 1;
+}
+
+function canvasRoundRect(
+  ctx: CanvasRenderingContext2D,
+  x: number, y: number, w: number, h: number, r: number,
+) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+function canvasWrapText(
+  ctx: CanvasRenderingContext2D,
+  text: string, x: number, y: number, maxW: number, lineH: number,
+): number {
+  const words = text.split(" ");
+  let line = "";
+  let curY = y;
+  for (const w of words) {
+    const test = line + w + " ";
+    if (ctx.measureText(test).width > maxW && line !== "") {
+      ctx.fillText(line.trim(), x, curY);
+      line = w + " ";
+      curY += lineH;
+    } else {
+      line = test;
+    }
+  }
+  if (line.trim()) ctx.fillText(line.trim(), x, curY);
+  return curY;
 }
 
 /* ── Gauge SVG ─────────────────────────────────────────────────────────── */
@@ -355,7 +422,7 @@ function GaugeMeter({ counts, total, myVote, onVote }: {
   );
 }
 
-export function EpisodeRatingMeter({ animeId, episode, episodeTitle, onPostReview }: Props) {
+export function EpisodeRatingMeter({ animeId, episode, episodeTitle, animeName, coverImage, onPostReview }: Props) {
   const [counts, setCounts] = useState<VoteCounts>({ skip: 0, timepass: 0, go_for_it: 0, perfection: 0 });
   const [myVote, setMyVote] = useState<VoteCategory | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -365,6 +432,9 @@ export function EpisodeRatingMeter({ animeId, episode, episodeTitle, onPostRevie
   const [reviews, setReviews] = useState<ReviewRow[]>([]);
   const [revealedIds, setRevealedIds] = useState<Set<number>>(new Set());
   const [likedIds, setLikedIds] = useState<Set<number>>(new Set());
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareGenerating, setShareGenerating] = useState(false);
+  const [sharePreview, setSharePreview] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const fetchReviews = useCallback(async () => {
@@ -387,6 +457,206 @@ export function EpisodeRatingMeter({ animeId, episode, episodeTitle, onPostRevie
 
   const total = CATS.reduce((s, c) => s + counts[c.key], 0);
   const activeCat = myVote ? CAT_MAP[myVote] : null;
+
+  /* ── Export: dominant category (mirrors GaugeMeter logic) ── */
+  const domIdx = total > 0
+    ? CATS.reduce((best, c, i) => counts[c.key] > counts[CATS[best].key] ? i : best, 0)
+    : -1;
+  const domCat = domIdx >= 0 ? CATS[domIdx] : null;
+  const maxCount = domCat ? counts[domCat.key] : 0;
+  const hasClearWinner = domCat !== null && CATS.every(c => c.key === domCat!.key || counts[c.key] < maxCount);
+  const domPct = (hasClearWinner && total > 0) ? Math.round((maxCount / total) * 100) : 0;
+
+  /* ── Canvas card generator ── */
+  const generateShareCard = useCallback(async (): Promise<string> => {
+    const W = 600, H = 760;
+    const canvas = document.createElement("canvas");
+    canvas.width = W; canvas.height = H;
+    const ctx = canvas.getContext("2d")!;
+
+    /* background */
+    ctx.fillStyle = "#0c0c0c";
+    ctx.fillRect(0, 0, W, H);
+    ctx.strokeStyle = "rgba(255,255,255,0.06)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(0.5, 0.5, W - 1, H - 1);
+
+    const PAD = 44;
+
+    /* ─ HEADER: cover + title ─ */
+    const coverW = 96, coverH = 136, coverY = 44;
+    /* try loading the cover image */
+    if (coverImage) {
+      try {
+        const img = await loadImg(coverImage);
+        ctx.save();
+        canvasRoundRect(ctx, PAD, coverY, coverW, coverH, 6);
+        ctx.clip();
+        ctx.drawImage(img, PAD, coverY, coverW, coverH);
+        ctx.restore();
+        /* subtle border */
+        ctx.strokeStyle = "rgba(255,255,255,0.1)";
+        ctx.lineWidth = 1;
+        canvasRoundRect(ctx, PAD, coverY, coverW, coverH, 6);
+        ctx.stroke();
+      } catch {
+        ctx.fillStyle = "rgba(255,255,255,0.06)";
+        canvasRoundRect(ctx, PAD, coverY, coverW, coverH, 6);
+        ctx.fill();
+      }
+    } else {
+      ctx.fillStyle = "rgba(255,255,255,0.06)";
+      canvasRoundRect(ctx, PAD, coverY, coverW, coverH, 6);
+      ctx.fill();
+    }
+
+    const txtX = PAD + coverW + 18;
+    const txtMaxW = W - txtX - PAD;
+
+    /* anime name */
+    ctx.fillStyle = "rgba(255,255,255,0.92)";
+    ctx.font = "bold 21px system-ui, sans-serif";
+    const lastTitleY = canvasWrapText(ctx, animeName || "Anime", txtX, 72, txtMaxW, 26);
+
+    /* episode line */
+    ctx.fillStyle = "rgba(255,255,255,0.38)";
+    ctx.font = "12px monospace";
+    const epLabel = episodeTitle && episodeTitle !== `Episode ${episode}`
+      ? `Ep ${episode} · ${episodeTitle}`
+      : `Episode ${episode}`;
+    ctx.fillText(epLabel, txtX, Math.max(lastTitleY + 24, 110));
+
+    /* NEXA ANIME branding */
+    ctx.fillStyle = "rgba(255,255,255,0.18)";
+    ctx.font = "bold 10px monospace";
+    ctx.textAlign = "center";
+    ctx.fillText("✦  NEXA ANIME", W / 2, 202);
+    ctx.textAlign = "left";
+
+    /* divider */
+    ctx.strokeStyle = "rgba(255,255,255,0.07)";
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(PAD, 216); ctx.lineTo(W - PAD, 216); ctx.stroke();
+
+    /* ─ GAUGE ARC ─ */
+    const GCX = W / 2, GCY = 390;
+    const ROUT = 134, RIN = 88;
+    const GAP_R = 0.025;
+
+    if (total > 0) {
+      let startA = Math.PI;
+      CATS.forEach(cat => {
+        const proportion = counts[cat.key] / total;
+        if (proportion <= 0) return;
+        const sweep = Math.PI * proportion;
+        const isWinner = hasClearWinner && cat.key === domCat?.key;
+        fillArcSegment(ctx, GCX, GCY, ROUT, RIN,
+          startA + GAP_R / 2, startA + sweep - GAP_R / 2,
+          cat.fill, isWinner ? 0.95 : 0.28);
+        /* glow ring on winner */
+        if (isWinner) {
+          ctx.shadowColor = cat.glow;
+          ctx.shadowBlur = 18;
+          fillArcSegment(ctx, GCX, GCY, ROUT, RIN,
+            startA + GAP_R / 2, startA + sweep - GAP_R / 2,
+            cat.fill, 0.7);
+          ctx.shadowBlur = 0;
+        }
+        startA += sweep;
+      });
+    } else {
+      CATS.forEach((cat, i) => {
+        const sw = Math.PI / CATS.length;
+        fillArcSegment(ctx, GCX, GCY, ROUT, RIN,
+          Math.PI + i * sw + GAP_R / 2, Math.PI + (i + 1) * sw - GAP_R / 2,
+          cat.fill, 0.1);
+      });
+    }
+
+    /* center text */
+    ctx.textAlign = "center";
+    if (total > 0 && hasClearWinner && domCat) {
+      ctx.shadowColor = domCat.glow; ctx.shadowBlur = 20;
+      ctx.fillStyle = domCat.text;
+      ctx.font = "bold 52px system-ui, sans-serif";
+      ctx.fillText(`${domPct}%`, GCX, GCY - 4);
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = "rgba(255,255,255,0.38)";
+      ctx.font = "12px monospace";
+      ctx.fillText(`${total.toLocaleString()} Votes`, GCX, GCY + 22);
+    } else if (total > 0) {
+      ctx.fillStyle = "rgba(255,255,255,0.25)";
+      ctx.font = "bold 14px monospace";
+      ctx.fillText("CONTESTED", GCX, GCY - 2);
+      ctx.fillStyle = "rgba(255,255,255,0.18)";
+      ctx.font = "10px monospace";
+      ctx.fillText(`${total.toLocaleString()} Votes`, GCX, GCY + 18);
+    } else {
+      ctx.fillStyle = "rgba(255,255,255,0.15)";
+      ctx.font = "bold 13px monospace";
+      ctx.fillText("NO VOTES YET", GCX, GCY);
+    }
+    ctx.textAlign = "left";
+
+    /* ─ BREAKDOWN LIST ─ */
+    const listStartY = 490, rowH = 34;
+    CATS.forEach((cat, i) => {
+      const pct = total > 0 ? Math.round((counts[cat.key] / total) * 100) : 0;
+      const y = listStartY + i * rowH;
+      const isWinner = hasClearWinner && cat.key === domCat?.key && total > 0;
+
+      /* dot */
+      ctx.beginPath();
+      ctx.arc(PAD + 8, y + 6, 5, 0, 2 * Math.PI);
+      ctx.globalAlpha = isWinner ? 1 : 0.45;
+      ctx.fillStyle = cat.fill;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+
+      /* label */
+      ctx.fillStyle = isWinner ? cat.text : "rgba(255,255,255,0.38)";
+      ctx.font = isWinner ? "bold 13px monospace" : "13px monospace";
+      ctx.fillText(cat.label, PAD + 22, y + 11);
+
+      /* percent */
+      ctx.fillStyle = isWinner ? cat.text : "rgba(255,255,255,0.3)";
+      ctx.font = isWinner ? "bold 13px monospace" : "13px monospace";
+      ctx.textAlign = "right";
+      ctx.fillText(pct > 0 ? `${pct}%` : "—", W - PAD, y + 11);
+      ctx.textAlign = "left";
+    });
+
+    /* ─ FOOTER ─ */
+    ctx.fillStyle = "rgba(255,255,255,0.1)";
+    ctx.font = "9px monospace";
+    ctx.textAlign = "center";
+    ctx.fillText("Shared via Nexa Anime", W / 2, H - 20);
+    ctx.textAlign = "left";
+
+    return canvas.toDataURL("image/png");
+  }, [animeName, coverImage, episode, episodeTitle, counts, total, domCat, domPct, hasClearWinner]);
+
+  const handleShare = useCallback(async () => {
+    setShareOpen(true);
+    setSharePreview(null);
+    setShareGenerating(true);
+    try {
+      const dataUrl = await generateShareCard();
+      setSharePreview(dataUrl);
+    } catch (e) {
+      console.error("Share card error:", e);
+    } finally {
+      setShareGenerating(false);
+    }
+  }, [generateShareCard]);
+
+  const handleSaveImage = useCallback(() => {
+    if (!sharePreview) return;
+    const a = document.createElement("a");
+    a.download = `nexa-meter-ep${episode}.png`;
+    a.href = sharePreview;
+    a.click();
+  }, [sharePreview, episode]);
 
   const castVote = async (cat: VoteCategory) => {
     if (submitting) return;
@@ -466,12 +736,27 @@ export function EpisodeRatingMeter({ animeId, episode, episodeTitle, onPostRevie
     <div className="py-8 border-t border-white/[0.05]">
 
       {/* Header */}
-      <p className="text-[9px] font-mono uppercase tracking-[0.25em] text-white/20 mb-6">
-        Nexa Meter — Episode {episode}
-        {episodeTitle && episodeTitle !== `Episode ${episode}` && (
-          <span className="text-white/10"> / {episodeTitle}</span>
+      <div className="flex items-center justify-between mb-6">
+        <p className="text-[9px] font-mono uppercase tracking-[0.25em] text-white/20">
+          Nexa Meter — Episode {episode}
+          {episodeTitle && episodeTitle !== `Episode ${episode}` && (
+            <span className="text-white/10"> / {episodeTitle}</span>
+          )}
+        </p>
+        {total > 0 && (
+          <button
+            onClick={handleShare}
+            title="Export meter card"
+            className="p-1.5 rounded text-white/20 hover:text-white/60 hover:bg-white/5 active:bg-white/10 transition-colors ml-2 shrink-0"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/>
+              <polyline points="16 6 12 2 8 6"/>
+              <line x1="12" y1="2" x2="12" y2="15"/>
+            </svg>
+          </button>
         )}
-      </p>
+      </div>
 
       {/* Gauge + breakdown */}
       <div className="flex flex-col sm:flex-row gap-6 items-center sm:items-start">
@@ -704,6 +989,72 @@ export function EpisodeRatingMeter({ animeId, episode, episodeTitle, onPostRevie
                 </motion.div>
               );
             })}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Share / Export Modal ── */}
+      <AnimatePresence>
+        {shareOpen && (
+          <motion.div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+          >
+            {/* backdrop */}
+            <div
+              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+              onClick={() => { setShareOpen(false); setSharePreview(null); }}
+            />
+
+            <motion.div
+              className="relative z-10 w-full max-w-xs bg-[#111] border border-white/10 rounded-xl p-5 shadow-2xl"
+              initial={{ scale: 0.96, y: 8 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.96, y: 8 }}
+              transition={{ duration: 0.15 }}
+            >
+              {/* close */}
+              <button
+                onClick={() => { setShareOpen(false); setSharePreview(null); }}
+                className="absolute top-4 right-4 p-1 text-white/25 hover:text-white/60 transition-colors"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+
+              <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-white/30 mb-0.5">Export Nexa Meter</p>
+              <p className="text-[9px] font-mono text-white/15 mb-4">Share as image (3:4)</p>
+
+              {shareGenerating ? (
+                <div className="flex flex-col items-center py-12 gap-3">
+                  <div className="w-5 h-5 border-2 border-white/10 border-t-white/50 rounded-full animate-spin" />
+                  <span className="text-[10px] font-mono text-white/30">Generating preview...</span>
+                </div>
+              ) : sharePreview ? (
+                <div className="space-y-3">
+                  <img
+                    src={sharePreview}
+                    alt="Meter card preview"
+                    className="w-full rounded-lg border border-white/8"
+                  />
+                  <button
+                    onClick={handleSaveImage}
+                    className="w-full flex items-center justify-center gap-2 py-3 bg-white text-black text-[13px] font-semibold rounded-full hover:bg-white/90 active:bg-white/80 transition-colors"
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                      <polyline points="7 10 12 15 17 10"/>
+                      <line x1="12" y1="15" x2="12" y2="3"/>
+                    </svg>
+                    Save Image
+                  </button>
+                </div>
+              ) : null}
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>

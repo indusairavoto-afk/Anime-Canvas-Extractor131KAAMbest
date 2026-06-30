@@ -3506,6 +3506,8 @@ export default function WatchAniList() {
                 animeId={String(animeId)}
                 episode={currentEp}
                 episodeTitle={getEpTitle(currentEp)}
+                animeName={anime?.title.english || anime?.title.romaji || ""}
+                coverImage={anime?.coverImage.extraLarge || anime?.coverImage.large || ""}
               />
 
             </div>
