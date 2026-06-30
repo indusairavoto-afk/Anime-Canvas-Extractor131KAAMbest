@@ -243,20 +243,38 @@ function GaugeMeter({ counts, total, myVote, onVote }: {
         );
       })()}
 
-      {/* Center text — reacts to hover */}
-      <text
-        x={CX} y={CY - 16}
-        textAnchor="middle"
-        fontSize={hoveredSeg ? "11" : total > 0 ? "28" : "11"}
-        fontWeight="800"
-        fontFamily="system-ui,sans-serif"
-        fill={displayCat?.text ?? (domCat?.text ?? "rgba(255,255,255,0.2)")}
-        style={{ transition: "fill 0.2s ease, font-size 0.15s ease" }}
-      >
-        {hoveredSeg ? CAT_MAP[hoveredSeg].label.toUpperCase() : total > 0 ? `${domPct}%` : "NEXA"}
-      </text>
-      {!hoveredSeg && total > 0 && (
+      {/* Center text — reacts to hover / clear winner / contested / empty */}
+      {hoveredSeg ? (
         <>
+          <text x={CX} y={CY - 16} textAnchor="middle" fontSize="11" fontWeight="800"
+            fontFamily="system-ui,sans-serif" fill={CAT_MAP[hoveredSeg].text}
+            style={{ transition: "fill 0.2s ease" }}>
+            {CAT_MAP[hoveredSeg].label.toUpperCase()}
+          </text>
+          <text x={CX} y={CY - 2} textAnchor="middle" fontSize="5.5" fontFamily="monospace"
+            fill={CAT_MAP[hoveredSeg].text} letterSpacing="0.8" opacity="0.7">
+            TAP TO VOTE
+          </text>
+        </>
+      ) : total === 0 ? (
+        <>
+          <text x={CX} y={CY - 16} textAnchor="middle" fontSize="11" fontWeight="800"
+            fontFamily="system-ui,sans-serif" fill="rgba(255,255,255,0.2)">
+            NEXA
+          </text>
+          <text x={CX} y={CY - 2} textAnchor="middle" fontSize="6" fontFamily="monospace"
+            fill="rgba(255,255,255,0.15)" letterSpacing="1">
+            METER
+          </text>
+        </>
+      ) : hasClearWinner ? (
+        <>
+          <text x={CX} y={CY - 16} textAnchor="middle" fontSize="28" fontWeight="800"
+            fontFamily="system-ui,sans-serif"
+            fill={domCat?.text ?? "rgba(255,255,255,0.2)"}
+            style={{ transition: "fill 0.2s ease" }}>
+            {`${domPct}%`}
+          </text>
           <text x={CX} y={CY - 2} textAnchor="middle" fontSize="7" fontFamily="monospace"
             fill={activeCat?.text ?? (domCat?.text ?? "rgba(255,255,255,0.3)")}
             fontWeight="600" style={{ transition: "fill 0.2s ease" }}>
@@ -267,18 +285,23 @@ function GaugeMeter({ counts, total, myVote, onVote }: {
             {total.toLocaleString()} VOTES
           </text>
         </>
-      )}
-      {!hoveredSeg && total === 0 && (
-        <text x={CX} y={CY - 2} textAnchor="middle" fontSize="6" fontFamily="monospace"
-          fill="rgba(255,255,255,0.15)" letterSpacing="1">
-          METER
-        </text>
-      )}
-      {hoveredSeg && (
-        <text x={CX} y={CY - 2} textAnchor="middle" fontSize="5.5" fontFamily="monospace"
-          fill={CAT_MAP[hoveredSeg].text} letterSpacing="0.8" opacity="0.7">
-          TAP TO VOTE
-        </text>
+      ) : (
+        /* Tied / contested state */
+        <>
+          <text x={CX} y={CY - 16} textAnchor="middle" fontSize="9.5" fontWeight="800"
+            fontFamily="monospace" letterSpacing="0.5"
+            fill="rgba(255,255,255,0.55)">
+            CONTESTED
+          </text>
+          <text x={CX} y={CY - 3} textAnchor="middle" fontSize="5.5" fontFamily="monospace"
+            fill="rgba(255,255,255,0.22)" letterSpacing="0.8">
+            votes are split
+          </text>
+          <text x={CX} y={CY + 7} textAnchor="middle" fontSize="5.5" fontFamily="monospace"
+            fill="rgba(255,255,255,0.15)" letterSpacing="0.5">
+            {total.toLocaleString()} VOTES
+          </text>
+        </>
       )}
 
       {/* Needle — only shown when one category is unambiguously ahead */}
