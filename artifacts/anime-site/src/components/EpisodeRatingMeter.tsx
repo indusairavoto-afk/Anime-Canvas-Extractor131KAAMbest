@@ -97,6 +97,10 @@ function GaugeMeter({ counts, total, myVote, onVote }: {
   const domCat    = domIdx >= 0 ? CATS[domIdx] : null;
   const domPct    = domCat && total > 0 ? Math.round((counts[domCat.key] / total) * 100) : 0;
   const needleRot = domIdx >= 0 ? (domIdx / (CATS.length - 1)) * 135 - 67.5 : 0;
+  // Only show needle when there is one unambiguous leader (no ties for first)
+  const hasClearWinner = domIdx >= 0 && CATS.every(
+    (cat, i) => i === domIdx || counts[cat.key] < counts[CATS[domIdx].key]
+  );
 
   // Convert pointer event to gauge segment
   function segFromPointer(e: React.PointerEvent<SVGSVGElement> | React.MouseEvent<SVGSVGElement>): VoteCategory | null {
@@ -277,12 +281,14 @@ function GaugeMeter({ counts, total, myVote, onVote }: {
         </text>
       )}
 
-      {/* Needle */}
+      {/* Needle — only shown when one category is unambiguously ahead */}
       <g
         style={{
           transform: `rotate(${needleRot}deg)`,
           transformOrigin: `${CX}px ${CY}px`,
-          transition: "transform 0.7s cubic-bezier(0.34,1.56,0.64,1)",
+          transition: "transform 0.7s cubic-bezier(0.34,1.56,0.64,1), opacity 0.4s ease",
+          opacity: hasClearWinner ? 1 : 0,
+          pointerEvents: "none",
         }}
       >
         {/* Needle shadow/glow */}
