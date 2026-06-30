@@ -53,7 +53,6 @@ function loadImg(url: string): Promise<HTMLImageElement> {
     img.crossOrigin = "anonymous";
     img.onload = () => resolve(img);
     img.onerror = () => {
-      // Fallback: try the original URL directly (works on same-origin or open CDNs)
       const fallback = new Image();
       fallback.crossOrigin = "anonymous";
       fallback.onload = () => resolve(fallback);
@@ -61,6 +60,15 @@ function loadImg(url: string): Promise<HTMLImageElement> {
       fallback.src = url;
     };
     img.src = proxied;
+  });
+}
+
+function loadLocalImg(path: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = path;
   });
 }
 
@@ -478,79 +486,114 @@ export function EpisodeRatingMeter({ animeId, episode, episodeTitle, animeName, 
 
   /* ── Canvas card generator ── */
   const generateShareCard = useCallback(async (): Promise<string> => {
-    const W = 600, H = 760;
+    const W = 600, H = 800;
     const canvas = document.createElement("canvas");
-    canvas.width = W; canvas.height = H;
+    canvas.width = W * 2; canvas.height = H * 2; // 2× for crisp HiDPI
     const ctx = canvas.getContext("2d")!;
+    ctx.scale(2, 2);
 
-    /* background */
-    ctx.fillStyle = "#0c0c0c";
+    /* ── background ── */
+    ctx.fillStyle = "#0d0d0d";
     ctx.fillRect(0, 0, W, H);
-    ctx.strokeStyle = "rgba(255,255,255,0.06)";
+
+    /* subtle grid texture */
+    ctx.strokeStyle = "rgba(255,255,255,0.018)";
+    ctx.lineWidth = 0.5;
+    for (let x = 0; x < W; x += 32) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+    for (let y = 0; y < H; y += 32) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+
+    /* outer border */
+    ctx.strokeStyle = "rgba(255,255,255,0.08)";
     ctx.lineWidth = 1;
     ctx.strokeRect(0.5, 0.5, W - 1, H - 1);
 
-    const PAD = 44;
+    const PAD = 40;
 
-    /* ─ HEADER: cover + title ─ */
-    const coverW = 96, coverH = 136, coverY = 44;
-    /* try loading the cover image */
-    if (coverImage) {
-      try {
-        const img = await loadImg(coverImage);
-        ctx.save();
-        canvasRoundRect(ctx, PAD, coverY, coverW, coverH, 6);
-        ctx.clip();
-        ctx.drawImage(img, PAD, coverY, coverW, coverH);
-        ctx.restore();
-        /* subtle border */
-        ctx.strokeStyle = "rgba(255,255,255,0.1)";
-        ctx.lineWidth = 1;
-        canvasRoundRect(ctx, PAD, coverY, coverW, coverH, 6);
-        ctx.stroke();
-      } catch {
-        ctx.fillStyle = "rgba(255,255,255,0.06)";
-        canvasRoundRect(ctx, PAD, coverY, coverW, coverH, 6);
-        ctx.fill();
-      }
+    /* ═══ HEADER SECTION ═══ */
+    const coverX = PAD, coverY = 40, coverW = 106, coverH = 152;
+
+    /* load assets in parallel */
+    const [posterResult, logoResult] = await Promise.allSettled([
+      coverImage ? loadImg(coverImage) : Promise.reject("no cover"),
+      loadLocalImg("/nexa-logo.png"),
+    ]);
+
+    /* ── poster image ── */
+    if (posterResult.status === "fulfilled") {
+      const posterImg = posterResult.value;
+      /* shadow behind poster */
+      ctx.shadowColor = "rgba(0,0,0,0.7)";
+      ctx.shadowBlur = 20;
+      ctx.shadowOffsetX = 4;
+      ctx.shadowOffsetY = 6;
+      ctx.save();
+      canvasRoundRect(ctx, coverX, coverY, coverW, coverH, 8);
+      ctx.clip();
+      ctx.drawImage(posterImg, coverX, coverY, coverW, coverH);
+      ctx.restore();
+      ctx.shadowColor = "transparent"; ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
+      /* border */
+      ctx.strokeStyle = "rgba(255,255,255,0.12)";
+      ctx.lineWidth = 1;
+      canvasRoundRect(ctx, coverX, coverY, coverW, coverH, 8);
+      ctx.stroke();
     } else {
-      ctx.fillStyle = "rgba(255,255,255,0.06)";
-      canvasRoundRect(ctx, PAD, coverY, coverW, coverH, 6);
+      /* placeholder */
+      ctx.fillStyle = "rgba(255,255,255,0.05)";
+      canvasRoundRect(ctx, coverX, coverY, coverW, coverH, 8);
       ctx.fill();
+      ctx.strokeStyle = "rgba(255,255,255,0.08)";
+      ctx.lineWidth = 1;
+      canvasRoundRect(ctx, coverX, coverY, coverW, coverH, 8);
+      ctx.stroke();
     }
 
-    const txtX = PAD + coverW + 18;
-    const txtMaxW = W - txtX - PAD;
+    /* ── title + episode (right of poster) ── */
+    const infoX = coverX + coverW + 20;
+    const infoMaxW = W - infoX - PAD;
 
-    /* anime name */
-    ctx.fillStyle = "rgba(255,255,255,0.92)";
-    ctx.font = "bold 21px system-ui, sans-serif";
-    const lastTitleY = canvasWrapText(ctx, animeName || "Anime", txtX, 72, txtMaxW, 26);
+    ctx.fillStyle = "rgba(255,255,255,0.94)";
+    ctx.font = "bold 22px system-ui, -apple-system, sans-serif";
+    const titleEndY = canvasWrapText(ctx, animeName || "Anime", infoX, 70, infoMaxW, 28);
 
-    /* episode line */
-    ctx.fillStyle = "rgba(255,255,255,0.38)";
-    ctx.font = "12px monospace";
     const epLabel = episodeTitle && episodeTitle !== `Episode ${episode}`
       ? `Ep ${episode} · ${episodeTitle}`
       : `Episode ${episode}`;
-    ctx.fillText(epLabel, txtX, Math.max(lastTitleY + 24, 110));
+    ctx.fillStyle = "rgba(255,255,255,0.4)";
+    ctx.font = "12px 'Courier New', monospace";
+    ctx.fillText(epLabel, infoX, Math.max(titleEndY + 22, 108));
 
-    /* NEXA ANIME branding */
-    ctx.fillStyle = "rgba(255,255,255,0.18)";
-    ctx.font = "bold 10px monospace";
-    ctx.textAlign = "center";
-    ctx.fillText("✦  NEXA ANIME", W / 2, 202);
-    ctx.textAlign = "left";
+    /* ── NEXA ANIME logo ── */
+    const logoAreaX = infoX;
+    const logoAreaY = coverY + coverH - 36;
+    const logoMaxH = 32;
 
-    /* divider */
+    if (logoResult.status === "fulfilled") {
+      const logoImg = logoResult.value;
+      const aspect = logoImg.naturalWidth / logoImg.naturalHeight;
+      const logoH = logoMaxH;
+      const logoW = Math.min(logoH * aspect, infoMaxW);
+      ctx.globalAlpha = 0.85;
+      ctx.drawImage(logoImg, logoAreaX, logoAreaY, logoW, logoH);
+      ctx.globalAlpha = 1;
+    } else {
+      /* text fallback */
+      ctx.fillStyle = "rgba(255,255,255,0.6)";
+      ctx.font = "bold 16px system-ui, sans-serif";
+      ctx.fillText("NEXA ANIME", logoAreaX, logoAreaY + 22);
+    }
+
+    /* ── horizontal divider ── */
+    const divY = coverY + coverH + 20;
     ctx.strokeStyle = "rgba(255,255,255,0.07)";
     ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(PAD, 216); ctx.lineTo(W - PAD, 216); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(PAD, divY); ctx.lineTo(W - PAD, divY); ctx.stroke();
 
-    /* ─ GAUGE ARC ─ */
-    const GCX = W / 2, GCY = 390;
-    const ROUT = 134, RIN = 88;
-    const GAP_R = 0.025;
+    /* ═══ GAUGE ARC ═══ */
+    const GCX = W / 2;
+    const GCY = divY + 168;
+    const ROUT = 138, RIN = 90;
+    const GAP_R = 0.026;
 
     if (total > 0) {
       let startA = Math.PI;
@@ -558,17 +601,15 @@ export function EpisodeRatingMeter({ animeId, episode, episodeTitle, animeName, 
         const proportion = counts[cat.key] / total;
         if (proportion <= 0) return;
         const sweep = Math.PI * proportion;
-        const isWinner = hasClearWinner && cat.key === domCat?.key;
+        const isWin = hasClearWinner && cat.key === domCat?.key;
         fillArcSegment(ctx, GCX, GCY, ROUT, RIN,
           startA + GAP_R / 2, startA + sweep - GAP_R / 2,
-          cat.fill, isWinner ? 0.95 : 0.28);
-        /* glow ring on winner */
-        if (isWinner) {
-          ctx.shadowColor = cat.glow;
-          ctx.shadowBlur = 18;
+          cat.fill, isWin ? 0.95 : 0.25);
+        if (isWin) {
+          ctx.shadowColor = cat.glow; ctx.shadowBlur = 22;
           fillArcSegment(ctx, GCX, GCY, ROUT, RIN,
             startA + GAP_R / 2, startA + sweep - GAP_R / 2,
-            cat.fill, 0.7);
+            cat.fill, 0.65);
           ctx.shadowBlur = 0;
         }
         startA += sweep;
@@ -578,68 +619,75 @@ export function EpisodeRatingMeter({ animeId, episode, episodeTitle, animeName, 
         const sw = Math.PI / CATS.length;
         fillArcSegment(ctx, GCX, GCY, ROUT, RIN,
           Math.PI + i * sw + GAP_R / 2, Math.PI + (i + 1) * sw - GAP_R / 2,
-          cat.fill, 0.1);
+          cat.fill, 0.09);
       });
     }
 
     /* center text */
     ctx.textAlign = "center";
     if (total > 0 && hasClearWinner && domCat) {
-      ctx.shadowColor = domCat.glow; ctx.shadowBlur = 20;
+      ctx.shadowColor = domCat.glow; ctx.shadowBlur = 24;
       ctx.fillStyle = domCat.text;
-      ctx.font = "bold 52px system-ui, sans-serif";
-      ctx.fillText(`${domPct}%`, GCX, GCY - 4);
+      ctx.font = "bold 56px system-ui, sans-serif";
+      ctx.fillText(`${domPct}%`, GCX, GCY - 6);
       ctx.shadowBlur = 0;
-      ctx.fillStyle = "rgba(255,255,255,0.38)";
-      ctx.font = "12px monospace";
+      ctx.fillStyle = "rgba(255,255,255,0.36)";
+      ctx.font = "12px 'Courier New', monospace";
       ctx.fillText(`${total.toLocaleString()} Votes`, GCX, GCY + 22);
     } else if (total > 0) {
-      ctx.fillStyle = "rgba(255,255,255,0.25)";
-      ctx.font = "bold 14px monospace";
+      ctx.fillStyle = "rgba(255,255,255,0.22)";
+      ctx.font = "bold 15px 'Courier New', monospace";
       ctx.fillText("CONTESTED", GCX, GCY - 2);
-      ctx.fillStyle = "rgba(255,255,255,0.18)";
-      ctx.font = "10px monospace";
-      ctx.fillText(`${total.toLocaleString()} Votes`, GCX, GCY + 18);
-    } else {
       ctx.fillStyle = "rgba(255,255,255,0.15)";
-      ctx.font = "bold 13px monospace";
+      ctx.font = "11px monospace";
+      ctx.fillText("votes are split", GCX, GCY + 18);
+      ctx.fillText(`${total.toLocaleString()} Votes`, GCX, GCY + 36);
+    } else {
+      ctx.fillStyle = "rgba(255,255,255,0.14)";
+      ctx.font = "bold 13px 'Courier New', monospace";
       ctx.fillText("NO VOTES YET", GCX, GCY);
     }
     ctx.textAlign = "left";
 
-    /* ─ BREAKDOWN LIST ─ */
-    const listStartY = 490, rowH = 34;
+    /* ═══ BREAKDOWN LIST ═══ */
+    const listTop = GCY + 50;
+    const rowH = 36;
+    /* two-column layout matching Moctale */
     CATS.forEach((cat, i) => {
       const pct = total > 0 ? Math.round((counts[cat.key] / total) * 100) : 0;
-      const y = listStartY + i * rowH;
-      const isWinner = hasClearWinner && cat.key === domCat?.key && total > 0;
+      const isLeft = i % 2 === 0;
+      const colX = isLeft ? PAD : W / 2 + 10;
+      const y = listTop + Math.floor(i / 2) * rowH;
+      const isWin = hasClearWinner && cat.key === domCat?.key && total > 0;
 
-      /* dot */
+      /* colored dot */
       ctx.beginPath();
-      ctx.arc(PAD + 8, y + 6, 5, 0, 2 * Math.PI);
-      ctx.globalAlpha = isWinner ? 1 : 0.45;
+      ctx.arc(colX + 7, y + 6, 5, 0, 2 * Math.PI);
+      ctx.globalAlpha = isWin ? 1 : 0.45;
       ctx.fillStyle = cat.fill;
       ctx.fill();
       ctx.globalAlpha = 1;
 
       /* label */
-      ctx.fillStyle = isWinner ? cat.text : "rgba(255,255,255,0.38)";
-      ctx.font = isWinner ? "bold 13px monospace" : "13px monospace";
-      ctx.fillText(cat.label, PAD + 22, y + 11);
+      ctx.fillStyle = isWin ? cat.text : "rgba(255,255,255,0.38)";
+      ctx.font = isWin ? "bold 13px 'Courier New', monospace" : "13px 'Courier New', monospace";
+      ctx.fillText(cat.label, colX + 20, y + 11);
 
-      /* percent */
-      ctx.fillStyle = isWinner ? cat.text : "rgba(255,255,255,0.3)";
-      ctx.font = isWinner ? "bold 13px monospace" : "13px monospace";
+      /* percent (right-aligned in its column) */
+      const colRight = isLeft ? W / 2 - 10 : W - PAD;
+      ctx.fillStyle = isWin ? cat.text : "rgba(255,255,255,0.28)";
+      ctx.font = isWin ? "bold 13px 'Courier New', monospace" : "13px 'Courier New', monospace";
       ctx.textAlign = "right";
-      ctx.fillText(pct > 0 ? `${pct}%` : "—", W - PAD, y + 11);
+      ctx.fillText(pct > 0 ? `${pct}%` : "—", colRight, y + 11);
       ctx.textAlign = "left";
     });
 
-    /* ─ FOOTER ─ */
-    ctx.fillStyle = "rgba(255,255,255,0.1)";
-    ctx.font = "9px monospace";
+    /* ═══ FOOTER ═══ */
+    const footerY = H - 24;
+    ctx.fillStyle = "rgba(255,255,255,0.08)";
+    ctx.font = "9px 'Courier New', monospace";
     ctx.textAlign = "center";
-    ctx.fillText("Shared via Nexa Anime", W / 2, H - 20);
+    ctx.fillText("nexaanime.com  ·  Nexa Meter", W / 2, footerY);
     ctx.textAlign = "left";
 
     return canvas.toDataURL("image/png");
