@@ -84,24 +84,19 @@ function GaugeMeter({ counts, total, myVote, onVote }: {
   const isDraggingRef = useRef(false);
   const pointerHandledRef = useRef(false);
 
-  // Weighted average in [0,1]: 0 = all Skip, 1 = all Perfection
-  const weightedPos = total > 0
-    ? CATS.reduce((sum, cat, i) => sum + (i / (CATS.length - 1)) * counts[cat.key], 0) / total
-    : -1;
-
-  // Map to CSS rotation so the needle lands on segment CENTERS:
-  //   Skip center      → 157.5° standard → needleRot = -67.5°
-  //   Timepass center  → 112.5° standard → needleRot = -22.5°
-  //   Go For It center →  67.5° standard → needleRot =  22.5°
-  //   Perfection center →  22.5° standard → needleRot =  67.5°
-  // Range: [-67.5, 67.5], so formula = weightedPos * 135 - 67.5
-  // No votes → point straight up (middle of gauge)
-  const needleRot = weightedPos >= 0 ? weightedPos * 135 - 67.5 : 0;
-
+  // Needle snaps to the segment with the most votes (dominant category).
+  // Segment center angles map to needle rotation:
+  //   Skip (i=0)       → needleRot = -67.5°
+  //   Timepass (i=1)   → needleRot = -22.5°
+  //   Go For It (i=2)  → needleRot =  22.5°
+  //   Perfection (i=3) → needleRot =  67.5°
+  // Formula: (i / 3) * 135 - 67.5
+  // No votes → point straight up (0°)
   const activeCat = myVote ? CAT_MAP[myVote] : null;
   const domIdx    = total > 0 ? CATS.reduce((best, _, i) => counts[CATS[i].key] > counts[CATS[best].key] ? i : best, 0) : -1;
   const domCat    = domIdx >= 0 ? CATS[domIdx] : null;
   const domPct    = domCat && total > 0 ? Math.round((counts[domCat.key] / total) * 100) : 0;
+  const needleRot = domIdx >= 0 ? (domIdx / (CATS.length - 1)) * 135 - 67.5 : 0;
 
   // Convert pointer event to gauge segment
   function segFromPointer(e: React.PointerEvent<SVGSVGElement> | React.MouseEvent<SVGSVGElement>): VoteCategory | null {
@@ -267,7 +262,7 @@ function GaugeMeter({ counts, total, myVote, onVote }: {
         <line
           x1={CX} y1={CY + 8}
           x2={CX} y2={CY - 84}
-          stroke={activeCat?.glow ?? "rgba(255,255,255,0.15)"}
+          stroke={domCat?.glow ?? "rgba(255,255,255,0.15)"}
           strokeWidth="3"
           strokeLinecap="round"
           opacity="0.25"
@@ -277,7 +272,7 @@ function GaugeMeter({ counts, total, myVote, onVote }: {
         <line
           x1={CX} y1={CY + 8}
           x2={CX} y2={CY - 84}
-          stroke={activeCat?.text ?? "rgba(255,255,255,0.7)"}
+          stroke={domCat?.text ?? "rgba(255,255,255,0.7)"}
           strokeWidth="1.5"
           strokeLinecap="round"
           style={{ transition: "stroke 0.4s ease" }}
@@ -285,7 +280,7 @@ function GaugeMeter({ counts, total, myVote, onVote }: {
         {/* Needle tip triangle */}
         <polygon
           points={`${CX},${CY - 85} ${CX - 2.5},${CY - 76} ${CX + 2.5},${CY - 76}`}
-          fill={activeCat?.text ?? "rgba(255,255,255,0.8)"}
+          fill={domCat?.text ?? "rgba(255,255,255,0.8)"}
           style={{ transition: "fill 0.4s ease" }}
         />
       </g>
@@ -293,7 +288,7 @@ function GaugeMeter({ counts, total, myVote, onVote }: {
       {/* Center hub */}
       <circle cx={CX} cy={CY} r="8" fill="#111" stroke="rgba(255,255,255,0.12)" strokeWidth="1.5" />
       <circle cx={CX} cy={CY} r="3.5"
-        fill={activeCat?.glow ?? "rgba(255,255,255,0.3)"}
+        fill={domCat?.glow ?? "rgba(255,255,255,0.3)"}
         style={{ transition: "fill 0.4s ease" }}
       />
 
