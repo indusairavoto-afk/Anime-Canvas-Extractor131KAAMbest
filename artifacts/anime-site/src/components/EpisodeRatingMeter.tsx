@@ -170,15 +170,15 @@ function GaugeMeter({ counts, total, myVote, onVote }: {
         const isActive  = myVote === seg.key;
         const isHovered = hoveredSeg === seg.key;
         const isDom     = domCat?.key === seg.key && total > 0;
-        const opacity   = isActive ? 1 : isHovered ? 0.85 : isDom ? 0.65 : total > 0 ? 0.25 : 0.18;
+        const opacity   = isActive ? 1 : isHovered ? 0.85 : isDom ? 0.82 : total > 0 ? 0.25 : 0.18;
         return (
           <path
             key={seg.key}
             d={seg.path}
             fill={seg.fill}
             opacity={opacity}
-            filter={(isActive || isHovered) ? `url(#glow-${seg.key})` : undefined}
-            style={{ transition: "opacity 0.2s ease, filter 0.2s ease" }}
+            filter={(isActive || isHovered || isDom) ? `url(#glow-${seg.key})` : undefined}
+            style={{ transition: "opacity 0.3s ease, filter 0.3s ease" }}
           />
         );
       })}
@@ -188,6 +188,7 @@ function GaugeMeter({ counts, total, myVote, onVote }: {
         const lp = polar(R_OUT + 13, seg.labelDeg);
         const isActive  = myVote === seg.key;
         const isHovered = hoveredSeg === seg.key;
+        const isDom     = domCat?.key === seg.key && total > 0;
         return (
           <text
             key={`lbl-${seg.key}`}
@@ -199,7 +200,7 @@ function GaugeMeter({ counts, total, myVote, onVote }: {
             fontFamily="monospace"
             fontWeight="700"
             letterSpacing="0.8"
-            fill={isActive || isHovered ? seg.text : "rgba(255,255,255,0.28)"}
+            fill={isActive || isHovered || isDom ? seg.text : "rgba(255,255,255,0.28)"}
             style={{
               textTransform: "uppercase",
               transition: "fill 0.2s ease",
@@ -211,6 +212,32 @@ function GaugeMeter({ counts, total, myVote, onVote }: {
           </text>
         );
       })}
+
+      {/* "Most Voted" crown badge on the dominant segment */}
+      {!hoveredSeg && domCat && total > 0 && (() => {
+        const domSeg = SEGMENTS.find(s => s.key === domCat.key)!;
+        const bp = polar(R_OUT + 28, domSeg.labelDeg);
+        const rot = -(domSeg.labelDeg - 90);
+        return (
+          <g
+            key="most-voted-badge"
+            transform={`translate(${bp.x},${bp.y}) rotate(${rot})`}
+            style={{ transition: "opacity 0.3s ease" }}
+          >
+            {/* pill background */}
+            <rect x="-12" y="-4.5" width="24" height="9" rx="4.5"
+              fill={domCat.fill} opacity="0.55" />
+            {/* star + label */}
+            <text
+              textAnchor="middle" dominantBaseline="middle"
+              fontSize="5" fontFamily="monospace" fontWeight="800"
+              letterSpacing="0.3" fill={domCat.text}
+            >
+              ★ MOST
+            </text>
+          </g>
+        );
+      })()}
 
       {/* Center text — reacts to hover */}
       <text
