@@ -174,13 +174,16 @@ function GaugeMeter({ counts, total, myVote, onVote }: {
     (cat, i) => i === domIdx || counts[cat.key] < counts[CATS[domIdx].key]
   );
 
-  // Dynamic segments: arc width is proportional to vote count.
-  // Falls back to equal 45° segments when no votes yet.
+  // Dynamic segments: each segment gets a guaranteed minimum arc (MIN_DEG)
+  // plus a proportional share of the remaining arc based on vote counts.
+  // This keeps all 4 shapes always visible while the dominant one grows larger.
+  const MIN_DEG = 12; // minimum degrees per segment (4 × 12 = 48° reserved)
+  const EXTRA   = 180 - CATS.length * MIN_DEG; // 132° distributed proportionally
   const SEGMENTS = useMemo(() => {
     if (total === 0) return SEGMENTS_EQUAL;
     let cur = 180;
     return CATS.map((cat) => {
-      const sweep = (counts[cat.key] / total) * 180;
+      const sweep    = MIN_DEG + (counts[cat.key] / total) * EXTRA;
       const startDeg = cur;
       const endDeg   = cur - sweep;
       const labelDeg = (startDeg + endDeg) / 2;
@@ -190,7 +193,7 @@ function GaugeMeter({ counts, total, myVote, onVote }: {
         startDeg,
         endDeg,
         labelDeg,
-        path: sweep > 0.5 ? segmentPath(startDeg, endDeg) : "",
+        path: segmentPath(startDeg, endDeg),
       };
     });
   }, [counts, total]);
