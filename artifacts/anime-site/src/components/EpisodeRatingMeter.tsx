@@ -825,68 +825,48 @@ export function EpisodeRatingMeter({ animeId, episode, episodeTitle, animeName, 
           </p>
         </div>
 
-        {/* Vote breakdown — vertical bar chart */}
-        <div className="flex-1 min-w-0 w-full pt-1 flex flex-col gap-2">
-          {/* Bars */}
-          <div className="flex items-end gap-2" style={{ height: 64 }}>
-            {CATS.map((cat) => {
-              const pct   = total > 0 ? Math.round((counts[cat.key] / total) * 100) : 0;
-              const isMe  = myVote === cat.key;
-              const isDom = hasClearWinner && domCat?.key === cat.key && total > 0;
-              const barH  = total > 0 ? Math.max(pct, pct > 0 ? 4 : 0) : 0; // % of 64px
-              return (
-                <div key={cat.key} className="flex-1 flex flex-col items-center gap-1.5">
-                  {/* percentage label above bar */}
+        {/* Vote chips + breakdown bars */}
+        <div className="flex-1 min-w-0 w-full space-y-3 pt-1">
+          {CATS.map((cat) => {
+            const pct   = total > 0 ? Math.round((counts[cat.key] / total) * 100) : 0;
+            const isMe  = myVote === cat.key;
+            return (
+              <div key={cat.key} className="group">
+                <div className="flex items-center gap-2 mb-1">
                   <span
-                    className="text-[8px] font-mono tabular-nums leading-none transition-colors duration-200"
-                    style={{ color: isMe || isDom ? cat.text : "rgba(255,255,255,0.18)", minHeight: 10 }}
-                  >
-                    {pct > 0 ? `${pct}%` : total > 0 ? "—" : ""}
-                  </span>
-                  {/* track */}
-                  <div className="w-full rounded-sm bg-white/[0.05] overflow-hidden flex flex-col justify-end" style={{ height: 44 }}>
-                    <motion.div
-                      className="w-full rounded-sm"
-                      style={{
-                        background: isDom ? cat.glow : cat.fill,
-                        opacity: isMe ? 1 : isDom ? 0.75 : pct > 0 ? 0.28 : 0,
-                        boxShadow: isDom ? `0 0 8px ${cat.glow}60` : "none",
-                      }}
-                      initial={{ height: 0 }}
-                      animate={{ height: `${barH}%` }}
-                      transition={{ duration: 0.55, ease: [0.4, 0, 0.2, 1] }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Labels row */}
-          <div className="flex gap-2">
-            {CATS.map((cat) => {
-              const isMe  = myVote === cat.key;
-              const isDom = hasClearWinner && domCat?.key === cat.key && total > 0;
-              return (
-                <div key={cat.key} className="flex-1 text-center">
-                  <span
-                    className="text-[8px] font-mono uppercase tracking-wide leading-tight transition-colors duration-200 block"
-                    style={{ color: isMe || isDom ? cat.text : "rgba(255,255,255,0.2)" }}
+                    className="w-16 text-[9px] font-mono uppercase tracking-wide shrink-0 text-right transition-colors duration-200"
+                    style={{ color: isMe ? cat.text : "rgba(255,255,255,0.2)" }}
                   >
                     {cat.label}
                   </span>
-                  {counts[cat.key] > 0 && (
-                    <span className="text-[7px] font-mono tabular-nums block" style={{ color: "rgba(255,255,255,0.15)" }}>
-                      {counts[cat.key]}
-                    </span>
-                  )}
+                  <div className="flex-1 h-[3px] bg-white/[0.05] rounded-full overflow-hidden">
+                    <motion.div
+                      className="h-full rounded-full"
+                      style={{ background: cat.glow, opacity: isMe ? 1 : 0.35 }}
+                      initial={{ width: 0 }}
+                      animate={{ width: `${pct}%` }}
+                      transition={{ duration: 0.5, ease: [0.4, 0, 0.2, 1] }}
+                    />
+                  </div>
+                  <span
+                    className="w-7 text-[9px] font-mono tabular-nums text-right shrink-0 transition-colors duration-200"
+                    style={{ color: isMe ? cat.text : "rgba(255,255,255,0.18)" }}
+                  >
+                    {pct > 0 ? `${pct}%` : "—"}
+                  </span>
+                  <span
+                    className="text-[8px] font-mono text-right shrink-0 transition-colors duration-200"
+                    style={{ color: isMe ? cat.text : "rgba(255,255,255,0.1)", minWidth: 28 }}
+                  >
+                    {counts[cat.key] > 0 ? counts[cat.key] : ""}
+                  </span>
                 </div>
-              );
-            })}
-          </div>
+              </div>
+            );
+          })}
 
           {total > 0 && (
-            <p className="text-[8px] font-mono text-white/15">
+            <p className="text-[8px] font-mono text-white/15 pt-1">
               {total.toLocaleString()} total vote{total !== 1 ? "s" : ""}
             </p>
           )}
