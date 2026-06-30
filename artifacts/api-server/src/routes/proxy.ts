@@ -571,7 +571,7 @@ const ALLOWED_IMG_HOSTS = new Set([
   "lh3.googleusercontent.com",
 ]);
 
-router.get("/api/img-proxy", async (req, res) => {
+router.get("/img-proxy", async (req, res) => {
   const rawUrl = req.query.url as string | undefined;
   if (!rawUrl) return res.status(400).send("Missing url parameter");
 

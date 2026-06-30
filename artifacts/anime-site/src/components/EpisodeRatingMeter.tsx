@@ -45,31 +45,28 @@ interface Props {
 }
 
 /* ── Canvas export helpers ──────────────────────────────────────────────── */
-function loadImg(url: string): Promise<HTMLImageElement> {
-  // Route through our server-side proxy so the canvas isn't tainted by CORS
-  const proxied = apiUrl(`/api/img-proxy?url=${encodeURIComponent(url)}`);
+// Use fetch→blob→objectURL so the canvas is NEVER cross-origin tainted.
+async function fetchToImg(fetchUrl: string): Promise<HTMLImageElement> {
+  const res = await fetch(fetchUrl);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const blob = await res.blob();
+  const objUrl = URL.createObjectURL(blob);
   return new Promise((resolve, reject) => {
     const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.onload = () => resolve(img);
-    img.onerror = () => {
-      const fallback = new Image();
-      fallback.crossOrigin = "anonymous";
-      fallback.onload = () => resolve(fallback);
-      fallback.onerror = reject;
-      fallback.src = url;
-    };
-    img.src = proxied;
+    img.onload = () => { URL.revokeObjectURL(objUrl); resolve(img); };
+    img.onerror = () => { URL.revokeObjectURL(objUrl); reject(new Error("img load")); };
+    img.src = objUrl;
   });
 }
 
+function loadImg(url: string): Promise<HTMLImageElement> {
+  // Proxy through our server so the browser fetches same-origin bytes
+  return fetchToImg(apiUrl(`/api/img-proxy?url=${encodeURIComponent(url)}`));
+}
+
 function loadLocalImg(path: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = reject;
-    img.src = path;
-  });
+  // Same-origin asset — fetch directly as blob so canvas stays untainted
+  return fetchToImg(path);
 }
 
 function fillArcSegment(
