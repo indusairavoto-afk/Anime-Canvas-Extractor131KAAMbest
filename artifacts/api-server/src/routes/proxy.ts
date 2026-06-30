@@ -560,4 +560,52 @@ router.get("/proxy", async (req, res) => {
   }
 });
 
+/* ── Image proxy for share-card canvas (bypasses CORS on CDN images) ─── */
+const ALLOWED_IMG_HOSTS = new Set([
+  "s4.anilist.co",
+  "img.anili.st",
+  "cdn.myanimelist.net",
+  "media.kitsu.io",
+  "artworks.thetvdb.com",
+  "image.tmdb.org",
+  "lh3.googleusercontent.com",
+]);
+
+router.get("/api/img-proxy", async (req, res) => {
+  const rawUrl = req.query.url as string | undefined;
+  if (!rawUrl) return res.status(400).send("Missing url parameter");
+
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    return res.status(400).send("Invalid URL");
+  }
+
+  if (!ALLOWED_IMG_HOSTS.has(parsed.hostname)) {
+    return res.status(403).send(`Host not allowed: ${parsed.hostname}`);
+  }
+
+  try {
+    const upstream = await fetch(rawUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; NexaAnime/1.0)",
+        Accept: "image/avif,image/webp,image/png,image/jpeg,*/*",
+      },
+    });
+    if (!upstream.ok) return res.status(upstream.status).send("Upstream error");
+
+    const ct = upstream.headers.get("content-type") || "image/jpeg";
+    res.setHeader("Content-Type", ct);
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    res.setHeader("Access-Control-Allow-Origin", "*");
+
+    const buf = Buffer.from(await upstream.arrayBuffer());
+    return res.send(buf);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    return res.status(502).send(`Proxy error: ${msg}`);
+  }
+});
+
 export default router;

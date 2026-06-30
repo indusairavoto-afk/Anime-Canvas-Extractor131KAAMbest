@@ -46,12 +46,21 @@ interface Props {
 
 /* ── Canvas export helpers ──────────────────────────────────────────────── */
 function loadImg(url: string): Promise<HTMLImageElement> {
+  // Route through our server-side proxy so the canvas isn't tainted by CORS
+  const proxied = apiUrl(`/api/img-proxy?url=${encodeURIComponent(url)}`);
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.crossOrigin = "anonymous";
     img.onload = () => resolve(img);
-    img.onerror = reject;
-    img.src = url;
+    img.onerror = () => {
+      // Fallback: try the original URL directly (works on same-origin or open CDNs)
+      const fallback = new Image();
+      fallback.crossOrigin = "anonymous";
+      fallback.onload = () => resolve(fallback);
+      fallback.onerror = reject;
+      fallback.src = url;
+    };
+    img.src = proxied;
   });
 }
 
