@@ -124,35 +124,39 @@ function canvasWrapText(
 }
 
 /* ── Gauge SVG ─────────────────────────────────────────────────────────── */
-const CX = 120, CY = 112, R_OUT = 100, R_IN = 68;
-const GAP = 2.2; // degrees of gap between segments
+// Elliptical arch: wider than tall for a flat "bridge" silhouette.
+// Segments are always equal (45° each). Winner is shown via glow + needle.
+const CX = 140, CY = 108;
+const RX_OUT = 128, RY_OUT = 72;   // outer ellipse radii
+const RX_IN  =  91, RY_IN  = 48;   // inner ellipse radii
+const GAP    = 2.5;                 // degrees of gap between segments
 
-function polar(r: number, deg: number) {
+function polar(rx: number, ry: number, deg: number) {
   const rad = (deg * Math.PI) / 180;
-  return { x: CX + r * Math.cos(rad), y: CY - r * Math.sin(rad) };
+  return { x: CX + rx * Math.cos(rad), y: CY - ry * Math.sin(rad) };
 }
 
 function segmentPath(startDeg: number, endDeg: number) {
-  const s1 = polar(R_OUT, startDeg - GAP / 2);
-  const e1 = polar(R_OUT, endDeg + GAP / 2);
-  const s2 = polar(R_IN,  endDeg + GAP / 2);
-  const e2 = polar(R_IN,  startDeg - GAP / 2);
+  const s1 = polar(RX_OUT, RY_OUT, startDeg - GAP / 2);
+  const e1 = polar(RX_OUT, RY_OUT, endDeg   + GAP / 2);
+  const s2 = polar(RX_IN,  RY_IN,  endDeg   + GAP / 2);
+  const e2 = polar(RX_IN,  RY_IN,  startDeg - GAP / 2);
   const large = (startDeg - endDeg) > 180 ? 1 : 0;
   return [
     `M ${s1.x} ${s1.y}`,
-    `A ${R_OUT} ${R_OUT} 0 ${large} 0 ${e1.x} ${e1.y}`,
+    `A ${RX_OUT} ${RY_OUT} 0 ${large} 0 ${e1.x} ${e1.y}`,
     `L ${s2.x} ${s2.y}`,
-    `A ${R_IN} ${R_IN} 0 ${large} 1 ${e2.x} ${e2.y}`,
+    `A ${RX_IN} ${RY_IN} 0 ${large} 1 ${e2.x} ${e2.y}`,
     "Z",
   ].join(" ");
 }
 
-// Static equal segments (fallback / empty state)
-const SEGMENTS_EQUAL = CATS.map((cat, i) => ({
+// Always equal segments — 45° each, gauge spans 180° → 0°
+const SEGMENTS = CATS.map((cat, i) => ({
   ...cat,
   startDeg: 180 - i * 45,
-  endDeg: 180 - (i + 1) * 45,
-  path: segmentPath(180 - i * 45, 180 - (i + 1) * 45),
+  endDeg:   180 - (i + 1) * 45,
+  path:     segmentPath(180 - i * 45, 180 - (i + 1) * 45),
   labelDeg: 180 - i * 45 - 22.5,
 }));
 
@@ -166,75 +170,51 @@ function GaugeMeter({ counts, total, myVote, onVote }: {
   const pointerHandledRef = useRef(false);
 
   const activeCat = myVote ? CAT_MAP[myVote] : null;
-  const domIdx    = total > 0 ? CATS.reduce((best, _, i) => counts[CATS[i].key] > counts[CATS[best].key] ? i : best, 0) : -1;
-  const domCat    = domIdx >= 0 ? CATS[domIdx] : null;
-  const domPct    = domCat && total > 0 ? Math.round((counts[domCat.key] / total) * 100) : 0;
-  // Only show needle when there is one unambiguous leader (no ties for first)
+  const domIdx = total > 0
+    ? CATS.reduce((best, _, i) => counts[CATS[i].key] > counts[CATS[best].key] ? i : best, 0)
+    : -1;
+  const domCat = domIdx >= 0 ? CATS[domIdx] : null;
+  const domPct = domCat && total > 0 ? Math.round((counts[domCat.key] / total) * 100) : 0;
   const hasClearWinner = domIdx >= 0 && CATS.every(
-    (cat, i) => i === domIdx || counts[cat.key] < counts[CATS[domIdx].key]
+    (_, i) => i === domIdx || counts[CATS[i].key] < counts[CATS[domIdx].key]
   );
 
-  // Dynamic segments: each segment gets a guaranteed minimum arc (MIN_DEG)
-  // plus a proportional share of the remaining arc based on vote counts.
-  // This keeps all 4 shapes always visible while the dominant one grows larger.
-  const MIN_DEG = 12; // minimum degrees per segment (4 × 12 = 48° reserved)
-  const EXTRA   = 180 - CATS.length * MIN_DEG; // 132° distributed proportionally
-  const SEGMENTS = useMemo(() => {
-    if (total === 0) return SEGMENTS_EQUAL;
-    let cur = 180;
-    return CATS.map((cat) => {
-      const sweep    = MIN_DEG + (counts[cat.key] / total) * EXTRA;
-      const startDeg = cur;
-      const endDeg   = cur - sweep;
-      const labelDeg = (startDeg + endDeg) / 2;
-      cur = endDeg;
-      return {
-        ...cat,
-        startDeg,
-        endDeg,
-        labelDeg,
-        path: segmentPath(startDeg, endDeg),
-      };
-    });
-  }, [counts, total]);
+  // Needle snaps to center of the winning segment (equal 45° spacing)
+  // CSS rotate: 0° = up; positive = clockwise toward right (Perfection side)
+  // Formula: needleRot = 90 - centerDeg, where centerDeg = 157.5 / 112.5 / 67.5 / 22.5
+  const needleRot = domIdx >= 0 ? 90 - (180 - domIdx * 45 - 22.5) : 0;
 
-  // Needle points to center of the winning segment
-  const needleRot = useMemo(() => {
-    if (domIdx < 0) return 0;
-    if (total === 0) return (domIdx / (CATS.length - 1)) * 135 - 67.5;
-    const winSeg = SEGMENTS[domIdx];
-    const centerDeg = (winSeg.startDeg + winSeg.endDeg) / 2;
-    return centerDeg - 90; // gauge angle → needle rotation
-  }, [domIdx, total, SEGMENTS]);
+  // Needle length: just short of the inner ellipse edge (pointing up = toward top of arch)
+  const NEEDLE_TIP = CY - (RY_IN - 4);   // y coord of needle tip
+  const NEEDLE_BASE = CY + 6;            // y coord of needle tail
 
-  // Convert pointer event to gauge segment using dynamic angle boundaries
+  // Hit-test using elliptical containment
   function segFromPointer(e: React.PointerEvent<SVGSVGElement> | React.MouseEvent<SVGSVGElement>): VoteCategory | null {
     const svg = svgRef.current;
     if (!svg) return null;
     const rect = svg.getBoundingClientRect();
-    const px = ((e.clientX - rect.left) / rect.width) * 240;
-    const py = ((e.clientY - rect.top) / rect.height) * 140;
+    const px = ((e.clientX - rect.left) / rect.width)  * 280;
+    const py = ((e.clientY - rect.top)  / rect.height) * 118;
     const dx = px - CX;
-    const dy = -(py - CY); // invert y (SVG y grows down)
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    if (dist < R_IN * 0.6 || dist > R_OUT * 1.25) return null;
-    if (dy < -8) return null; // below baseline
+    const dy = -(py - CY);
+    if (dy < -6) return null; // below baseline
+    const TOUCH = 0.12; // small tolerance for finger/pointer imprecision
+    const inOuter  = (dx / RX_OUT) ** 2 + (dy / RY_OUT) ** 2 <= (1 + TOUCH) ** 2;
+    const outInner = (dx / RX_IN)  ** 2 + (dy / RY_IN)  ** 2 >= (1 - TOUCH) ** 2;
+    if (!inOuter || !outInner) return null;
     const angle = Math.atan2(dy, dx) * 180 / Math.PI;
     if (angle < 0 || angle > 180) return null;
-    // Find which dynamic segment contains this angle
-    for (const seg of SEGMENTS) {
-      if (angle <= seg.startDeg && angle >= seg.endDeg) return seg.key;
-    }
-    return null;
+    if (angle >= 135) return "skip";
+    if (angle >= 90)  return "timepass";
+    if (angle >= 45)  return "go_for_it";
+    return "perfection";
   }
-
-  const displayCat = hoveredSeg ? CAT_MAP[hoveredSeg] : activeCat;
 
   return (
     <svg
       ref={svgRef}
-      viewBox="0 0 240 140"
-      className="w-full max-w-[280px]"
+      viewBox="0 0 280 118"
+      className="w-full max-w-[320px]"
       style={{ overflow: "visible", cursor: onVote ? "pointer" : "default", touchAction: "none" }}
       onPointerDown={(e) => {
         if (!onVote) return;
@@ -245,8 +225,7 @@ function GaugeMeter({ counts, total, myVote, onVote }: {
       }}
       onPointerMove={(e) => {
         if (!onVote) return;
-        const seg = segFromPointer(e);
-        setHoveredSeg(seg);
+        setHoveredSeg(segFromPointer(e));
       }}
       onPointerUp={(e) => {
         if (!onVote) return;
@@ -275,12 +254,12 @@ function GaugeMeter({ counts, total, myVote, onVote }: {
         ))}
       </defs>
 
-      {/* Segment arcs */}
+      {/* Segment arcs — always equal size; winner glows bright */}
       {SEGMENTS.map((seg) => {
         const isActive  = myVote === seg.key;
         const isHovered = hoveredSeg === seg.key;
         const isDom     = domCat?.key === seg.key && total > 0;
-        const opacity   = isActive ? 1 : isHovered ? 0.85 : isDom ? 0.82 : total > 0 ? 0.25 : 0.18;
+        const opacity   = isActive ? 1 : isHovered ? 0.85 : isDom ? 0.82 : total > 0 ? 0.22 : 0.18;
         return (
           <path
             key={seg.key}
@@ -293,23 +272,18 @@ function GaugeMeter({ counts, total, myVote, onVote }: {
         );
       })}
 
-      {/* Zone labels along the arc */}
+      {/* Zone labels along the outer edge */}
       {SEGMENTS.map((seg) => {
-        const lp = polar(R_OUT + 13, seg.labelDeg);
+        const lp = polar(RX_OUT + 14, RY_OUT + 13, seg.labelDeg);
         const isActive  = myVote === seg.key;
         const isHovered = hoveredSeg === seg.key;
         const isDom     = domCat?.key === seg.key && total > 0;
         return (
           <text
             key={`lbl-${seg.key}`}
-            x={lp.x}
-            y={lp.y}
-            textAnchor="middle"
-            dominantBaseline="middle"
-            fontSize="6.5"
-            fontFamily="monospace"
-            fontWeight="700"
-            letterSpacing="0.8"
+            x={lp.x} y={lp.y}
+            textAnchor="middle" dominantBaseline="middle"
+            fontSize="6.5" fontFamily="monospace" fontWeight="700" letterSpacing="0.8"
             fill={isActive || isHovered || isDom ? seg.text : "rgba(255,255,255,0.28)"}
             style={{
               textTransform: "uppercase",
@@ -323,94 +297,85 @@ function GaugeMeter({ counts, total, myVote, onVote }: {
         );
       })}
 
-      {/* "Most Voted" crown badge on the dominant segment */}
+      {/* "Most Voted" badge above the dominant segment */}
       {!hoveredSeg && domCat && total > 0 && (() => {
         const domSeg = SEGMENTS.find(s => s.key === domCat.key)!;
-        const bp = polar(R_OUT + 28, domSeg.labelDeg);
+        const bp  = polar(RX_OUT + 28, RY_OUT + 26, domSeg.labelDeg);
         const rot = -(domSeg.labelDeg - 90);
         return (
-          <g
-            key="most-voted-badge"
-            transform={`translate(${bp.x},${bp.y}) rotate(${rot})`}
-            style={{ transition: "opacity 0.3s ease" }}
-          >
-            {/* pill background */}
+          <g transform={`translate(${bp.x},${bp.y}) rotate(${rot})`}
+             style={{ transition: "opacity 0.3s ease" }}>
             <rect x="-12" y="-4.5" width="24" height="9" rx="4.5"
               fill={domCat.fill} opacity="0.55" />
-            {/* star + label */}
-            <text
-              textAnchor="middle" dominantBaseline="middle"
+            <text textAnchor="middle" dominantBaseline="middle"
               fontSize="5" fontFamily="monospace" fontWeight="800"
-              letterSpacing="0.3" fill={domCat.text}
-            >
+              letterSpacing="0.3" fill={domCat.text}>
               ★ MOST
             </text>
           </g>
         );
       })()}
 
-      {/* Center text — reacts to hover / clear winner / contested / empty */}
+      {/* Center text */}
       {hoveredSeg ? (
         <>
-          <text x={CX} y={CY - 16} textAnchor="middle" fontSize="11" fontWeight="800"
+          <text x={CX} y={CY - 14} textAnchor="middle" fontSize="11" fontWeight="800"
             fontFamily="system-ui,sans-serif" fill={CAT_MAP[hoveredSeg].text}
             style={{ transition: "fill 0.2s ease" }}>
             {CAT_MAP[hoveredSeg].label.toUpperCase()}
           </text>
-          <text x={CX} y={CY - 2} textAnchor="middle" fontSize="5.5" fontFamily="monospace"
+          <text x={CX} y={CY} textAnchor="middle" fontSize="5.5" fontFamily="monospace"
             fill={CAT_MAP[hoveredSeg].text} letterSpacing="0.8" opacity="0.7">
             TAP TO VOTE
           </text>
         </>
       ) : total === 0 ? (
         <>
-          <text x={CX} y={CY - 16} textAnchor="middle" fontSize="11" fontWeight="800"
+          <text x={CX} y={CY - 12} textAnchor="middle" fontSize="11" fontWeight="800"
             fontFamily="system-ui,sans-serif" fill="rgba(255,255,255,0.2)">
             NEXA
           </text>
-          <text x={CX} y={CY - 2} textAnchor="middle" fontSize="6" fontFamily="monospace"
+          <text x={CX} y={CY + 2} textAnchor="middle" fontSize="6" fontFamily="monospace"
             fill="rgba(255,255,255,0.15)" letterSpacing="1">
             METER
           </text>
         </>
       ) : hasClearWinner ? (
         <>
-          <text x={CX} y={CY - 16} textAnchor="middle" fontSize="28" fontWeight="800"
+          <text x={CX} y={CY - 14} textAnchor="middle" fontSize="26" fontWeight="800"
             fontFamily="system-ui,sans-serif"
             fill={domCat?.text ?? "rgba(255,255,255,0.2)"}
             style={{ transition: "fill 0.2s ease" }}>
             {`${domPct}%`}
           </text>
-          <text x={CX} y={CY - 2} textAnchor="middle" fontSize="7" fontFamily="monospace"
+          <text x={CX} y={CY} textAnchor="middle" fontSize="7" fontFamily="monospace"
             fill={activeCat?.text ?? (domCat?.text ?? "rgba(255,255,255,0.3)")}
             fontWeight="600" style={{ transition: "fill 0.2s ease" }}>
             {domCat?.zone ?? ""}
           </text>
-          <text x={CX} y={CY + 8} textAnchor="middle" fontSize="5.5" fontFamily="monospace"
+          <text x={CX} y={CY + 10} textAnchor="middle" fontSize="5.5" fontFamily="monospace"
             fill="rgba(255,255,255,0.2)" letterSpacing="0.5">
             {total.toLocaleString()} VOTES
           </text>
         </>
       ) : (
-        /* Tied / contested state */
         <>
-          <text x={CX} y={CY - 16} textAnchor="middle" fontSize="9.5" fontWeight="800"
-            fontFamily="monospace" letterSpacing="0.5"
-            fill="rgba(255,255,255,0.55)">
+          <text x={CX} y={CY - 12} textAnchor="middle" fontSize="9" fontWeight="800"
+            fontFamily="monospace" letterSpacing="0.5" fill="rgba(255,255,255,0.55)">
             CONTESTED
           </text>
-          <text x={CX} y={CY - 3} textAnchor="middle" fontSize="5.5" fontFamily="monospace"
+          <text x={CX} y={CY + 1} textAnchor="middle" fontSize="5.5" fontFamily="monospace"
             fill="rgba(255,255,255,0.22)" letterSpacing="0.8">
             votes are split
           </text>
-          <text x={CX} y={CY + 7} textAnchor="middle" fontSize="5.5" fontFamily="monospace"
+          <text x={CX} y={CY + 10} textAnchor="middle" fontSize="5.5" fontFamily="monospace"
             fill="rgba(255,255,255,0.15)" letterSpacing="0.5">
             {total.toLocaleString()} VOTES
           </text>
         </>
       )}
 
-      {/* Needle — only shown when one category is unambiguously ahead */}
+      {/* Needle — springs to the dominant segment center */}
       <g
         style={{
           transform: `rotate(${needleRot}deg)`,
@@ -420,42 +385,32 @@ function GaugeMeter({ counts, total, myVote, onVote }: {
           pointerEvents: "none",
         }}
       >
-        {/* Needle shadow/glow */}
-        <line
-          x1={CX} y1={CY + 8}
-          x2={CX} y2={CY - 84}
+        <line x1={CX} y1={NEEDLE_BASE} x2={CX} y2={NEEDLE_TIP}
           stroke={domCat?.glow ?? "rgba(255,255,255,0.15)"}
-          strokeWidth="3"
-          strokeLinecap="round"
-          opacity="0.25"
+          strokeWidth="3" strokeLinecap="round" opacity="0.25"
           style={{ transition: "stroke 0.4s ease" }}
         />
-        {/* Needle body */}
-        <line
-          x1={CX} y1={CY + 8}
-          x2={CX} y2={CY - 84}
+        <line x1={CX} y1={NEEDLE_BASE} x2={CX} y2={NEEDLE_TIP}
           stroke={domCat?.text ?? "rgba(255,255,255,0.7)"}
-          strokeWidth="1.5"
-          strokeLinecap="round"
+          strokeWidth="1.5" strokeLinecap="round"
           style={{ transition: "stroke 0.4s ease" }}
         />
-        {/* Needle tip triangle */}
         <polygon
-          points={`${CX},${CY - 85} ${CX - 2.5},${CY - 76} ${CX + 2.5},${CY - 76}`}
+          points={`${CX},${NEEDLE_TIP - 1} ${CX - 2.5},${NEEDLE_TIP + 8} ${CX + 2.5},${NEEDLE_TIP + 8}`}
           fill={domCat?.text ?? "rgba(255,255,255,0.8)"}
           style={{ transition: "fill 0.4s ease" }}
         />
       </g>
 
       {/* Center hub */}
-      <circle cx={CX} cy={CY} r="8" fill="#111" stroke="rgba(255,255,255,0.12)" strokeWidth="1.5" />
-      <circle cx={CX} cy={CY} r="3.5"
+      <circle cx={CX} cy={CY} r="7.5" fill="#111" stroke="rgba(255,255,255,0.12)" strokeWidth="1.5" />
+      <circle cx={CX} cy={CY} r="3"
         fill={domCat?.glow ?? "rgba(255,255,255,0.3)"}
         style={{ transition: "fill 0.4s ease" }}
       />
 
       {/* Baseline */}
-      <line x1={CX - R_OUT - 4} y1={CY} x2={CX + R_OUT + 4} y2={CY}
+      <line x1={CX - RX_OUT - 4} y1={CY} x2={CX + RX_OUT + 4} y2={CY}
         stroke="rgba(255,255,255,0.05)" strokeWidth="1" />
     </svg>
   );
