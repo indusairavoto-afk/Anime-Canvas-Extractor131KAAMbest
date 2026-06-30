@@ -84,11 +84,19 @@ function GaugeMeter({ counts, total, myVote, onVote }: {
   const isDraggingRef = useRef(false);
   const pointerHandledRef = useRef(false);
 
+  // Weighted average in [0,1]: 0 = all Skip, 1 = all Perfection
   const weightedPos = total > 0
     ? CATS.reduce((sum, cat, i) => sum + (i / (CATS.length - 1)) * counts[cat.key], 0) / total
     : -1;
 
-  const needleRot = weightedPos >= 0 ? weightedPos * 180 - 90 : -90;
+  // Map to CSS rotation so the needle lands on segment CENTERS:
+  //   Skip center      → 157.5° standard → needleRot = -67.5°
+  //   Timepass center  → 112.5° standard → needleRot = -22.5°
+  //   Go For It center →  67.5° standard → needleRot =  22.5°
+  //   Perfection center →  22.5° standard → needleRot =  67.5°
+  // Range: [-67.5, 67.5], so formula = weightedPos * 135 - 67.5
+  // No votes → point straight up (middle of gauge)
+  const needleRot = weightedPos >= 0 ? weightedPos * 135 - 67.5 : 0;
 
   const activeCat = myVote ? CAT_MAP[myVote] : null;
   const domIdx    = total > 0 ? CATS.reduce((best, _, i) => counts[CATS[i].key] > counts[CATS[best].key] ? i : best, 0) : -1;
