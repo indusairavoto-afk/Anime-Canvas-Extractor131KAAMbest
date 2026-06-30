@@ -292,22 +292,6 @@ export function Sidebar() {
             </motion.aside>
           )}
 
-          {/* ── Show tab when hidden (manual or scrolled) ── */}
-          {!isVisible && (
-            <motion.button
-              key="show-tab"
-              initial={{ x: -24, opacity: 0 }}
-              animate={{ x: 0, opacity: 1 }}
-              exit={{ x: -24, opacity: 0 }}
-              transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
-              onClick={() => { setManuallyHidden(false); }}
-              className="fixed left-0 top-1/2 -translate-y-1/2 z-40 flex items-center justify-center bg-zinc-900/90 backdrop-blur-xl border border-white/[0.08] border-l-0 text-white/30 hover:text-white/70 transition-colors shadow-xl"
-              style={{ width: 20, height: 56, borderRadius: "0 10px 10px 0" }}
-              title="Show sidebar"
-            >
-              <ChevronRight className="w-3 h-3" />
-            </motion.button>
-          )}
         </AnimatePresence>
       </div>
 
