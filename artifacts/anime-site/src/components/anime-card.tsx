@@ -161,27 +161,34 @@ export function AnimeCard({ anime }: AnimeCardProps) {
             <div className="border-t border-white/[0.06]" />
 
             {/* Actions */}
-            <div className="flex gap-2">
-              <Link href={`/watch/al/${anime.id}/1`} className="flex-1">
+            <div className="flex flex-col gap-1.5">
+              <Link href={`/watch/al/${anime.id}/1`} className="w-full">
                 <button className="w-full flex items-center justify-center gap-1.5 py-2 bg-white text-black text-[10px] font-bold uppercase tracking-wider hover:bg-white/90 transition-colors">
                   <Play className="w-3 h-3 fill-current" />
                   Watch Now
                 </button>
               </Link>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  toggle(anime.id);
-                }}
-                className={`w-8 h-8 flex items-center justify-center border transition-colors shrink-0 ${
-                  saved
-                    ? "bg-white border-white text-black"
-                    : "border-white/20 text-white/50 hover:border-white hover:text-white"
-                }`}
-                title={saved ? "Remove from My List" : "Add to My List"}
-              >
-                {saved ? <BookmarkCheck className="w-3.5 h-3.5" /> : <Bookmark className="w-3.5 h-3.5" />}
-              </button>
+              <div className="flex gap-1.5">
+                <Link href={`/anime/${anime.id}`} className="flex-1">
+                  <button className="w-full flex items-center justify-center gap-1.5 py-1.5 border border-white/20 text-white/60 text-[10px] font-bold uppercase tracking-wider hover:border-white hover:text-white transition-colors">
+                    Details
+                  </button>
+                </Link>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggle(anime.id);
+                  }}
+                  className={`w-8 h-8 flex items-center justify-center border transition-colors shrink-0 ${
+                    saved
+                      ? "bg-white border-white text-black"
+                      : "border-white/20 text-white/50 hover:border-white hover:text-white"
+                  }`}
+                  title={saved ? "Remove from My List" : "Add to My List"}
+                >
+                  {saved ? <BookmarkCheck className="w-3.5 h-3.5" /> : <Bookmark className="w-3.5 h-3.5" />}
+                </button>
+              </div>
             </div>
           </div>
         </div>
