@@ -2,7 +2,7 @@ import React from "react";
 import { apiUrl } from "@/lib/api";
 import { motion, AnimatePresence } from "framer-motion";
 import { Link } from "wouter";
-import { Play, Star, Clock, ChevronRight, TrendingUp, ChevronLeft, X, History, CalendarClock, Info } from "lucide-react";
+import { Play, Star, Clock, ChevronRight, TrendingUp, ChevronLeft, X, History, CalendarClock, Info, Newspaper, ExternalLink } from "lucide-react";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { AnimeCardSkeleton } from "@/components/anime-card";
 import { useContinueWatching, type ContinueWatchingEntry } from "@/hooks/useContinueWatching";
@@ -873,6 +873,56 @@ export default function Home() {
   const [upcomingAnime, setUpcomingAnime] = useState<AniMedia[]>([]);
   const [aniLoading, setAniLoading] = useState(true);
 
+  interface NewsThread {
+    id: number;
+    title: string;
+    createdAt: number;
+    viewCount: number;
+    replyCount: number;
+    siteUrl: string;
+    user: { name: string; avatar: { medium: string } };
+    mediaCategories: Array<{
+      id: number;
+      title: { romaji: string; english?: string | null };
+      coverImage: { large: string };
+    }>;
+  }
+  const [newsItems, setNewsItems] = useState<NewsThread[]>([]);
+  const [newsLoading, setNewsLoading] = useState(true);
+
+  useEffect(() => {
+    fetch(apiUrl("/api/anilist"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        query: `{
+          Page(perPage: 6) {
+            threads(sort: CREATED_AT_DESC) {
+              id
+              title
+              createdAt
+              viewCount
+              replyCount
+              siteUrl
+              user { name avatar { medium } }
+              mediaCategories {
+                id
+                title { romaji english }
+                coverImage { large }
+              }
+            }
+          }
+        }`,
+      }),
+    })
+      .then((r) => r.json())
+      .then((json) => {
+        setNewsItems(json?.data?.Page?.threads ?? []);
+        setNewsLoading(false);
+      })
+      .catch(() => setNewsLoading(false));
+  }, []);
+
   useEffect(() => {
     setAniLoading(true);
     const { season, year } = getCurrentSeason();
@@ -1190,6 +1240,80 @@ export default function Home() {
               </div>
             </section>
           )}
+
+          {/* Anime News */}
+          <section className="px-4 sm:px-6 py-8 sm:py-10 border-b border-white/5">
+            <div className="flex items-center justify-between mb-5 sm:mb-6">
+              <div>
+                <p className="text-[9px] font-mono text-white/30 uppercase tracking-[0.3em] mb-0.5 flex items-center gap-1.5">
+                  <Newspaper className="w-3 h-3" /> Latest
+                </p>
+                <h2 className="font-serif text-xl sm:text-2xl text-white leading-none">Anime News</h2>
+              </div>
+              <a
+                href="https://myanimelist.net/news"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1 text-[10px] font-mono uppercase tracking-widest text-white/30 hover:text-white transition-colors"
+              >
+                More <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+              {newsLoading
+                ? Array.from({ length: 6 }).map((_, i) => (
+                    <div key={i} className="rounded-2xl bg-white/5 animate-pulse h-28" />
+                  ))
+                : newsItems.map((item, idx) => {
+                    const cover = item.mediaCategories?.[0]?.coverImage?.large;
+                    const relatedTitle = item.mediaCategories?.[0]?.title?.english || item.mediaCategories?.[0]?.title?.romaji;
+                    return (
+                      <motion.a
+                        key={item.id}
+                        href={item.siteUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        initial={{ opacity: 0, y: 12 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.4, delay: idx * 0.05, ease: [0.16, 1, 0.3, 1] }}
+                        className="group flex gap-3 rounded-2xl bg-white p-3 sm:p-4 hover:shadow-xl hover:shadow-black/20 transition-all duration-300"
+                      >
+                        {cover && (
+                          <div className="flex-shrink-0 w-16 sm:w-20 h-20 sm:h-24 rounded-xl overflow-hidden self-start">
+                            <img
+                              src={cover}
+                              alt={relatedTitle ?? item.title}
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                              loading="lazy"
+                            />
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0 flex flex-col gap-1">
+                          <p className="text-[9px] font-mono text-black/35 uppercase tracking-widest">
+                            {new Date(item.createdAt * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                            {item.user?.name && ` · ${item.user.name}`}
+                          </p>
+                          <h3 className="text-sm font-semibold text-black leading-snug line-clamp-3 group-hover:text-zinc-600 transition-colors">
+                            {item.title}
+                          </h3>
+                          {relatedTitle && (
+                            <p className="text-[10px] font-mono text-black/40 truncate">{relatedTitle}</p>
+                          )}
+                          <div className="mt-auto flex items-center justify-between">
+                            <div className="flex items-center gap-2 text-[9px] font-mono text-black/30">
+                              <span>{item.viewCount} views</span>
+                              <span>{item.replyCount} replies</span>
+                            </div>
+                            <span className="flex items-center gap-0.5 text-[9px] font-mono text-black/30 group-hover:text-black/60 transition-colors uppercase tracking-widest">
+                              Read <ExternalLink className="w-2.5 h-2.5" />
+                            </span>
+                          </div>
+                        </div>
+                      </motion.a>
+                    );
+                  })}
+            </div>
+          </section>
 
           {/* Latest Episodes — from AniList airing schedules */}
           <section className="px-4 sm:px-6 py-8 sm:py-10">

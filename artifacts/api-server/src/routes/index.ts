@@ -32,6 +32,7 @@ import syncRouter from "./sync";
 import aninekoRouter from "./anineko";
 import lnoriRouter from "./lnori";
 import shirokoRouter from "./shiroko";
+import newsRouter from "./news";
 
 const router: IRouter = Router();
 
@@ -68,5 +69,6 @@ router.use(syncRouter);
 router.use(aninekoRouter);
 router.use(lnoriRouter);
 router.use(shirokoRouter);
+router.use(newsRouter);
 
 export default router;
