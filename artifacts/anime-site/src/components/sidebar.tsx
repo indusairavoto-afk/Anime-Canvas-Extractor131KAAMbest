@@ -293,6 +293,22 @@ export function Sidebar() {
             </motion.aside>
           )}
 
+          {/* ── Reveal tab — shown when sidebar is hidden ── */}
+          {!isVisible && (
+            <motion.button
+              key="reveal"
+              initial={{ x: -40, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: -40, opacity: 0 }}
+              transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
+              onClick={() => { setManuallyHidden(false); }}
+              title="Show sidebar"
+              className="fixed left-0 top-1/2 -translate-y-1/2 z-40 flex items-center justify-center bg-zinc-900/90 backdrop-blur-xl border border-white/[0.08] border-l-0 shadow-xl text-white/30 hover:text-white transition-colors"
+              style={{ borderRadius: "0 12px 12px 0", width: 18, height: 48 }}
+            >
+              <ChevronRight className="w-3 h-3" />
+            </motion.button>
+          )}
         </AnimatePresence>
       </div>
 
