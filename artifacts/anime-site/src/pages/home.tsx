@@ -873,51 +873,22 @@ export default function Home() {
   const [upcomingAnime, setUpcomingAnime] = useState<AniMedia[]>([]);
   const [aniLoading, setAniLoading] = useState(true);
 
-  interface NewsThread {
-    id: number;
+  interface NewsItem {
+    slug: string;
     title: string;
-    createdAt: number;
-    viewCount: number;
-    replyCount: number;
-    siteUrl: string;
-    user: { name: string; avatar: { medium: string } };
-    mediaCategories: Array<{
-      id: number;
-      title: { romaji: string; english?: string | null };
-      coverImage: { large: string };
-    }>;
+    image: string;
+    author: string;
+    date: string;
+    categories: string[];
   }
-  const [newsItems, setNewsItems] = useState<NewsThread[]>([]);
+  const [newsItems, setNewsItems] = useState<NewsItem[]>([]);
   const [newsLoading, setNewsLoading] = useState(true);
 
   useEffect(() => {
-    fetch(apiUrl("/api/anilist"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        query: `{
-          Page(perPage: 6) {
-            threads(sort: CREATED_AT_DESC) {
-              id
-              title
-              createdAt
-              viewCount
-              replyCount
-              siteUrl
-              user { name avatar { medium } }
-              mediaCategories {
-                id
-                title { romaji english }
-                coverImage { large }
-              }
-            }
-          }
-        }`,
-      }),
-    })
+    fetch(apiUrl("/api/animecorner/news?category=anime-news&page=1"))
       .then((r) => r.json())
       .then((json) => {
-        setNewsItems(json?.data?.Page?.threads ?? []);
+        setNewsItems(json?.articles?.slice(0, 6) ?? []);
         setNewsLoading(false);
       })
       .catch(() => setNewsLoading(false));
@@ -1264,54 +1235,49 @@ export default function Home() {
                 ? Array.from({ length: 6 }).map((_, i) => (
                     <div key={i} className="rounded-2xl bg-white/5 animate-pulse h-28" />
                   ))
-                : newsItems.map((item, idx) => {
-                    const cover = item.mediaCategories?.[0]?.coverImage?.large;
-                    const relatedTitle = item.mediaCategories?.[0]?.title?.english || item.mediaCategories?.[0]?.title?.romaji;
-                    return (
-                      <motion.a
-                        key={item.id}
-                        href={item.siteUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        initial={{ opacity: 0, y: 12 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.4, delay: idx * 0.05, ease: [0.16, 1, 0.3, 1] }}
-                        className="group flex gap-3 rounded-2xl bg-white p-3 sm:p-4 hover:shadow-xl hover:shadow-black/20 transition-all duration-300"
-                      >
-                        {cover && (
-                          <div className="flex-shrink-0 w-16 sm:w-20 h-20 sm:h-24 rounded-xl overflow-hidden self-start">
-                            <img
-                              src={cover}
-                              alt={relatedTitle ?? item.title}
-                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                              loading="lazy"
-                            />
-                          </div>
-                        )}
-                        <div className="flex-1 min-w-0 flex flex-col gap-1">
-                          <p className="text-[9px] font-mono text-black/35 uppercase tracking-widest">
-                            {new Date(item.createdAt * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                            {item.user?.name && ` · ${item.user.name}`}
-                          </p>
-                          <h3 className="text-sm font-semibold text-black leading-snug line-clamp-3 group-hover:text-zinc-600 transition-colors">
-                            {item.title}
-                          </h3>
-                          {relatedTitle && (
-                            <p className="text-[10px] font-mono text-black/40 truncate">{relatedTitle}</p>
-                          )}
-                          <div className="mt-auto flex items-center justify-between">
-                            <div className="flex items-center gap-2 text-[9px] font-mono text-black/30">
-                              <span>{item.viewCount} views</span>
-                              <span>{item.replyCount} replies</span>
+                : newsItems.map((item, idx) => (
+                    <motion.div
+                      key={item.slug}
+                      initial={{ opacity: 0, y: 12 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.4, delay: idx * 0.05, ease: [0.16, 1, 0.3, 1] }}
+                    >
+                      <Link href={`/news/${item.slug}`}>
+                        <div className="group cursor-pointer rounded-2xl bg-white hover:shadow-xl hover:shadow-black/20 transition-all duration-300 overflow-hidden h-full flex flex-col">
+                          {item.image && (
+                            <div className="relative w-full aspect-video overflow-hidden flex-shrink-0">
+                              <img
+                                src={item.image}
+                                alt={item.title}
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                                loading="lazy"
+                              />
+                              {item.categories.length > 0 && (
+                                <div className="absolute top-2 left-2 flex gap-1">
+                                  {item.categories.slice(0, 1).map((cat) => (
+                                    <span key={cat} className="text-[8px] font-mono uppercase tracking-widest bg-red-600 text-white px-1.5 py-0.5">
+                                      {cat}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
                             </div>
-                            <span className="flex items-center gap-0.5 text-[9px] font-mono text-black/30 group-hover:text-black/60 transition-colors uppercase tracking-widest">
-                              Read <ExternalLink className="w-2.5 h-2.5" />
+                          )}
+                          <div className="flex-1 p-3 sm:p-4 flex flex-col gap-1">
+                            <p className="text-[9px] font-mono text-black/35 uppercase tracking-widest">
+                              {item.date}{item.author && ` · ${item.author}`}
+                            </p>
+                            <h3 className="text-sm font-semibold text-black leading-snug line-clamp-2 group-hover:text-zinc-600 transition-colors">
+                              {item.title}
+                            </h3>
+                            <span className="mt-auto flex items-center gap-0.5 text-[9px] font-mono text-black/30 group-hover:text-black/60 transition-colors uppercase tracking-widest pt-1">
+                              Read more <ExternalLink className="w-2.5 h-2.5" />
                             </span>
                           </div>
                         </div>
-                      </motion.a>
-                    );
-                  })}
+                      </Link>
+                    </motion.div>
+                  ))}
             </div>
           </section>
 

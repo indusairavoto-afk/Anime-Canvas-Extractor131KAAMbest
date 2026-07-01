@@ -33,6 +33,7 @@ import aninekoRouter from "./anineko";
 import lnoriRouter from "./lnori";
 import shirokoRouter from "./shiroko";
 import newsRouter from "./news";
+import animecornerRouter from "./animecorner";
 
 const router: IRouter = Router();
 
@@ -70,5 +71,6 @@ router.use(aninekoRouter);
 router.use(lnoriRouter);
 router.use(shirokoRouter);
 router.use(newsRouter);
+router.use(animecornerRouter);
 
 export default router;
