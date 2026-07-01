@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useParams, Link } from "wouter";
 import { motion } from "framer-motion";
 import { apiUrl } from "@/lib/api";
-import { ArrowLeft, Calendar, User, Tag, ExternalLink, Clock } from "lucide-react";
+import { ArrowLeft, Calendar, Tag, ExternalLink, Clock } from "lucide-react";
 
 interface RelatedArticle {
   slug: string;
@@ -153,12 +153,6 @@ export default function NewsArticle() {
 
             {/* Meta */}
             <div className="flex flex-wrap items-center gap-4 mb-8 pb-6 border-b border-white/10">
-              {article.author && (
-                <span className="flex items-center gap-1.5 text-xs text-white/40">
-                  <User className="w-3 h-3" />
-                  {article.author}
-                </span>
-              )}
               {(article.publishedAt || article.date) && (
                 <span className="flex items-center gap-1.5 text-xs text-white/40">
                   <Calendar className="w-3 h-3" />
