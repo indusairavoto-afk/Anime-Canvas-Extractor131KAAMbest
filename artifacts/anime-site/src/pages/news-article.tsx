@@ -4,6 +4,15 @@ import { motion } from "framer-motion";
 import { apiUrl } from "@/lib/api";
 import { ArrowLeft, Calendar, User, Tag, ExternalLink, Clock } from "lucide-react";
 
+interface RelatedArticle {
+  slug: string;
+  title: string;
+  image: string;
+  author: string;
+  date: string;
+  categories: string[];
+}
+
 interface ArticleFull {
   slug: string;
   title: string;
@@ -16,6 +25,7 @@ interface ArticleFull {
   description: string;
   content: string;
   tags: string[];
+  related: RelatedArticle[];
 }
 
 function timeAgo(dateStr: string): string {
@@ -209,6 +219,46 @@ export default function NewsArticle() {
               </Link>
             </div>
           </div>
+
+          {/* Related Articles */}
+          {article.related && article.related.length > 0 && (
+            <div className="border-t border-white/8 mt-4 py-12 px-4 sm:px-8 bg-zinc-900/40">
+              <div className="max-w-5xl mx-auto">
+                <p className="text-[9px] font-mono uppercase tracking-widest text-white/30 mb-6">More Articles</p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  {article.related.map((rel, idx) => (
+                    <motion.div
+                      key={rel.slug}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.35, delay: idx * 0.07 }}
+                    >
+                      <Link href={`/news/${rel.slug}`}>
+                        <div className="group cursor-pointer rounded-xl overflow-hidden bg-zinc-800/60 hover:bg-zinc-800 border border-white/5 hover:border-white/15 transition-all duration-300 flex flex-col h-full">
+                          {rel.image && (
+                            <div className="relative aspect-video overflow-hidden flex-shrink-0">
+                              <img
+                                src={rel.image}
+                                alt={rel.title}
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                                loading="lazy"
+                              />
+                            </div>
+                          )}
+                          <div className="p-3 flex flex-col gap-1 flex-1">
+                            <p className="text-[9px] font-mono text-white/30 uppercase tracking-widest">{rel.date}</p>
+                            <h4 className="text-sm font-semibold text-white/85 group-hover:text-white leading-snug line-clamp-2 transition-colors">
+                              {rel.title}
+                            </h4>
+                          </div>
+                        </div>
+                      </Link>
+                    </motion.div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
         </motion.article>
       )}
 

@@ -91,6 +91,7 @@ export interface NewsArticleFull extends NewsArticleSummary {
   publishedAt: string;
   content: string;
   tags: string[];
+  related: NewsArticleSummary[];
 }
 
 function cleanContentHtml(html: string): string {
@@ -103,13 +104,18 @@ function cleanContentHtml(html: string): string {
     .replace(/<iframe[\s\S]*?<\/iframe>/gi, "")
     // Remove social share divs and related widgets
     .replace(/<div[^>]*class="[^"]*(?:sharedaddy|jp-relatedposts|wpcnt|penci-share|penci-nav|post-nav)[^"]*"[\s\S]*?<\/div>/gi, "")
-    // Fix lazy images: replace data-src with src, data-bgset with src
-    .replace(/<img([^>]*)data-src="([^"]+)"([^>]*)>/gi, '<img$1src="$2"$3>')
-    // Remove srcset/sizes for simplicity
+    // Fix lazy images: animecorner uses data-src with a placeholder SVG in the real src attr
+    // Step 1: remove the SVG placeholder src entirely so it doesn't override data-src
+    .replace(/\s*src="data:[^"]*"/gi, "")
+    // Step 2: promote data-src to src
+    .replace(/\s*data-src="([^"]+)"/gi, ' src="$1"')
+    // Clean up data-srcset, data-sizes, srcset, sizes
+    .replace(/\s*data-srcset="[^"]*"/gi, "")
+    .replace(/\s*data-sizes="[^"]*"/gi, "")
     .replace(/\s*srcset="[^"]*"/gi, "")
     .replace(/\s*sizes="[^"]*"/gi, "")
-    // Remove loading="lazy" and class from images (will style via CSS)
     .replace(/\s*loading="[^"]*"/gi, "")
+    .replace(/\s*decoding="[^"]*"/gi, "")
     // Clean up empty paragraphs
     .replace(/<p[^>]*>\s*<\/p>/gi, "")
     .trim();
@@ -195,6 +201,27 @@ router.get("/animecorner/article/:slug", async (req, res) => {
     // Article URL slug
     const articleUrl = `${BASE}/${slug}/`;
 
+    // Fetch related articles (latest news, exclude current slug)
+    let related: NewsArticleSummary[] = [];
+    try {
+      const relatedCacheKey = `ac-news-anime-news-1`;
+      let listing = getCached(relatedCacheKey) as { articles: NewsArticleSummary[] } | null;
+      if (!listing) {
+        const listResp = await fetch(`${BASE}/category/anime-news/`, { headers: HEADERS });
+        if (listResp.ok) {
+          const listHtml = await listResp.text();
+          const articles = parseListingArticles(listHtml);
+          listing = { articles };
+          setCache(relatedCacheKey, { articles, page: 1, hasNextPage: true }, 15 * 60 * 1000);
+        }
+      }
+      if (listing) {
+        related = (listing.articles as NewsArticleSummary[])
+          .filter((a) => a.slug !== slug)
+          .slice(0, 3);
+      }
+    } catch (_) { /* related is best-effort */ }
+
     const result: NewsArticleFull = {
       slug,
       title: title || decodeHtml(extract(html, /<title>([^<|]+)/)),
@@ -207,6 +234,7 @@ router.get("/animecorner/article/:slug", async (req, res) => {
       publishedAt,
       content,
       tags: tags.slice(0, 10),
+      related,
     };
 
     setCache(cacheKey, result, 30 * 60 * 1000); // 30min cache for articles
