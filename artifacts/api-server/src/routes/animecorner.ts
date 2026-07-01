@@ -102,8 +102,10 @@ function cleanContentHtml(html: string): string {
     .replace(/<noscript[\s\S]*?<\/noscript>/gi, "")
     .replace(/<ins[\s\S]*?<\/ins>/gi, "")
     .replace(/<iframe[\s\S]*?<\/iframe>/gi, "")
-    // Remove social share divs and related widgets
+    // Remove social share divs, related widgets, and author bio boxes
     .replace(/<div[^>]*class="[^"]*(?:sharedaddy|jp-relatedposts|wpcnt|penci-share|penci-nav|post-nav)[^"]*"[\s\S]*?<\/div>/gi, "")
+    .replace(/<div[^>]*class="[^"]*(?:author-box|about-author|author-bio|author-profile|author-description|post-author)[^"]*"[\s\S]*?<\/div>/gi, "")
+    .replace(/<section[^>]*class="[^"]*(?:author-box|about-author|author-bio)[^"]*"[\s\S]*?<\/section>/gi, "")
     // Fix lazy images: animecorner uses data-src with a placeholder SVG in the real src attr
     // Step 1: remove the SVG placeholder src entirely so it doesn't override data-src
     .replace(/\s*src="data:[^"]*"/gi, "")
@@ -192,7 +194,10 @@ router.get("/animecorner/article/:slug", async (req, res) => {
 
     // Article content
     const contentMatch = /<div[^>]*class="[^"]*inner-post-entry entry-content[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<div[^>]*class="[^"]*(?:penci-post-tags|author-box|related|comments)[^"]*"/i.exec(html);
-    const rawContent = contentMatch ? contentMatch[1] : "";
+    let rawContent = contentMatch ? contentMatch[1] : "";
+    // Cut off author bio block (nested divs — can't regex strip, so truncate at first occurrence)
+    const authorBoxIdx = rawContent.search(/<div[^>]*class="[^"]*post-author[^"]*"/i);
+    if (authorBoxIdx !== -1) rawContent = rawContent.slice(0, authorBoxIdx);
     const content = cleanContentHtml(rawContent);
 
     // Date from time element
