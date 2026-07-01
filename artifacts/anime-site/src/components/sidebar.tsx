@@ -1,7 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { apiUrl } from "@/lib/api";
 import { motion, AnimatePresence } from "framer-motion";
-import { Home, Search, Calendar, Users, Bookmark, Trophy, ChevronRight, ChevronDown, BookOpen, Mic } from "lucide-react";
+import { Home, Search, Calendar, Users, Bookmark, Trophy, ChevronRight, ChevronDown, BookOpen, Mic, Newspaper } from "lucide-react";
 import { useSidebar } from "@/contexts/sidebar-context";
 import { useWatchlist } from "@/hooks/useWatchlist";
 import { useState, useEffect, useRef } from "react";
@@ -13,6 +13,7 @@ const NAV_ITEMS = [
   { icon: Trophy, label: "Rankings", href: "/ranking" },
   { icon: Calendar, label: "Schedule", href: "/schedule" },
   { icon: BookOpen, label: "Manga", href: "/manga" },
+  { icon: Newspaper, label: "News", href: "/news" },
   { icon: Users, label: "Community", href: "/community" },
   { icon: Bookmark, label: "My List", href: "/watchlist" },
 ];
