@@ -40,3 +40,24 @@ services:
         sync: false
       - key: GMAIL_APP_PASSWORD
         sync: false
+      # Set this to the miruro-relay service's public URL after both services
+      # have deployed once (e.g. https://miruro-relay-xxxx.onrender.com).
+      # Setting this makes the main app route all Miruro requests through the
+      # relay's non-blocked IP instead of trying to solve Cloudflare locally.
+      - key: MIRURO_RELAY_URL
+        sync: false
+
+  # Standalone forward-proxy for Miruro. Cloudflare hard-blocks Replit's dev
+  # IPs but not most Render IPs, so this tiny service (no app logic, just a
+  # allow-listed pass-through fetch) lets Miruro work even from environments
+  # that are IP-blocked. See .agents/memory/miruro-cf-ip-block.md.
+  - type: web
+    name: miruro-relay
+    runtime: node
+    region: oregon
+    plan: free
+    buildCommand: >-
+      npx --yes pnpm@10 install --frozen-lockfile &&
+      npx --yes pnpm@10 --filter @workspace/miruro-relay run build
+    startCommand: node artifacts/miruro-relay/dist/index.mjs
+    healthCheckPath: /healthz

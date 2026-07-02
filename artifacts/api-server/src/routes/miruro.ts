@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { getCfSession, invalidateCfSession, warmCfSession } from "../lib/miruro-cf-solver.js";
+import { isMiruroRelayConfigured, relayFetch } from "../lib/miruro-relay.js";
 
 const router = Router();
 
@@ -27,6 +28,13 @@ const BASE_HEADERS = {
  * On 403 (session expired / IP rotated), invalidates cache and retries once.
  */
 async function miruroFetch(url: string, init: RequestInit = {}): Promise<Response> {
+  // When a relay (e.g. deployed on Render, an IP Cloudflare doesn't block) is
+  // configured, skip CloakBrowser/CF-cookie logic entirely — the relay does a
+  // plain fetch from a non-blocked IP and just works.
+  if (isMiruroRelayConfigured()) {
+    return relayFetch(url, init);
+  }
+
   const addSession = async (extraInit: RequestInit): Promise<RequestInit> => {
     const session = await getCfSession();
     if (!session) return extraInit;
@@ -218,20 +226,23 @@ router.use("/miruro/ultra", async (req, res, next) => {
   const upstreamUrl = `${upstreamBase}/${rest}${search}`;
 
   try {
-    const upstream = await fetch(upstreamUrl, {
-      method: req.method,
-      headers: {
-        "User-Agent": ASSET_HEADERS["User-Agent"],
-        "Accept": "application/json, text/plain, */*",
-        "Accept-Encoding": "identity",
-        "Origin": MIRURO_ORIGIN,
-        "Referer": MIRURO_ORIGIN + "/",
-        ...(req.headers["content-type"]
-          ? { "Content-Type": req.headers["content-type"] as string }
-          : {}),
-      },
-      body: req.method !== "GET" && req.method !== "HEAD" ? req : undefined,
-    });
+    const ultraHeaders = {
+      "User-Agent": BASE_HEADERS["User-Agent"],
+      "Accept": "application/json, text/plain, */*",
+      "Accept-Encoding": "identity",
+      "Origin": MIRURO_ORIGIN,
+      "Referer": MIRURO_ORIGIN + "/",
+      ...(req.headers["content-type"]
+        ? { "Content-Type": req.headers["content-type"] as string }
+        : {}),
+    };
+    const upstream = isMiruroRelayConfigured()
+      ? await relayFetch(upstreamUrl, { method: req.method, headers: ultraHeaders })
+      : await fetch(upstreamUrl, {
+          method: req.method,
+          headers: ultraHeaders,
+          body: req.method !== "GET" && req.method !== "HEAD" ? req : undefined,
+        });
 
     const contentType = upstream.headers.get("content-type") ?? "application/octet-stream";
     res.setHeader("Access-Control-Allow-Origin", "*");
