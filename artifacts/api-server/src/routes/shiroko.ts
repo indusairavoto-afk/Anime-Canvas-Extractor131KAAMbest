@@ -35,7 +35,7 @@ router.all("/shiroko/pass/*path", async (req, res) => {
   try {
     const isPost = req.method === "POST" || req.method === "PUT" || req.method === "PATCH";
 
-    let bodyInit: BodyInit | undefined;
+    let bodyInit: Buffer | string | undefined;
     if (isPost) {
       if (Buffer.isBuffer(req.body)) {
         bodyInit = req.body;
