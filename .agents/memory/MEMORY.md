@@ -2,6 +2,7 @@
 - [megaplay.buzz bridge detection](megaplay-bridge-detection.md) — megaplay always returns 200 HTML even for DMCA'd videos; use bridgeLive state (not isCdnWorking) to hide error pages; auto-switch after 2.5s.
 - [Koto player fallback](koto-player-fallback.md) — kotoPlayerUrl (iframe fallback) vs kotoHlsUrl (HLS); overlay only when both are null.
 - [Miruro X-Frame-Options block](miruro-xframe.md) — miruro.to has X-Frame-Options: SAMEORIGIN sitewide; must HEAD-check before advertising iframeUrl to prevent racing with a broken URL.
+- [Miruro Cloudflare IP block](miruro-cf-ip-block.md) — miruro.bz CF hard-blocks Replit IPs (403); stream endpoint must pre-check reachability and return 503 JSON, not a broken iframe URL.
 - [Miruro domain: use miruro.bz](miruro-domain.md) — miruro.to and miruro.bz are different backends; miruro.bz has fresher episode data; ultracloud.cc accepts Origin: miruro.bz; switch proxy MIRURO_ORIGIN to www.miruro.bz.
 - [AniZone ASS subtitle conversion](anizone-ass-vtt.md) — AniZone serves .ass subtitles; browser <track> can't load them; /api/anizone/sub-vtt endpoint converts on the fly.
 - [AniZone cascade search + year boost](anizone-slug-search.md) — long English titles return empty; cascade to shorter queries; bestAutoSlug needs seasonYear boost (+500) since AniZone appends (YYYY) not season ordinals.

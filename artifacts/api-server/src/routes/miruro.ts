@@ -263,6 +263,14 @@ router.get("/miruro/proxy", async (req, res) => {
 
     const contentType = upstream.headers.get("content-type") ?? "text/html";
 
+    // Detect Cloudflare IP block: CF returns 403 with text/html containing
+    // its challenge page. If we forward it, the iframe shows a black/CF screen.
+    // Instead return a JSON error so the frontend shows "Under Maintenance".
+    if (upstream.status === 403 || upstream.status === 429) {
+      res.status(503).json({ error: "Miruro is currently unavailable from this server (upstream blocked). Please try another server." });
+      return;
+    }
+
     if (!contentType.includes("text/html")) {
       // Non-HTML: forward as-is
       res.setHeader("Content-Type", contentType);
@@ -270,6 +278,14 @@ router.get("/miruro/proxy", async (req, res) => {
       res.setHeader("Access-Control-Allow-Origin", "*");
       const buf = await upstream.arrayBuffer();
       res.send(Buffer.from(buf));
+      return;
+    }
+
+    let html = await upstream.text();
+    // Belt-and-suspenders: detect CF block pages by body fingerprint
+    // (in case CF returns 200 with a JS challenge page)
+    if (html.includes("cf-error-details") || html.includes("Cloudflare Ray ID") || html.includes("Sorry, you have been blocked")) {
+      res.status(503).json({ error: "Miruro is currently unavailable from this server (Cloudflare block). Please try another server." });
       return;
     }
 
@@ -284,8 +300,6 @@ router.get("/miruro/proxy", async (req, res) => {
         .replace(/https:\/\/pru\.ultracloud\.cc\//g, "/api/miruro/ultra/pru/");
       env2Inline = env2js;
     }
-
-    let html = await upstream.text();
 
     // ── Rewrite asset URLs ──────────────────────────────────────────────────
     // Replace https://www.miruro.to/<path> → /api/miruro/pass/<path>
@@ -671,6 +685,28 @@ ${env2Inline ? `// env2.js inlined synchronously to ensure window.env is set bef
  *
  * Returns a proxy URL for miruro.to that bypasses X-Frame-Options.
  */
+/**
+ * Quick reachability check: HEAD miruro.bz/health with a short timeout.
+ * Returns true if the server responds with a non-CF-block status (200–399).
+ * Cloudflare IP-blocks return 403 with a CF challenge page.
+ */
+async function isMiruroReachable(): Promise<boolean> {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
+    const resp = await fetch(`${MIRURO_ORIGIN}/health`, {
+      method: "HEAD",
+      headers: ASSET_HEADERS,
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    // 403 means Cloudflare IP block; treat anything 400+ as unreachable
+    return resp.status >= 200 && resp.status < 400;
+  } catch {
+    return false;
+  }
+}
+
 router.get("/miruro/stream", async (req, res) => {
   const anilistId = (req.query.anilistId as string | undefined)?.trim();
   const ep = (req.query.ep as string | undefined)?.trim();
@@ -685,6 +721,15 @@ router.get("/miruro/stream", async (req, res) => {
   const epNum = parseInt(ep);
   if (isNaN(epNum) || epNum <= 0) {
     res.status(400).json({ error: `Invalid ep value: "${ep}"` });
+    return;
+  }
+
+  // Pre-check: if Cloudflare is blocking our server IP, return an error
+  // immediately so the frontend shows "Under Maintenance" instead of loading
+  // a blank/CF-block page in the iframe.
+  const reachable = await isMiruroReachable();
+  if (!reachable) {
+    res.status(503).json({ error: "Miruro is currently unavailable from this server. Please try another server." });
     return;
   }
 
