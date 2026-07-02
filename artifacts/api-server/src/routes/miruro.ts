@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { getCfSession, invalidateCfSession, warmCfSession } from "../lib/miruro-cf-solver.js";
 
 const router = Router();
 
@@ -14,17 +15,52 @@ function toMiruroSlug(title: string): string {
     .replace(/^-|-$/g, "");
 }
 
-const ASSET_HEADERS = {
+/** Base UA/language headers used as fallback when no CF session is available */
+const BASE_HEADERS = {
   "User-Agent":
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
   "Accept-Language": "en-US,en;q=0.9",
 };
 
+/**
+ * Fetch a miruro.bz URL with CF session cookies injected.
+ * On 403 (session expired / IP rotated), invalidates cache and retries once.
+ */
+async function miruroFetch(url: string, init: RequestInit = {}): Promise<Response> {
+  const addSession = async (extraInit: RequestInit): Promise<RequestInit> => {
+    const session = await getCfSession();
+    if (!session) return extraInit;
+    const existing = (extraInit.headers ?? {}) as Record<string, string>;
+    return {
+      ...extraInit,
+      headers: {
+        ...existing,
+        Cookie: session.cookieHeader,
+        "User-Agent": session.userAgent,
+      },
+    };
+  };
+
+  const firstInit = await addSession(init);
+  const resp = await fetch(url, firstInit);
+
+  if (resp.status === 403 || resp.status === 429) {
+    invalidateCfSession();
+    const retryInit = await addSession(init); // triggers a fresh solve
+    return fetch(url, retryInit);
+  }
+  return resp;
+}
+
 const PAGE_HEADERS = {
-  ...ASSET_HEADERS,
+  ...BASE_HEADERS,
   Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
   Referer: MIRURO_ORIGIN,
 };
+
+// Warm up a CF session in the background at server start so the first
+// user request to Miruro doesn't pay the full browser-launch latency.
+warmCfSession();
 
 /**
  * GET /api/miruro/pass/*
@@ -44,10 +80,10 @@ router.all("/miruro/pass/*path", async (req, res) => {
 
   try {
     const isPost = req.method === "POST" || req.method === "PUT" || req.method === "PATCH";
-    const upstream = await fetch(upstreamUrl, {
+    const upstream = await miruroFetch(upstreamUrl, {
       method: req.method,
       headers: {
-        ...ASSET_HEADERS,
+        ...BASE_HEADERS,
         ...(req.headers["content-type"]
           ? { "Content-Type": req.headers["content-type"] as string }
           : {}),
@@ -257,8 +293,8 @@ router.get("/miruro/proxy", async (req, res) => {
     // bundle, leaving window.env unset → decryption key _a = null → sources
     // request returns empty → YouTube trailer instead of episode.
     const [upstream, env2Upstream] = await Promise.all([
-      fetch(targetUrl.toString(), { headers: PAGE_HEADERS }),
-      fetch(`${MIRURO_ORIGIN}/env2.js`, { headers: ASSET_HEADERS }).catch(() => null),
+      miruroFetch(targetUrl.toString(), { headers: PAGE_HEADERS }),
+      miruroFetch(`${MIRURO_ORIGIN}/env2.js`, { headers: BASE_HEADERS }).catch(() => null),
     ]);
 
     const contentType = upstream.headers.get("content-type") ?? "text/html";
@@ -683,30 +719,11 @@ ${env2Inline ? `// env2.js inlined synchronously to ensure window.env is set bef
 /**
  * GET /api/miruro/stream?anilistId=...&ep=...&romajiTitle=...
  *
- * Returns a proxy URL for miruro.to that bypasses X-Frame-Options.
+ * Returns a proxy URL for miruro.bz that bypasses X-Frame-Options.
+ * Uses getCfSession() to verify a valid CF session exists before handing
+ * back the iframeUrl — if CF can't be solved, returns 503 so the frontend
+ * shows the "Under Maintenance" overlay and auto-switches servers.
  */
-/**
- * Quick reachability check: HEAD miruro.bz/health with a short timeout.
- * Returns true if the server responds with a non-CF-block status (200–399).
- * Cloudflare IP-blocks return 403 with a CF challenge page.
- */
-async function isMiruroReachable(): Promise<boolean> {
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 5000);
-    const resp = await fetch(`${MIRURO_ORIGIN}/health`, {
-      method: "HEAD",
-      headers: ASSET_HEADERS,
-      signal: controller.signal,
-    });
-    clearTimeout(timer);
-    // 403 means Cloudflare IP block; treat anything 400+ as unreachable
-    return resp.status >= 200 && resp.status < 400;
-  } catch {
-    return false;
-  }
-}
-
 router.get("/miruro/stream", async (req, res) => {
   const anilistId = (req.query.anilistId as string | undefined)?.trim();
   const ep = (req.query.ep as string | undefined)?.trim();
@@ -724,12 +741,12 @@ router.get("/miruro/stream", async (req, res) => {
     return;
   }
 
-  // Pre-check: if Cloudflare is blocking our server IP, return an error
-  // immediately so the frontend shows "Under Maintenance" instead of loading
-  // a blank/CF-block page in the iframe.
-  const reachable = await isMiruroReachable();
-  if (!reachable) {
-    res.status(503).json({ error: "Miruro is currently unavailable from this server. Please try another server." });
+  // Ensure a valid CF session exists before returning the iframe URL.
+  // getCfSession() launches CloakBrowser to solve CF if no cached session.
+  // If it returns null (binary not yet downloaded / solve failed), report unavailable.
+  const session = await getCfSession();
+  if (!session) {
+    res.status(503).json({ error: "Miruro is temporarily unavailable — CF session could not be established. Please try another server." });
     return;
   }
 
