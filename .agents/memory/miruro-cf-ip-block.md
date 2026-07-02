@@ -16,3 +16,6 @@ description: miruro.bz hard-blocks Replit server IPs (35.244.13.0 range) with CF
 
 ## Debugging clue
 If Miruro shows a black screen with no "Under Maintenance" overlay, the CF block is being silently forwarded. Check: does `/api/miruro/stream` return 503 or 200? If 200, the pre-check is missing or broken.
+
+## CloakBrowser stealth-solve does NOT bypass this (confirmed 2026-07-02)
+Even with a stealth browser (CloakBrowser) launched server-side to solve the challenge, `https://www.miruro.bz/health` shows a persistent Cloudflare Turnstile "Just a moment... / Performing security verification" managed challenge that **never clears** from Replit's outbound IP (`cf_clearance` cookie never appears, even after 30s+). No hard-block phrase is shown, so it just hangs on the interactive challenge indefinitely — this is an IP/ASN reputation block, not a bot-fingerprint issue, so no amount of stealth-browser tuning fixes it. Mirrors the `api.animeonsen.xyz` block (see `animeonsen-cf-block.md`). Do not re-attempt "solving" this from the Replit workspace — the existing 503 + auto-switch-to-other-servers fallback is the correct, final behavior. A real fix would require running the solve step from a non-Replit-IP host (e.g. Render) and relaying the session back, same pattern as the AnimeonSen token relay.
