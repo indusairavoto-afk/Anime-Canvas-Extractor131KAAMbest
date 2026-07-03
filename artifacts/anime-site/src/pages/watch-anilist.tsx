@@ -197,6 +197,7 @@ export default function WatchAniList() {
   const [miruroIframeUrl, setMiruroIframeUrl] = useState<string | null>(null);
   const [miruroLoading, setMiruroLoading] = useState(false);
   const [miruroError, setMiruroError] = useState<string | null>(null);
+  const [miruroUsingPopup, setMiruroUsingPopup] = useState(false);
   const miruroPopupRef = useRef<Window | null>(null);
   const [nexusIframeUrl, setNexusIframeUrl] = useState<string | null>(null);
   const [nexusLoading, setNexusLoading] = useState(false);
@@ -1512,6 +1513,11 @@ export default function WatchAniList() {
     if (server !== "MIRURO") {
       setMiruroIframeUrl(null);
       setMiruroError(null);
+      setMiruroUsingPopup(false);
+      // Close any open Miruro popup when switching away
+      if (miruroPopupRef.current && !miruroPopupRef.current.closed) {
+        miruroPopupRef.current.close();
+      }
       return;
     }
     const cached = raceCache.current.miruro;
@@ -1520,6 +1526,11 @@ export default function WatchAniList() {
         setMiruroIframeUrl(cached.iframeUrl);
         setMiruroLoading(false);
         setMiruroError(null);
+        setMiruroUsingPopup(false);
+        // Close popup — inline player won the race
+        if (miruroPopupRef.current && !miruroPopupRef.current.closed) {
+          miruroPopupRef.current.close();
+        }
         raceCache.current.miruro = undefined;
         return;
       }
@@ -1529,18 +1540,24 @@ export default function WatchAniList() {
     setMiruroIframeUrl(null);
     setMiruroLoading(true);
     setMiruroError(null);
+    setMiruroUsingPopup(false);
     fetch(apiUrl(`/api/miruro/stream?anilistId=${animeId}&ep=${currentEp}&romajiTitle=${encodeURIComponent(romajiTitle)}&dub=${lang === "DUB" ? "1" : "0"}`))
       .then((r) => r.json())
       .then((data: { iframeUrl?: string; error?: string }) => {
         if (cancelled) return;
         if (data.iframeUrl) {
+          // Inline proxy works — close the pre-opened popup and show inline
           setMiruroIframeUrl(data.iframeUrl);
           setActualLang(lang === "DUB" ? "DUB" : "SUB");
+          if (miruroPopupRef.current && !miruroPopupRef.current.closed) {
+            miruroPopupRef.current.close();
+          }
         } else {
-          setMiruroError(data.error ?? "No stream found for this episode");
+          // Proxy unavailable — popup opened on click will auto-redirect to miruro.bz
+          setMiruroUsingPopup(true);
         }
       })
-      .catch((e: Error) => { if (!cancelled) setMiruroError(e.message); })
+      .catch(() => { if (!cancelled) setMiruroUsingPopup(true); })
       .finally(() => { if (!cancelled) setMiruroLoading(false); });
     return () => { cancelled = true; };
   }, [server, animeId, currentEp, lang]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1704,11 +1721,13 @@ export default function WatchAniList() {
         sessionStorage.setItem("ao_cf_ready", "1");
         setAoCfReady(true);
       }
-      // Miruro proxy sends this when upstream is blocked — switch from iframe to error overlay
+      // Miruro proxy iframe sends this when upstream is blocked.
+      // The popup (opened on click) will auto-redirect to direct miruro.bz;
+      // switch the player area to "Playing in popup" UI instead of error overlay.
       if (evt.data?.type === "miruro-proxy-error" && server === "MIRURO") {
         setMiruroIframeUrl(null);
-        setMiruroError(evt.data.error ?? "Miruro is currently unavailable. Please try another server.");
         setMiruroLoading(false);
+        setMiruroUsingPopup(true);
       }
     };
     window.addEventListener("message", handler);
@@ -2584,12 +2603,39 @@ export default function WatchAniList() {
                   </div>
                 )}
 
-                {/* MIRURO loading / error overlay */}
+                {/* MIRURO loading / popup / error overlay */}
                 {server === "MIRURO" && !miruroIframeUrl && (
                   <div className="absolute inset-0 z-10 flex flex-col items-center justify-center" style={{ background: "rgba(0,0,0,0.92)" }}>
                     {banner && <img src={banner} alt="" className="absolute inset-0 w-full h-full object-cover opacity-10 scale-110 blur-sm" />}
                     <div className="relative z-10 flex flex-col items-center gap-4">
-                      {miruroError ? (
+                      {miruroUsingPopup ? (
+                        /* Proxy unavailable — video is playing in the popup window */
+                        <div className="text-center space-y-3">
+                          <div className="w-11 h-11 border border-purple-400/30 bg-purple-400/5 flex items-center justify-center mx-auto rounded-sm">
+                            <Play className="w-5 h-5 text-purple-400 fill-current" />
+                          </div>
+                          <p className="text-white/80 text-sm font-semibold tracking-wide">Playing in Miruro</p>
+                          <p className="text-white/35 text-[11px] font-mono max-w-[260px] text-center leading-relaxed">
+                            Your video is playing in the popup window.<br/>If it closed, reopen it below.
+                          </p>
+                          <button
+                            onClick={openMiruroDirect}
+                            className="inline-flex items-center gap-2 text-[11px] font-mono font-bold px-5 py-2.5 border border-purple-400/70 text-purple-400 hover:bg-purple-400/10 transition-all uppercase tracking-widest"
+                          >
+                            <Play className="w-3 h-3 fill-current" /> Reopen Popup
+                          </button>
+                          {suggestedServer && SERVER_META[suggestedServer] && (
+                            <div className="flex items-center gap-2 mt-1">
+                              <button
+                                onClick={() => switchToServer(suggestedServer)}
+                                className={`inline-flex items-center gap-2 text-[11px] font-mono font-bold px-5 py-2.5 border ${SERVER_META[suggestedServer].borderCls} ${SERVER_META[suggestedServer].colorCls} ${SERVER_META[suggestedServer].hoverCls} transition-all uppercase tracking-widest`}
+                              >
+                                <Play className="w-3 h-3 fill-current" /> Try {SERVER_META[suggestedServer].label}
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      ) : miruroError ? (
                         <div className="text-center space-y-3">
                           <div className="w-11 h-11 border border-yellow-400/40 bg-yellow-400/5 flex items-center justify-center mx-auto rounded-sm">
                             <span className="text-yellow-400 text-xl">🔧</span>
@@ -2879,7 +2925,7 @@ export default function WatchAniList() {
                           <Play className="w-3 h-3 fill-current" /> AniZone
                         </button>
                         <button
-                          onClick={() => { setServer("MIRURO"); setGogoMaybeBroken(false); setGogoMaybeCountdown(null); setGogoStreamError(false); setIframeLoaded(false); bridgeLiveRef.current = false; setBridgeLive(false); }}
+                          onClick={() => { setServer("MIRURO"); setGogoMaybeBroken(false); setGogoMaybeCountdown(null); setGogoStreamError(false); setIframeLoaded(false); bridgeLiveRef.current = false; setBridgeLive(false); openMiruroDirect(); }}
                           className="flex items-center gap-1.5 text-[10px] font-mono font-bold px-3 py-2 border border-purple-400/70 text-purple-400 hover:bg-purple-400/10 transition-all uppercase tracking-widest"
                         >
                           <Play className="w-3 h-3 fill-current" /> Miruro
@@ -2927,7 +2973,7 @@ export default function WatchAniList() {
                           <Play className="w-3 h-3 fill-current" /> AniZone
                         </button>
                         <button
-                          onClick={() => { setServer("MIRURO"); setGogoStreamError(false); setIframeLoaded(false); bridgeLiveRef.current = false; setBridgeLive(false); setAutoSwitchMsg(null); }}
+                          onClick={() => { setServer("MIRURO"); setGogoStreamError(false); setIframeLoaded(false); bridgeLiveRef.current = false; setBridgeLive(false); setAutoSwitchMsg(null); openMiruroDirect(); }}
                           className="flex items-center gap-1.5 text-[10px] font-mono font-bold px-3 py-2 border border-purple-400/70 text-purple-400 hover:bg-purple-400/10 transition-all uppercase tracking-widest"
                         >
                           <Play className="w-3 h-3 fill-current" /> Miruro
@@ -3335,7 +3381,7 @@ export default function WatchAniList() {
                       { key: "GOGO",       label: "GOGO",       color: "orange" as const, onClick: () => { userPickedRef.current = true; setServer("GOGO"); setCdnNotFound(false); setIframeLoaded(false); setGogoStreamError(false); bridgeLiveRef.current = false; setBridgeLive(false); } },
                       { key: "KOTO",       label: "KOTO",       color: "teal"   as const, onClick: () => { userPickedRef.current = true; setServer("KOTO"); setIframeLoaded(false); } },
                       { key: "ANIZONE",    label: "ANIZONE",    color: "blue"   as const, onClick: () => { userPickedRef.current = true; setServer("ANIZONE"); setIframeLoaded(false); } },
-                      { key: "MIRURO",     label: "MIRURO",     color: "purple" as const, onClick: () => { userPickedRef.current = true; setServer("MIRURO"); setIframeLoaded(false); } },
+                      { key: "MIRURO",     label: "MIRURO",     color: "purple" as const, onClick: () => { userPickedRef.current = true; setServer("MIRURO"); setIframeLoaded(false); openMiruroDirect(); } },
                       { key: "ANIMEONSEN", label: "ANIMEONSEN", color: "green"  as const, onClick: () => { userPickedRef.current = true; setServer("ANIMEONSEN"); setIframeLoaded(false); if (aoCfReady) setAnimeonsenInitializing(false); } },
                       { key: "ANINEKO",    label: "ANINEKO",    color: "pink"   as const, onClick: () => { userPickedRef.current = true; setServer("ANINEKO"); setIframeLoaded(false); } },
                       { key: "SHIROKO",    label: "SHIROKO",    color: "sky"    as const, onClick: () => { userPickedRef.current = true; setServer("SHIROKO"); setIframeLoaded(false); } },
