@@ -1354,11 +1354,22 @@ export default function WatchAniList() {
     // page, so it reads as "the video" rather than a random floating
     // window. miruro.bz can't be framed (X-Frame-Options), so a real popup
     // is the only way to play it — this just makes it feel embedded.
+    //
+    // window.open()'s top/left position the OUTER window (title bar +
+    // address bar included), but we want the CONTENT (the video) to line
+    // up exactly with the player box. So we estimate the popup's own
+    // chrome height (title bar + address bar, since even with
+    // toolbar=no/location=no Chrome still renders a minimal address bar
+    // for security) and shift the outer window UP by that amount while
+    // padding the requested height by the same amount — that way the
+    // visible page content starts right at the player box's position
+    // instead of appearing below/offset from it.
+    const CHROME_HEIGHT = 76;
     const rect = playerContainerRef.current?.getBoundingClientRect();
     const left = Math.round((rect ? rect.left : 0) + window.screenX);
-    const top = Math.round((rect ? rect.top : 0) + window.screenY + 80);
+    const top = Math.round(Math.max(0, (rect ? rect.top : 0) + window.screenY - CHROME_HEIGHT));
     const width = Math.round(rect?.width || 1280);
-    const height = Math.round(rect?.height || 720);
+    const height = Math.round((rect?.height || 720) + CHROME_HEIGHT);
     const features = `width=${width},height=${height},left=${left},top=${top},menubar=no,toolbar=no,location=no,status=no`;
 
     // IMPORTANT: do NOT pass "noopener" here — that makes window.open()
