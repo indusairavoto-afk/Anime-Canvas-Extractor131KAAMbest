@@ -2,6 +2,17 @@
 
 An anime streaming and community platform featuring anime/manga browsing, video playback (HLS/DASH), watchlists, user profiles, a community forum, and Watch Together real-time sync.
 
+## First-time setup
+
+After cloning or importing the project, run:
+
+```bash
+pnpm install                          # install all workspace dependencies
+pnpm --filter @workspace/db run push  # create/migrate DB tables (requires DATABASE_URL)
+```
+
+`DATABASE_URL` is provisioned automatically by Replit's built-in PostgreSQL. Both steps are also run automatically by `scripts/post-merge.sh` after any task-agent merge.
+
 ## Run & Operate
 
 - `pnpm --filter @workspace/api-server run dev` — run the API server (port 8080)
