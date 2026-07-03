@@ -363,7 +363,7 @@ export default function AnimeDetailAniList() {
               <iframe
                 ref={iframeRef}
                 src={`https://www.youtube-nocookie.com/embed/${anime.trailer!.id}?autoplay=1&mute=1&loop=1&playlist=${anime.trailer!.id}&controls=0&modestbranding=1&showinfo=0&rel=0&iv_load_policy=3&disablekb=1&fs=0&cc_load_policy=3&enablejsapi=1&origin=${encodeURIComponent(window.location.origin)}`}
-                allow="autoplay; encrypted-media"
+                allow="autoplay; encrypted-media; picture-in-picture"
                 className="absolute border-0"
                 style={{
                   top: "50%",

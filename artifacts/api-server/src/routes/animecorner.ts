@@ -8,6 +8,8 @@ const HEADERS = {
   "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
   "Accept-Language": "en-US,en;q=0.9",
   "Cache-Control": "no-cache",
+  "Referer": BASE + "/",
+  "Origin": BASE,
 };
 
 interface CacheEntry { data: unknown; expiresAt: number; }

@@ -455,7 +455,7 @@ function NovelReaderModal({
             key={`lnori-${iframeKey}`}
             src={iframeSrc}
             className="w-full h-full border-0"
-            allow="fullscreen"
+            allow="fullscreen; encrypted-media; picture-in-picture"
             title={`Reading ${title}`}
             sandbox="allow-scripts allow-same-origin allow-popups"
           />
@@ -690,7 +690,7 @@ function ReaderModal({
             key={iframeSrc}
             src={iframeSrc}
             className="w-full h-full border-0"
-            allow="fullscreen"
+            allow="fullscreen; encrypted-media; picture-in-picture"
             title={`Reading ${title}`}
           />
         )}
