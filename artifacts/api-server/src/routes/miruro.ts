@@ -816,17 +816,13 @@ router.get("/miruro/stream", async (req, res) => {
     return;
   }
 
-  // When a relay is configured, skip CF session — the relay fetches from a
-  // non-Replit IP that Cloudflare doesn't block, so no browser session is needed.
-  if (!isMiruroRelayConfigured()) {
-    // Ensure a valid CF session exists before returning the iframe URL.
-    // getCfSession() launches CloakBrowser to solve CF if no cached session.
-    // If it returns null (binary not yet downloaded / solve failed), report unavailable.
-    const session = await getCfSession();
-    if (!session) {
-      res.status(503).json({ error: "Miruro is temporarily unavailable — CF session could not be established. Please try another server." });
-      return;
-    }
+  // Ensure a valid CF session exists before returning the iframe URL.
+  // getCfSession() launches CloakBrowser to solve CF if no cached session.
+  // If it returns null (binary not yet downloaded / solve failed), report unavailable.
+  const session = await getCfSession();
+  if (!session) {
+    res.status(503).json({ error: "Miruro is temporarily unavailable — CF session could not be established. Please try another server." });
+    return;
   }
 
   const slug = romajiTitle ? toMiruroSlug(romajiTitle) : null;
