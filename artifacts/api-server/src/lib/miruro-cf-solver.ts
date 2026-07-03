@@ -20,6 +20,7 @@
 
 import puppeteer from "puppeteer-core";
 import path from "node:path";
+import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const MIRURO_ORIGIN = "https://www.miruro.bz";
@@ -66,6 +67,16 @@ const HARD_BLOCK_PHRASES = [
   "This website is using a security service",
   "You have been blocked",
 ];
+
+// Verify extension path exists at module load time so misconfiguration is
+// caught immediately in logs rather than silently failing at solve time.
+if (!fs.existsSync(EXTENSION_PATH)) {
+  console.warn(
+    `[miruro-cf] Extension not found at ${EXTENSION_PATH} — CF solve will run without extension (reduced stealth).`
+  );
+} else {
+  console.info(`[miruro-cf] Extension ready at ${EXTENSION_PATH}`);
+}
 
 async function launchSolve(): Promise<CfSession | null> {
   console.info(
