@@ -72,3 +72,4 @@ channel = "stable-25_05"
 [userenv]
 
 [userenv.shared]
+MIRURO_RELAY_URL = "https://nnanime-mxkt.onrender.com"

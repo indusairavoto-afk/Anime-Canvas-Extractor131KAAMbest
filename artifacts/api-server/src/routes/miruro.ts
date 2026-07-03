@@ -68,7 +68,11 @@ const PAGE_HEADERS = {
 
 // Warm up a CF session in the background at server start so the first
 // user request to Miruro doesn't pay the full browser-launch latency.
-warmCfSession();
+// Skip entirely when a relay is configured — the relay bypasses the CF
+// block via a non-blocked IP, so there's no challenge to solve here.
+if (!isMiruroRelayConfigured()) {
+  warmCfSession();
+}
 
 /**
  * GET /api/miruro/pass/*
