@@ -1381,17 +1381,21 @@ export default function WatchAniList() {
   const calibrateMiruroPopup = useCallback((popup: Window) => {
     const measureAndSnap = () => {
       if (popup.closed) return;
-      const measuredWidth = Math.max(0, popup.outerWidth - popup.innerWidth);
-      const measuredHeight = Math.max(0, popup.outerHeight - popup.innerHeight);
-      if (measuredHeight > 0) {
-        miruroChromeRef.current = { width: measuredWidth, height: measuredHeight };
-      }
-      const { left, top, width, height } = getMiruroPopupGeometry(miruroChromeRef.current);
       try {
-        popup.moveTo(left, top);
-        popup.resizeTo(width, height);
+        const measuredWidth = Math.max(0, popup.outerWidth - popup.innerWidth);
+        const measuredHeight = Math.max(0, popup.outerHeight - popup.innerHeight);
+        if (measuredHeight > 0) {
+          miruroChromeRef.current = { width: measuredWidth, height: measuredHeight };
+        }
+        const { left, top, width, height } = getMiruroPopupGeometry(miruroChromeRef.current);
+        try {
+          popup.moveTo(left, top);
+          popup.resizeTo(width, height);
+        } catch {
+          // Ignore — some browsers restrict moveTo/resizeTo.
+        }
       } catch {
-        // Ignore — some browsers restrict moveTo/resizeTo.
+        // outerWidth/outerHeight blocked by cross-origin policy — skip measurement.
       }
     };
     // Measure a couple of times: immediately (works in most Chromium

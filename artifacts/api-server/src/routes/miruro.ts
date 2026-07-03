@@ -276,8 +276,9 @@ router.use("/miruro/ultra", async (req, res, next) => {
  *    so that relative imports inside JS bundles also resolve through our proxy
  * 3. Injects history.replaceState so the SPA router sees the correct path
  */
-/** Return an HTML error page that postMessages the error to the parent frame,
- *  so the watch page overlay can display it instead of raw JSON in the iframe. */
+/** Return an HTML error page that handles two contexts:
+ *  - Popup: auto-redirects to the direct miruro.bz URL (parsed from ?url= param) after a moment.
+ *  - Iframe: postMessages the parent frame so the watch overlay can display it. */
 function miruroProxyErrorHtml(message: string): string {
   const safeMsg = message.replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   const jsonMsg = JSON.stringify(message);
@@ -285,10 +286,28 @@ function miruroProxyErrorHtml(message: string): string {
 <style>html,body{margin:0;height:100%;background:#0a0a0a;display:flex;align-items:center;justify-content:center;font-family:monospace}
 .box{text-align:center;color:#a78bfa;padding:2rem}
 .icon{font-size:2rem;margin-bottom:1rem}
-p{color:#ffffff80;font-size:.75rem;letter-spacing:.05em;margin:.5rem 0;max-width:280px}</style></head>
+p{color:#ffffff80;font-size:.75rem;letter-spacing:.05em;margin:.5rem 0;max-width:280px}
+.sub{color:#ffffff40;font-size:.65rem}</style></head>
 <body><div class="box"><div class="icon">⚠</div>
-<p>${safeMsg}</p></div>
-<script>try{window.parent.postMessage({type:'miruro-proxy-error',error:${jsonMsg}},'*')}catch(e){}</script>
+<p>${safeMsg}</p>
+<p class="sub" id="msg">Redirecting to Miruro directly…</p></div>
+<script>
+(function(){
+  var isPopup = !!(window.opener) && window.parent === window;
+  if(isPopup){
+    // In popup context: redirect to the direct miruro.bz URL so the user still gets the video.
+    try{
+      var directUrl = new URLSearchParams(location.search).get('url');
+      if(directUrl){ setTimeout(function(){ window.location.href = directUrl; }, 1200); }
+      else { document.getElementById('msg').textContent = 'Please try another server.'; }
+    }catch(e){ document.getElementById('msg').textContent = 'Please try another server.'; }
+  } else {
+    // In iframe context: notify the parent watch page overlay.
+    document.getElementById('msg').textContent = 'Please try another server.';
+    try{ window.parent.postMessage({type:'miruro-proxy-error',error:${jsonMsg}},'*'); }catch(e){}
+  }
+})();
+</script>
 </body></html>`;
 }
 
