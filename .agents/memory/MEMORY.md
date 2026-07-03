@@ -16,3 +16,4 @@
 - [atsu.moe search API](atsu-search-api.md) — Typesense proxied at relative `/collections/manga/documents/search`, no auth; reader URL is `/read/{mangaId}/{chapterId}`; parse SSR `/manga/{id}` for chapters. Requires `Referer: https://atsu.moe/` + `Origin: https://atsu.moe` or requests are blocked on non-Replit IPs (Render, etc).
 - [Render single-server deployment](render-deployment.md) — Express serves built frontend static files; all /api/ fetch calls must use apiUrl(); render.yaml builds frontend then API server in one service.
 - [AnimeonSen Cloudflare IP block](animeonsen-cf-block.md) — api.animeonsen.xyz hard IP-blocks Replit servers; iframe-only approach is correct; user's browser handles CF challenges without login.
+- [Named popup cross-origin document access](named-popup-cross-origin.md) — reusing a named window.open() popup across clicks can hold a cross-origin page from a prior navigation; guard every later popup.document access in try/catch.

@@ -1452,12 +1452,24 @@ export default function WatchAniList() {
     miruroPopupRef.current = popup;
     if (popup) {
       popup.focus();
-      popup.document.write(
-        '<!doctype html><html><head><title>Loading Miruro…</title></head>' +
-        '<body style="margin:0;display:flex;align-items:center;justify-content:center;height:100vh;' +
-        'background:#0a0a0a;color:#c084fc;font-family:monospace;font-size:14px;letter-spacing:0.05em;">' +
-        'Loading Miruro…</body></html>'
-      );
+      // Re-using the named "miruroPlayer" window across clicks means it
+      // may already have navigated to miruro.bz (cross-origin) from a
+      // previous click. Once that happens, this window's document is no
+      // longer accessible to us — reading/writing it throws a security
+      // error ("Blocked a frame with origin ... from accessing a
+      // cross-origin frame"). Guard every popup.document touch so a
+      // reused, already-navigated window doesn't crash the click handler.
+      try {
+        popup.document.write(
+          '<!doctype html><html><head><title>Loading Miruro…</title></head>' +
+          '<body style="margin:0;display:flex;align-items:center;justify-content:center;height:100vh;' +
+          'background:#0a0a0a;color:#c084fc;font-family:monospace;font-size:14px;letter-spacing:0.05em;">' +
+          'Loading Miruro…</body></html>'
+        );
+      } catch {
+        // Window already holds cross-origin content — it'll just show the
+        // previous page briefly until location.href navigates it below.
+      }
       calibrateMiruroPopup(popup);
     }
     fetch(apiUrl(`/api/miruro/direct-url?anilistId=${animeId}&ep=${currentEp}&romajiTitle=${encodeURIComponent(romajiTitle)}&dub=${lang === "DUB" ? "1" : "0"}`))
@@ -1466,12 +1478,20 @@ export default function WatchAniList() {
         if (data.url && popup && !popup.closed) {
           popup.location.href = data.url;
         } else if (popup && !popup.closed) {
-          popup.document.body.innerText = data.error ?? "Couldn't find a Miruro link for this episode.";
+          try {
+            popup.document.body.innerText = data.error ?? "Couldn't find a Miruro link for this episode.";
+          } catch {
+            // Cross-origin — nothing we can do but leave it be.
+          }
         }
       })
       .catch(() => {
         if (popup && !popup.closed) {
-          popup.document.body.innerText = "Failed to reach the server. Please try again.";
+          try {
+            popup.document.body.innerText = "Failed to reach the server. Please try again.";
+          } catch {
+            // Cross-origin — nothing we can do but leave it be.
+          }
         }
       });
   }, [animeId, currentEp, romajiTitle, lang, getMiruroPopupGeometry, calibrateMiruroPopup]);
