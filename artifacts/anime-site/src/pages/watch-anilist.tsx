@@ -1472,11 +1472,18 @@ export default function WatchAniList() {
       }
       calibrateMiruroPopup(popup);
     }
+    // Fetch the direct miruro.bz URL, then route the popup through our own
+    // proxy so it loads on our domain with Miruro's chrome (header/nav/search)
+    // stripped — only the video player is visible.
     fetch(apiUrl(`/api/miruro/direct-url?anilistId=${animeId}&ep=${currentEp}&romajiTitle=${encodeURIComponent(romajiTitle)}&dub=${lang === "DUB" ? "1" : "0"}`))
       .then((r) => r.json())
       .then((data: { url?: string; error?: string }) => {
         if (data.url && popup && !popup.closed) {
-          popup.location.href = data.url;
+          // Navigate to our server-side proxy instead of miruro.bz directly.
+          // The proxy strips X-Frame-Options, hides Miruro's UI chrome, and
+          // lifts the video player to fill the full window — so the popup
+          // looks like native streaming from Nexa Anime rather than Miruro.
+          popup.location.href = apiUrl(`/api/miruro/proxy?url=${encodeURIComponent(data.url)}`);
         } else if (popup && !popup.closed) {
           try {
             popup.document.body.innerText = data.error ?? "Couldn't find a Miruro link for this episode.";
