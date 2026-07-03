@@ -1569,11 +1569,19 @@ export default function WatchAniList() {
             miruroPopupRef.current.close();
           }
         } else {
-          // Server-side proxy unavailable — open in-page popup (user's browser fetches directly)
+          // Server-side proxy unavailable (relay blocked, CF issue, etc.).
+          // Set miruroError so the auto-switch countdown triggers, and also
+          // enable popup mode so the user can still open Miruro directly.
+          setMiruroError(data.error ?? "Miruro is currently unavailable. Please try another server.");
           setMiruroUsingPopup(true);
         }
       })
-      .catch(() => { if (!cancelled) setMiruroUsingPopup(true); })
+      .catch(() => {
+        if (!cancelled) {
+          setMiruroError("Miruro is currently unavailable. Please try another server.");
+          setMiruroUsingPopup(true);
+        }
+      })
       .finally(() => { if (!cancelled) setMiruroLoading(false); });
     return () => { cancelled = true; };
   }, [server, animeId, currentEp, lang]); // eslint-disable-line react-hooks/exhaustive-deps

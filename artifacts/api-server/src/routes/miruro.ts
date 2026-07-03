@@ -75,6 +75,33 @@ if (!isMiruroRelayConfigured()) {
 }
 
 /**
+ * Cached relay reachability check.
+ * Render's shared IPs can also be Cloudflare-challenged for miruro.bz.
+ * Cache the result for 60 s so every stream request doesn't pay HEAD latency.
+ */
+let relayReachableCache: { ts: number; ok: boolean } | null = null;
+const RELAY_CHECK_TTL_MS = 60_000;
+
+async function isRelayReachable(): Promise<boolean> {
+  const now = Date.now();
+  if (relayReachableCache && now - relayReachableCache.ts < RELAY_CHECK_TTL_MS) {
+    return relayReachableCache.ok;
+  }
+  try {
+    const check = await relayFetch(`${MIRURO_ORIGIN}/health`, {
+      method: "HEAD",
+      signal: AbortSignal.timeout(5000),
+    } as RequestInit);
+    const ok = check.status < 400;
+    relayReachableCache = { ts: now, ok };
+    return ok;
+  } catch {
+    relayReachableCache = { ts: now, ok: false };
+    return false;
+  }
+}
+
+/**
  * GET /api/miruro/pass/*
  *
  * Wildcard pass-through proxy: forwards any path to miruro.to and returns
@@ -835,8 +862,16 @@ router.get("/miruro/stream", async (req, res) => {
     return;
   }
 
-  // When a relay is configured it bypasses Replit's blocked IP — no CF browser session needed.
-  if (!isMiruroRelayConfigured()) {
+  if (isMiruroRelayConfigured()) {
+    // Relay is configured — skip CloakBrowser CF-solve, but verify the relay can
+    // actually reach miruro.bz. Render's shared IPs can also get Cloudflare-blocked,
+    // so don't hand back an iframe URL that the proxy will immediately fail on.
+    const reachable = await isRelayReachable();
+    if (!reachable) {
+      res.status(503).json({ error: "Miruro is currently unavailable from this server (upstream blocked). Please try another server." });
+      return;
+    }
+  } else {
     const session = await getCfSession();
     if (!session) {
       res.status(503).json({ error: "Miruro is temporarily unavailable — CF session could not be established. Please try another server." });
