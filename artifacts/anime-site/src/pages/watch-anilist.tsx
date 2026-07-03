@@ -1342,6 +1342,29 @@ export default function WatchAniList() {
     return () => { cancelled = true; };
   }, [server, anizoneSlug, currentEp]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Opens miruro.bz directly in the user's own browser (new tab/popup) instead
+  // of through our server proxy. Because the request comes from the visitor's
+  // real browser/IP, Cloudflare treats it as a normal visit — no server-IP
+  // block, and no X-Frame-Options issue since it's a top-level navigation,
+  // not an iframe. Must be called synchronously from a click handler so
+  // browsers don't treat the resulting window.open() as a popup-blocked
+  // background action.
+  const openMiruroDirect = useCallback(() => {
+    const popup = window.open("", "_blank", "noopener,width=1280,height=760");
+    fetch(apiUrl(`/api/miruro/direct-url?anilistId=${animeId}&ep=${currentEp}&romajiTitle=${encodeURIComponent(romajiTitle)}&dub=${lang === "DUB" ? "1" : "0"}`))
+      .then((r) => r.json())
+      .then((data: { url?: string }) => {
+        if (data.url && popup && !popup.closed) {
+          popup.location.href = data.url;
+        } else if (data.url) {
+          window.open(data.url, "_blank", "noopener");
+        } else {
+          popup?.close();
+        }
+      })
+      .catch(() => { popup?.close(); });
+  }, [animeId, currentEp, romajiTitle, lang]);
+
   // Fetch Miruro iframe URL when server is MIRURO
   useEffect(() => {
     if (server !== "MIRURO") {
@@ -2424,7 +2447,13 @@ export default function WatchAniList() {
                             <span className="text-yellow-400 text-xl">🔧</span>
                           </div>
                           <p className="text-white/80 text-sm font-semibold tracking-wide">Miruro Under Maintenance</p>
-                          <p className="text-white/35 text-[11px] font-mono max-w-[260px] text-center leading-relaxed">This server isn't available right now.<br/>Please try another server below.</p>
+                          <p className="text-white/35 text-[11px] font-mono max-w-[260px] text-center leading-relaxed">Our server can't reach Miruro right now,<br/>but your browser can. Try opening it directly.</p>
+                          <button
+                            onClick={openMiruroDirect}
+                            className="inline-flex items-center gap-2 text-[11px] font-mono font-bold px-5 py-2.5 border border-purple-400/70 text-purple-400 hover:bg-purple-400/10 transition-all uppercase tracking-widest"
+                          >
+                            <Play className="w-3 h-3 fill-current" /> Open Miruro in New Window
+                          </button>
                           {suggestedServer && SERVER_META[suggestedServer] && (
                             <>
                               {failCountdown !== null && (
@@ -3352,6 +3381,12 @@ export default function WatchAniList() {
                   <span className="text-[10px] font-mono text-white/30 uppercase tracking-widest">Not Connected</span>
                 </>
               )}
+              <button
+                onClick={openMiruroDirect}
+                className="ml-auto text-[10px] font-mono text-purple-400/50 hover:text-purple-400 uppercase tracking-widest underline underline-offset-2"
+              >
+                Open in New Window
+              </button>
             </div>
           )}
 

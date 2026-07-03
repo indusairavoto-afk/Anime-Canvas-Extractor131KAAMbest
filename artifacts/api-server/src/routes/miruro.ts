@@ -732,6 +732,44 @@ ${env2Inline ? `// env2.js inlined synchronously to ensure window.env is set bef
 });
 
 /**
+ * GET /api/miruro/direct-url?anilistId=...&ep=...&romajiTitle=...
+ *
+ * Returns the *real* miruro.bz watch URL — no server-side fetch, no CF
+ * session, no relay involved. Meant to be opened directly in the user's own
+ * browser tab/popup (window.open), not embedded in an iframe. Since the
+ * request happens from the visitor's real browser/IP instead of our
+ * server, Cloudflare treats it as a normal visitor and the challenge
+ * resolves the same way it would for any other site visit — this sidesteps
+ * both the server-IP block and miruro's X-Frame-Options restriction (which
+ * only blocks framing, not top-level navigation).
+ */
+router.get("/miruro/direct-url", (req, res) => {
+  const anilistId = (req.query.anilistId as string | undefined)?.trim();
+  const ep = (req.query.ep as string | undefined)?.trim();
+  const romajiTitle = (req.query.romajiTitle as string | undefined)?.trim();
+  const preferDub = (req.query.dub as string | undefined) === "1";
+
+  if (!anilistId || !ep) {
+    res.status(400).json({ error: "anilistId and ep query params are required" });
+    return;
+  }
+
+  const epNum = parseInt(ep);
+  if (isNaN(epNum) || epNum <= 0) {
+    res.status(400).json({ error: `Invalid ep value: "${ep}"` });
+    return;
+  }
+
+  const slug = romajiTitle ? toMiruroSlug(romajiTitle) : null;
+  const dubSuffix = preferDub ? "&dub=true" : "";
+  const url = slug
+    ? `${MIRURO_ORIGIN}/watch/${anilistId}/${slug}?ep=${epNum}${dubSuffix}`
+    : `${MIRURO_ORIGIN}/watch/${anilistId}?ep=${epNum}${dubSuffix}`;
+
+  res.json({ url });
+});
+
+/**
  * GET /api/miruro/stream?anilistId=...&ep=...&romajiTitle=...
  *
  * Returns a proxy URL for miruro.bz that bypasses X-Frame-Options.
