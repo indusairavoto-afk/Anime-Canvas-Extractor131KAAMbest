@@ -197,6 +197,7 @@ export default function WatchAniList() {
   const [miruroIframeUrl, setMiruroIframeUrl] = useState<string | null>(null);
   const [miruroLoading, setMiruroLoading] = useState(false);
   const [miruroError, setMiruroError] = useState<string | null>(null);
+  const miruroPopupRef = useRef<Window | null>(null);
   const [nexusIframeUrl, setNexusIframeUrl] = useState<string | null>(null);
   const [nexusLoading, setNexusLoading] = useState(false);
   const [nexusError, setNexusError] = useState<string | null>(null);
@@ -1349,27 +1350,63 @@ export default function WatchAniList() {
   // not an iframe. Must be called synchronously from a click handler so
   // browsers don't treat the resulting window.open() as a popup-blocked
   // background action.
+  // window.open()'s top/left position the OUTER window (title bar +
+  // address bar included), but we want the CONTENT (the video) to line
+  // up exactly with the player box. So we estimate the popup's own
+  // chrome height (title bar + address bar, since even with
+  // toolbar=no/location=no Chrome still renders a minimal address bar
+  // for security) and shift the outer window UP by that amount while
+  // padding the requested height by the same amount — that way the
+  // visible page content starts right at the player box's position
+  // instead of appearing below/offset from it.
+  const MIRURO_CHROME_HEIGHT = 76;
+  const getMiruroPopupGeometry = useCallback(() => {
+    const rect = playerContainerRef.current?.getBoundingClientRect();
+    const left = Math.round((rect ? rect.left : 0) + window.screenX);
+    const top = Math.round(Math.max(0, (rect ? rect.top : 0) + window.screenY - MIRURO_CHROME_HEIGHT));
+    const width = Math.round(rect?.width || 1280);
+    const height = Math.round((rect?.height || 720) + MIRURO_CHROME_HEIGHT);
+    return { left, top, width, height };
+  }, []);
+
+  // Keeps the Miruro popup glued to the player box whenever the main page
+  // is scrolled or resized (e.g. window resize, mobile browser chrome
+  // showing/hiding) — otherwise the popup would stay put while the player
+  // box moves underneath it, breaking the "embedded" illusion.
+  useEffect(() => {
+    const reposition = () => {
+      const popup = miruroPopupRef.current;
+      if (!popup || popup.closed) return;
+      const { left, top, width, height } = getMiruroPopupGeometry();
+      try {
+        popup.moveTo(left, top);
+        popup.resizeTo(width, height);
+      } catch {
+        // Some browsers restrict moveTo/resizeTo on windows they didn't
+        // create the "normal" way — safe to ignore, popup just won't
+        // track anymore.
+      }
+    };
+    let raf = 0;
+    const scheduled = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(reposition);
+    };
+    window.addEventListener("resize", scheduled);
+    window.addEventListener("scroll", scheduled, true);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", scheduled);
+      window.removeEventListener("scroll", scheduled, true);
+    };
+  }, [getMiruroPopupGeometry]);
+
   const openMiruroDirect = useCallback(() => {
     // Position/size the popup to line up over the actual player box on the
     // page, so it reads as "the video" rather than a random floating
     // window. miruro.bz can't be framed (X-Frame-Options), so a real popup
     // is the only way to play it — this just makes it feel embedded.
-    //
-    // window.open()'s top/left position the OUTER window (title bar +
-    // address bar included), but we want the CONTENT (the video) to line
-    // up exactly with the player box. So we estimate the popup's own
-    // chrome height (title bar + address bar, since even with
-    // toolbar=no/location=no Chrome still renders a minimal address bar
-    // for security) and shift the outer window UP by that amount while
-    // padding the requested height by the same amount — that way the
-    // visible page content starts right at the player box's position
-    // instead of appearing below/offset from it.
-    const CHROME_HEIGHT = 76;
-    const rect = playerContainerRef.current?.getBoundingClientRect();
-    const left = Math.round((rect ? rect.left : 0) + window.screenX);
-    const top = Math.round(Math.max(0, (rect ? rect.top : 0) + window.screenY - CHROME_HEIGHT));
-    const width = Math.round(rect?.width || 1280);
-    const height = Math.round((rect?.height || 720) + CHROME_HEIGHT);
+    const { left, top, width, height } = getMiruroPopupGeometry();
     const features = `width=${width},height=${height},left=${left},top=${top},menubar=no,toolbar=no,location=no,status=no`;
 
     // IMPORTANT: do NOT pass "noopener" here — that makes window.open()
@@ -1380,6 +1417,7 @@ export default function WatchAniList() {
     // lets us navigate the *same* already-open window once the fetch
     // resolves, which is not treated as a new popup.
     const popup = window.open("about:blank", "miruroPlayer", features);
+    miruroPopupRef.current = popup;
     if (popup) {
       popup.focus();
       popup.document.write(
@@ -1403,7 +1441,7 @@ export default function WatchAniList() {
           popup.document.body.innerText = "Failed to reach the server. Please try again.";
         }
       });
-  }, [animeId, currentEp, romajiTitle, lang]);
+  }, [animeId, currentEp, romajiTitle, lang, getMiruroPopupGeometry]);
 
   // Fetch Miruro iframe URL when server is MIRURO
   useEffect(() => {
