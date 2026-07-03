@@ -276,11 +276,28 @@ router.use("/miruro/ultra", async (req, res, next) => {
  *    so that relative imports inside JS bundles also resolve through our proxy
  * 3. Injects history.replaceState so the SPA router sees the correct path
  */
+/** Return an HTML error page that postMessages the error to the parent frame,
+ *  so the watch page overlay can display it instead of raw JSON in the iframe. */
+function miruroProxyErrorHtml(message: string): string {
+  const safeMsg = message.replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  const jsonMsg = JSON.stringify(message);
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Miruro unavailable</title>
+<style>html,body{margin:0;height:100%;background:#0a0a0a;display:flex;align-items:center;justify-content:center;font-family:monospace}
+.box{text-align:center;color:#a78bfa;padding:2rem}
+.icon{font-size:2rem;margin-bottom:1rem}
+p{color:#ffffff80;font-size:.75rem;letter-spacing:.05em;margin:.5rem 0;max-width:280px}</style></head>
+<body><div class="box"><div class="icon">⚠</div>
+<p>${safeMsg}</p></div>
+<script>try{window.parent.postMessage({type:'miruro-proxy-error',error:${jsonMsg}},'*')}catch(e){}</script>
+</body></html>`;
+}
+
 router.get("/miruro/proxy", async (req, res) => {
   const rawUrl = (req.query.url as string | undefined)?.trim();
 
   if (!rawUrl) {
-    res.status(400).json({ error: "url query param is required" });
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.status(400).send(miruroProxyErrorHtml("Invalid proxy request — no URL provided."));
     return;
   }
 
@@ -288,12 +305,14 @@ router.get("/miruro/proxy", async (req, res) => {
   try {
     targetUrl = new URL(rawUrl);
   } catch {
-    res.status(400).json({ error: "Invalid URL" });
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.status(400).send(miruroProxyErrorHtml("Invalid URL provided to Miruro proxy."));
     return;
   }
 
   if (!targetUrl.hostname.endsWith("miruro.bz") && !targetUrl.hostname.endsWith("miruro.to")) {
-    res.status(400).json({ error: "Only miruro URLs are allowed" });
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.status(400).send(miruroProxyErrorHtml("Only miruro URLs are allowed."));
     return;
   }
 
@@ -316,9 +335,10 @@ router.get("/miruro/proxy", async (req, res) => {
 
     // Detect Cloudflare IP block: CF returns 403 with text/html containing
     // its challenge page. If we forward it, the iframe shows a black/CF screen.
-    // Instead return a JSON error so the frontend shows "Under Maintenance".
+    // Return an HTML error page that postMessages the parent to show its overlay.
     if (upstream.status === 403 || upstream.status === 429) {
-      res.status(503).json({ error: "Miruro is currently unavailable from this server (upstream blocked). Please try another server." });
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      res.status(503).send(miruroProxyErrorHtml("Miruro is currently unavailable from this server (upstream blocked). Please try another server."));
       return;
     }
 
@@ -336,7 +356,8 @@ router.get("/miruro/proxy", async (req, res) => {
     // Belt-and-suspenders: detect CF block pages by body fingerprint
     // (in case CF returns 200 with a JS challenge page)
     if (html.includes("cf-error-details") || html.includes("Cloudflare Ray ID") || html.includes("Sorry, you have been blocked")) {
-      res.status(503).json({ error: "Miruro is currently unavailable from this server (Cloudflare block). Please try another server." });
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      res.status(503).send(miruroProxyErrorHtml("Miruro is currently unavailable from this server (Cloudflare block). Please try another server."));
       return;
     }
 
@@ -727,7 +748,8 @@ ${env2Inline ? `// env2.js inlined synchronously to ensure window.env is set bef
     res.send(html);
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Unknown error";
-    res.status(502).json({ error: `Failed to proxy Miruro: ${msg}` });
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.status(502).send(miruroProxyErrorHtml(`Failed to proxy Miruro: ${msg}`));
   }
 });
 

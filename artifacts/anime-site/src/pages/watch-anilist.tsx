@@ -1693,6 +1693,12 @@ export default function WatchAniList() {
         sessionStorage.setItem("ao_cf_ready", "1");
         setAoCfReady(true);
       }
+      // Miruro proxy sends this when upstream is blocked — switch from iframe to error overlay
+      if (evt.data?.type === "miruro-proxy-error" && server === "MIRURO") {
+        setMiruroIframeUrl(null);
+        setMiruroError(evt.data.error ?? "Miruro is currently unavailable. Please try another server.");
+        setMiruroLoading(false);
+      }
     };
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
