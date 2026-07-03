@@ -1350,6 +1350,17 @@ export default function WatchAniList() {
   // browsers don't treat the resulting window.open() as a popup-blocked
   // background action.
   const openMiruroDirect = useCallback(() => {
+    // Position/size the popup to line up over the actual player box on the
+    // page, so it reads as "the video" rather than a random floating
+    // window. miruro.bz can't be framed (X-Frame-Options), so a real popup
+    // is the only way to play it — this just makes it feel embedded.
+    const rect = playerContainerRef.current?.getBoundingClientRect();
+    const left = Math.round((rect ? rect.left : 0) + window.screenX);
+    const top = Math.round((rect ? rect.top : 0) + window.screenY + 80);
+    const width = Math.round(rect?.width || 1280);
+    const height = Math.round(rect?.height || 720);
+    const features = `width=${width},height=${height},left=${left},top=${top},menubar=no,toolbar=no,location=no,status=no`;
+
     // IMPORTANT: do NOT pass "noopener" here — that makes window.open()
     // return null, which loses the reference needed to navigate the
     // window once the URL is fetched, and forces a second window.open()
@@ -1357,8 +1368,9 @@ export default function WatchAniList() {
     // longer a direct result of the user's click). Keeping the reference
     // lets us navigate the *same* already-open window once the fetch
     // resolves, which is not treated as a new popup.
-    const popup = window.open("about:blank", "_blank", "width=1280,height=760");
+    const popup = window.open("about:blank", "miruroPlayer", features);
     if (popup) {
+      popup.focus();
       popup.document.write(
         '<!doctype html><html><head><title>Loading Miruro…</title></head>' +
         '<body style="margin:0;display:flex;align-items:center;justify-content:center;height:100vh;' +
@@ -2748,7 +2760,7 @@ export default function WatchAniList() {
                           <Play className="w-3 h-3 fill-current" /> AniZone
                         </button>
                         <button
-                          onClick={() => { setServer("MIRURO"); setGogoMaybeBroken(false); setGogoMaybeCountdown(null); setGogoStreamError(false); setIframeLoaded(false); bridgeLiveRef.current = false; setBridgeLive(false); }}
+                          onClick={() => { setServer("MIRURO"); setGogoMaybeBroken(false); setGogoMaybeCountdown(null); setGogoStreamError(false); setIframeLoaded(false); bridgeLiveRef.current = false; setBridgeLive(false); openMiruroDirect(); }}
                           className="flex items-center gap-1.5 text-[10px] font-mono font-bold px-3 py-2 border border-purple-400/70 text-purple-400 hover:bg-purple-400/10 transition-all uppercase tracking-widest"
                         >
                           <Play className="w-3 h-3 fill-current" /> Miruro
@@ -2796,7 +2808,7 @@ export default function WatchAniList() {
                           <Play className="w-3 h-3 fill-current" /> AniZone
                         </button>
                         <button
-                          onClick={() => { setServer("MIRURO"); setGogoStreamError(false); setIframeLoaded(false); bridgeLiveRef.current = false; setBridgeLive(false); setAutoSwitchMsg(null); }}
+                          onClick={() => { setServer("MIRURO"); setGogoStreamError(false); setIframeLoaded(false); bridgeLiveRef.current = false; setBridgeLive(false); setAutoSwitchMsg(null); openMiruroDirect(); }}
                           className="flex items-center gap-1.5 text-[10px] font-mono font-bold px-3 py-2 border border-purple-400/70 text-purple-400 hover:bg-purple-400/10 transition-all uppercase tracking-widest"
                         >
                           <Play className="w-3 h-3 fill-current" /> Miruro
@@ -3204,7 +3216,7 @@ export default function WatchAniList() {
                       { key: "GOGO",       label: "GOGO",       color: "orange" as const, onClick: () => { userPickedRef.current = true; setServer("GOGO"); setCdnNotFound(false); setIframeLoaded(false); setGogoStreamError(false); bridgeLiveRef.current = false; setBridgeLive(false); } },
                       { key: "KOTO",       label: "KOTO",       color: "teal"   as const, onClick: () => { userPickedRef.current = true; setServer("KOTO"); setIframeLoaded(false); } },
                       { key: "ANIZONE",    label: "ANIZONE",    color: "blue"   as const, onClick: () => { userPickedRef.current = true; setServer("ANIZONE"); setIframeLoaded(false); } },
-                      { key: "MIRURO",     label: "MIRURO",     color: "purple" as const, onClick: () => { userPickedRef.current = true; setServer("MIRURO"); setIframeLoaded(false); } },
+                      { key: "MIRURO",     label: "MIRURO",     color: "purple" as const, onClick: () => { userPickedRef.current = true; setServer("MIRURO"); setIframeLoaded(false); openMiruroDirect(); } },
                       { key: "ANIMEONSEN", label: "ANIMEONSEN", color: "green"  as const, onClick: () => { userPickedRef.current = true; setServer("ANIMEONSEN"); setIframeLoaded(false); if (aoCfReady) setAnimeonsenInitializing(false); } },
                       { key: "ANINEKO",    label: "ANINEKO",    color: "pink"   as const, onClick: () => { userPickedRef.current = true; setServer("ANINEKO"); setIframeLoaded(false); } },
                       { key: "SHIROKO",    label: "SHIROKO",    color: "sky"    as const, onClick: () => { userPickedRef.current = true; setServer("SHIROKO"); setIframeLoaded(false); } },
