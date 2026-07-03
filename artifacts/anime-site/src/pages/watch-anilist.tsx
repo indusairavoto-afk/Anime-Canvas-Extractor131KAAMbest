@@ -1350,24 +1350,56 @@ export default function WatchAniList() {
   // not an iframe. Must be called synchronously from a click handler so
   // browsers don't treat the resulting window.open() as a popup-blocked
   // background action.
-  // window.open()'s top/left position the OUTER window (title bar +
-  // address bar included), but we want the CONTENT (the video) to line
-  // up exactly with the player box. So we estimate the popup's own
-  // chrome height (title bar + address bar, since even with
-  // toolbar=no/location=no Chrome still renders a minimal address bar
-  // for security) and shift the outer window UP by that amount while
-  // padding the requested height by the same amount — that way the
-  // visible page content starts right at the player box's position
-  // instead of appearing below/offset from it.
-  const MIRURO_CHROME_HEIGHT = 76;
-  const getMiruroPopupGeometry = useCallback(() => {
+  // window.open()'s top/left/width/height only control the OUTER window
+  // (title bar + address bar included), but we want the CONTENT (the
+  // video) to land exactly on top of the player box. The browser's own
+  // chrome height/width varies by browser/OS/zoom, so instead of a fixed
+  // guess we measure it directly off the actual popup once it exists
+  // (outerHeight - innerHeight, outerWidth - innerWidth) and correct the
+  // window's position/size to compensate. We cache the last measured
+  // chrome size so repositioning on scroll/resize doesn't need to
+  // re-measure every time.
+  const miruroChromeRef = useRef({ width: 8, height: 76 });
+
+  const getMiruroPopupGeometry = useCallback((chrome = miruroChromeRef.current) => {
     const rect = playerContainerRef.current?.getBoundingClientRect();
-    const left = Math.round((rect ? rect.left : 0) + window.screenX);
-    const top = Math.round(Math.max(0, (rect ? rect.top : 0) + window.screenY - MIRURO_CHROME_HEIGHT));
-    const width = Math.round(rect?.width || 1280);
-    const height = Math.round((rect?.height || 720) + MIRURO_CHROME_HEIGHT);
-    return { left, top, width, height };
+    const contentLeft = Math.round((rect ? rect.left : 0) + window.screenX);
+    const contentTop = Math.round((rect ? rect.top : 0) + window.screenY);
+    const contentWidth = Math.round(rect?.width || 1280);
+    const contentHeight = Math.round(rect?.height || 720);
+    return {
+      left: contentLeft,
+      top: Math.max(0, contentTop - chrome.height),
+      width: contentWidth + chrome.width,
+      height: contentHeight + chrome.height,
+    };
   }, []);
+
+  // Once the popup exists, measure its real chrome size and snap it into
+  // exact alignment with the player box (fixes the initial guess being
+  // off, which is what caused the popup to land in the wrong spot).
+  const calibrateMiruroPopup = useCallback((popup: Window) => {
+    const measureAndSnap = () => {
+      if (popup.closed) return;
+      const measuredWidth = Math.max(0, popup.outerWidth - popup.innerWidth);
+      const measuredHeight = Math.max(0, popup.outerHeight - popup.innerHeight);
+      if (measuredHeight > 0) {
+        miruroChromeRef.current = { width: measuredWidth, height: measuredHeight };
+      }
+      const { left, top, width, height } = getMiruroPopupGeometry(miruroChromeRef.current);
+      try {
+        popup.moveTo(left, top);
+        popup.resizeTo(width, height);
+      } catch {
+        // Ignore — some browsers restrict moveTo/resizeTo.
+      }
+    };
+    // Measure a couple of times: immediately (works in most Chromium
+    // builds) and again shortly after (covers browsers that don't report
+    // accurate outer/inner dimensions until the window has fully painted).
+    measureAndSnap();
+    setTimeout(measureAndSnap, 150);
+  }, [getMiruroPopupGeometry]);
 
   // Keeps the Miruro popup glued to the player box whenever the main page
   // is scrolled or resized (e.g. window resize, mobile browser chrome
@@ -1426,6 +1458,7 @@ export default function WatchAniList() {
         'background:#0a0a0a;color:#c084fc;font-family:monospace;font-size:14px;letter-spacing:0.05em;">' +
         'Loading Miruro…</body></html>'
       );
+      calibrateMiruroPopup(popup);
     }
     fetch(apiUrl(`/api/miruro/direct-url?anilistId=${animeId}&ep=${currentEp}&romajiTitle=${encodeURIComponent(romajiTitle)}&dub=${lang === "DUB" ? "1" : "0"}`))
       .then((r) => r.json())
@@ -1441,7 +1474,7 @@ export default function WatchAniList() {
           popup.document.body.innerText = "Failed to reach the server. Please try again.";
         }
       });
-  }, [animeId, currentEp, romajiTitle, lang, getMiruroPopupGeometry]);
+  }, [animeId, currentEp, romajiTitle, lang, getMiruroPopupGeometry, calibrateMiruroPopup]);
 
   // Fetch Miruro iframe URL when server is MIRURO
   useEffect(() => {
