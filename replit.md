@@ -1,63 +1,53 @@
 # Nexa Anime
 
-An anime streaming and community platform featuring anime/manga browsing, video playback (HLS/DASH), watchlists, user profiles, a community forum, and Watch Together real-time sync.
-
-## First-time setup
-
-After cloning or importing the project, run:
-
-```bash
-pnpm install                          # install all workspace dependencies
-pnpm --filter @workspace/db run push  # create/migrate DB tables (requires DATABASE_URL)
-```
-
-`DATABASE_URL` is provisioned automatically by Replit's built-in PostgreSQL. Both steps are also run automatically by `scripts/post-merge.sh` after any task-agent merge.
-
-## Run & Operate
-
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 8080)
-- `pnpm --filter @workspace/anime-site run dev` — run the frontend Vite dev server (port 5000)
-- `pnpm run typecheck` — full typecheck across all packages
-- `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string (provisioned via Replit database)
+A full-stack anime streaming site built as a pnpm monorepo.
 
 ## Stack
 
-- pnpm workspaces, Node.js 20, TypeScript 5.9
-- Frontend: React 19, Vite, Tailwind CSS 4, Wouter, TanStack Query, Framer Motion
-- API: Express 5
-- DB: PostgreSQL + Drizzle ORM
-- Validation: Zod (`zod/v4`), `drizzle-zod`
-- API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
-- Video: hls.js, dashjs
-- WebSocket: ws (for Watch Together feature)
+- **Frontend:** React 19, Vite, Tailwind CSS 4, Wouter, TanStack Query, Framer Motion
+- **Backend:** Express 5 (Node.js 20), port 8080
+- **Database:** PostgreSQL (Replit-managed) with Drizzle ORM
+- **Package manager:** pnpm workspaces
 
-## Where things live
+## Monorepo layout
 
-- `artifacts/anime-site/` — React frontend (Vite)
-- `artifacts/api-server/` — Express API server
-- `lib/db/` — Drizzle schema + DB connection (`DATABASE_URL`)
-- `lib/api-spec/openapi.yaml` — API contract (source of truth)
-- `lib/api-client-react/` — generated React Query hooks
-- `lib/api-zod/` — generated Zod schemas
-- `scripts/` — utility/maintenance scripts
+```
+artifacts/anime-site/   # React frontend (Vite, port 5000)
+artifacts/api-server/   # Express API server (port 8080)
+lib/db/                 # Drizzle schema + DB config
+lib/api-spec/           # OpenAPI spec (openapi.yaml)
+lib/api-client-react/   # Generated React query hooks (via Orval)
+lib/api-zod/            # Generated Zod schemas (via Orval)
+```
 
-## Architecture decisions
+## How to run
 
-- API server serves built frontend static files in production (single deployment unit); in dev, Vite proxies `/api` to port 8080
-- Auth is custom bcrypt-based (register/login/reset) stored in PostgreSQL — no external auth provider
-- Watch Together uses WebSocket attached to the same HTTP server
-- External anime data comes from public APIs (AniList, GogoAnime, MangaDex, etc.) — no paid API keys required
+The single "Start application" workflow starts both services:
+
+```
+PORT=8080 pnpm --filter @workspace/api-server run dev & PORT=5000 pnpm --filter @workspace/anime-site run dev
+```
+
+- Frontend dev server: http://localhost:5000 (Vite proxies `/api` → port 8080)
+- API server: http://localhost:8080
+
+## Database
+
+`DATABASE_URL` is provisioned automatically by Replit. To push schema changes:
+
+```bash
+pnpm --filter @workspace/db run push
+```
+
+After changing `lib/api-spec/openapi.yaml`, regenerate client code:
+
+```bash
+pnpm --filter @workspace/api-spec run codegen
+```
+
+## Environment secrets
+
+- `SESSION_SECRET` — required for session signing (set in Replit Secrets)
+- `DATABASE_URL` — managed automatically by Replit
 
 ## User preferences
-
-_Populate as you build — explicit user instructions worth remembering across sessions._
-
-## Gotchas
-
-- The API server port is 8080 in dev; the Vite frontend on port 5000 proxies `/api` to it
-- Always run `pnpm --filter @workspace/db run push` after schema changes
-- Run `pnpm --filter @workspace/api-spec run codegen` after changing `openapi.yaml`
