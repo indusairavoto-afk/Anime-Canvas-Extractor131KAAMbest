@@ -198,6 +198,8 @@ export default function WatchAniList() {
   const [miruroLoading, setMiruroLoading] = useState(false);
   const [miruroError, setMiruroError] = useState<string | null>(null);
   const [miruroUsingPopup, setMiruroUsingPopup] = useState(false);
+  /** URL shown inside the player as an in-page popup iframe (replaces OS window.open popup) */
+  const [miruroInPageUrl, setMiruroInPageUrl] = useState<string | null>(null);
   const miruroPopupRef = useRef<Window | null>(null);
   const [nexusIframeUrl, setNexusIframeUrl] = useState<string | null>(null);
   const [nexusLoading, setNexusLoading] = useState(false);
@@ -1438,32 +1440,45 @@ export default function WatchAniList() {
     };
   }, [getMiruroPopupGeometry]);
 
+  /**
+   * Opens Miruro as an in-page popup iframe inside the player area.
+   * Fetches the direct miruro URL then sets miruroInPageUrl so the player
+   * renders it as an iframe rather than a floating OS window.
+   * Falls back to the OS popup only if the URL fetch itself fails.
+   */
   const openMiruroDirect = useCallback(() => {
-    // Position/size the popup to line up over the actual player box on the
-    // page, so it reads as "the video" rather than a random floating
-    // window. miruro.bz can't be framed (X-Frame-Options), so a real popup
-    // is the only way to play it — this just makes it feel embedded.
+    setMiruroUsingPopup(true);
+    setMiruroInPageUrl("loading");
+
+    fetch(apiUrl(`/api/miruro/direct-url?anilistId=${animeId}&ep=${currentEp}&romajiTitle=${encodeURIComponent(romajiTitle)}&dub=${lang === "DUB" ? "1" : "0"}`))
+      .then((r) => r.json())
+      .then((data: { url?: string; error?: string }) => {
+        if (data.url) {
+          setMiruroInPageUrl(apiUrl(`/api/miruro/proxy?url=${encodeURIComponent(data.url)}`));
+        } else {
+          // URL lookup failed — genuine last resort: OS popup
+          setMiruroInPageUrl(null);
+          openMiruroOsPopup();
+        }
+      })
+      .catch(() => {
+        setMiruroInPageUrl(null);
+        openMiruroOsPopup();
+      });
+  }, [animeId, currentEp, romajiTitle, lang]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /**
+   * True last-resort OS popup — used only when in-page iframe fails, or when
+   * the user explicitly clicks "Open in New Window" in the status panel.
+   * Positions the window over the player box so it feels embedded.
+   */
+  const openMiruroOsPopup = useCallback(() => {
     const { left, top, width, height } = getMiruroPopupGeometry();
     const features = `width=${width},height=${height},left=${left},top=${top},menubar=no,toolbar=no,location=no,status=no`;
-
-    // IMPORTANT: do NOT pass "noopener" here — that makes window.open()
-    // return null, which loses the reference needed to navigate the
-    // window once the URL is fetched, and forces a second window.open()
-    // call inside the async .then() (which browsers block as it's no
-    // longer a direct result of the user's click). Keeping the reference
-    // lets us navigate the *same* already-open window once the fetch
-    // resolves, which is not treated as a new popup.
     const popup = window.open("about:blank", "miruroPlayer", features);
     miruroPopupRef.current = popup;
     if (popup) {
       popup.focus();
-      // Re-using the named "miruroPlayer" window across clicks means it
-      // may already have navigated to miruro.bz (cross-origin) from a
-      // previous click. Once that happens, this window's document is no
-      // longer accessible to us — reading/writing it throws a security
-      // error ("Blocked a frame with origin ... from accessing a
-      // cross-origin frame"). Guard every popup.document touch so a
-      // reused, already-navigated window doesn't crash the click handler.
       try {
         popup.document.write(
           '<!doctype html><html><head><title>Loading Miruro…</title></head>' +
@@ -1472,38 +1487,22 @@ export default function WatchAniList() {
           'Loading Miruro…</body></html>'
         );
       } catch {
-        // Window already holds cross-origin content — it'll just show the
-        // previous page briefly until location.href navigates it below.
+        // Cross-origin reuse — skip
       }
       calibrateMiruroPopup(popup);
     }
-    // Fetch the direct miruro.bz URL, then route the popup through our own
-    // proxy so it loads on our domain with Miruro's chrome (header/nav/search)
-    // stripped — only the video player is visible.
     fetch(apiUrl(`/api/miruro/direct-url?anilistId=${animeId}&ep=${currentEp}&romajiTitle=${encodeURIComponent(romajiTitle)}&dub=${lang === "DUB" ? "1" : "0"}`))
       .then((r) => r.json())
       .then((data: { url?: string; error?: string }) => {
         if (data.url && popup && !popup.closed) {
-          // Navigate to our server-side proxy instead of miruro.bz directly.
-          // The proxy strips X-Frame-Options, hides Miruro's UI chrome, and
-          // lifts the video player to fill the full window — so the popup
-          // looks like native streaming from Nexa Anime rather than Miruro.
           popup.location.href = apiUrl(`/api/miruro/proxy?url=${encodeURIComponent(data.url)}`);
         } else if (popup && !popup.closed) {
-          try {
-            popup.document.body.innerText = data.error ?? "Couldn't find a Miruro link for this episode.";
-          } catch {
-            // Cross-origin — nothing we can do but leave it be.
-          }
+          try { popup.document.body.innerText = data.error ?? "Couldn't find a Miruro link for this episode."; } catch { /* cross-origin */ }
         }
       })
       .catch(() => {
         if (popup && !popup.closed) {
-          try {
-            popup.document.body.innerText = "Failed to reach the server. Please try again.";
-          } catch {
-            // Cross-origin — nothing we can do but leave it be.
-          }
+          try { popup.document.body.innerText = "Failed to reach the server. Please try again."; } catch { /* cross-origin */ }
         }
       });
   }, [animeId, currentEp, romajiTitle, lang, getMiruroPopupGeometry, calibrateMiruroPopup]);
@@ -1514,7 +1513,8 @@ export default function WatchAniList() {
       setMiruroIframeUrl(null);
       setMiruroError(null);
       setMiruroUsingPopup(false);
-      // Close any open Miruro popup when switching away
+      setMiruroInPageUrl(null);
+      // Close any open Miruro OS popup when switching away
       if (miruroPopupRef.current && !miruroPopupRef.current.closed) {
         miruroPopupRef.current.close();
       }
@@ -1527,7 +1527,8 @@ export default function WatchAniList() {
         setMiruroLoading(false);
         setMiruroError(null);
         setMiruroUsingPopup(false);
-        // Close popup — inline player won the race
+        setMiruroInPageUrl(null);
+        // Close OS popup — inline player won the race
         if (miruroPopupRef.current && !miruroPopupRef.current.closed) {
           miruroPopupRef.current.close();
         }
@@ -1546,14 +1547,15 @@ export default function WatchAniList() {
       .then((data: { iframeUrl?: string; error?: string }) => {
         if (cancelled) return;
         if (data.iframeUrl) {
-          // Inline proxy works — close the pre-opened popup and show inline
+          // Inline proxy works — dismiss in-page popup and show inline iframe
           setMiruroIframeUrl(data.iframeUrl);
           setActualLang(lang === "DUB" ? "DUB" : "SUB");
+          setMiruroInPageUrl(null);
           if (miruroPopupRef.current && !miruroPopupRef.current.closed) {
             miruroPopupRef.current.close();
           }
         } else {
-          // Proxy unavailable — popup opened on click will auto-redirect to miruro.bz
+          // Server-side proxy unavailable — open in-page popup (user's browser fetches directly)
           setMiruroUsingPopup(true);
         }
       })
@@ -2397,7 +2399,7 @@ export default function WatchAniList() {
                   />
                 )}
 
-                {/* MIRURO iframe embed — loads miruro.to watch page directly */}
+                {/* MIRURO iframe embed — loads miruro.to watch page directly (server-side CF session) */}
                 {server === "MIRURO" && miruroIframeUrl && (
                   <iframe
                     ref={iframeRef}
@@ -2409,6 +2411,41 @@ export default function WatchAniList() {
                     title={`${title} Episode ${currentEp}`}
                     onLoad={() => setTimeout(() => setIframeLoaded(true), 200)}
                   />
+                )}
+
+                {/* MIRURO in-page popup — shown when CF session unavailable; user's browser loads proxy directly */}
+                {server === "MIRURO" && !miruroIframeUrl && miruroInPageUrl && miruroInPageUrl !== "loading" && (
+                  <div className="absolute inset-0 z-20" style={{ background: "#000" }}>
+                    {/* Close / escape hatch strip */}
+                    <div className="absolute top-0 left-0 right-0 z-30 flex items-center justify-between px-3 py-1.5"
+                      style={{ background: "linear-gradient(to bottom, rgba(0,0,0,0.85) 0%, transparent 100%)" }}>
+                      <span className="text-[10px] font-mono text-purple-400/60 uppercase tracking-widest">miruro.bz</span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => openMiruroOsPopup()}
+                          className="text-[10px] font-mono text-white/30 hover:text-white/60 uppercase tracking-widest transition-colors"
+                          title="Open in separate window"
+                        >
+                          ↗ New Window
+                        </button>
+                        <button
+                          onClick={() => { setMiruroInPageUrl(null); setMiruroUsingPopup(false); }}
+                          className="text-[10px] font-mono text-white/30 hover:text-white/60 transition-colors px-1"
+                          title="Close"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                    <iframe
+                      key={`miruro-inpage-${animeId}-${currentEp}`}
+                      src={miruroInPageUrl}
+                      style={{ position: "absolute", inset: 0, width: "100%", height: "100%", border: "none" }}
+                      allowFullScreen
+                      allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
+                      title={`${title} Episode ${currentEp} — Miruro`}
+                    />
+                  </div>
                 )}
 
                 {/* ANIMEONSEN — native HLS player once stream URL is extracted */}
@@ -2603,13 +2640,23 @@ export default function WatchAniList() {
                   </div>
                 )}
 
-                {/* MIRURO loading / popup / error overlay */}
-                {server === "MIRURO" && !miruroIframeUrl && (
+                {/* MIRURO loading / popup / error overlay — hidden when in-page iframe is active */}
+                {server === "MIRURO" && !miruroIframeUrl && !(miruroInPageUrl && miruroInPageUrl !== "loading") && (
                   <div className="absolute inset-0 z-10 flex flex-col items-center justify-center" style={{ background: "rgba(0,0,0,0.92)" }}>
                     {banner && <img src={banner} alt="" className="absolute inset-0 w-full h-full object-cover opacity-10 scale-110 blur-sm" />}
                     <div className="relative z-10 flex flex-col items-center gap-4">
-                      {miruroUsingPopup ? (
-                        /* Proxy unavailable — video is playing in the popup window */
+                      {miruroUsingPopup && miruroInPageUrl === "loading" ? (
+                        /* Fetching miruro URL — show spinner while in-page popup is preparing */
+                        <>
+                          <div className="relative w-14 h-14">
+                            <div className="absolute inset-0 rounded-full border-2 border-white/10" />
+                            <div className="absolute inset-0 rounded-full border-2 border-t-purple-400 border-r-transparent border-b-transparent border-l-transparent animate-spin" />
+                            <div className="absolute inset-2 rounded-full border border-white/20 border-t-purple-400/60 animate-spin" style={{ animationDuration: "0.6s", animationDirection: "reverse" }} />
+                          </div>
+                          <p className="text-white/70 text-sm font-semibold tracking-wide">Opening Miruro…</p>
+                        </>
+                      ) : miruroUsingPopup && !miruroInPageUrl ? (
+                        /* In-page popup failed — video is in the OS popup window */
                         <div className="text-center space-y-3">
                           <div className="w-11 h-11 border border-purple-400/30 bg-purple-400/5 flex items-center justify-center mx-auto rounded-sm">
                             <Play className="w-5 h-5 text-purple-400 fill-current" />
@@ -2622,7 +2669,7 @@ export default function WatchAniList() {
                             onClick={openMiruroDirect}
                             className="inline-flex items-center gap-2 text-[11px] font-mono font-bold px-5 py-2.5 border border-purple-400/70 text-purple-400 hover:bg-purple-400/10 transition-all uppercase tracking-widest"
                           >
-                            <Play className="w-3 h-3 fill-current" /> Reopen Popup
+                            <Play className="w-3 h-3 fill-current" /> Reopen Player
                           </button>
                           {suggestedServer && SERVER_META[suggestedServer] && (
                             <div className="flex items-center gap-2 mt-1">
@@ -3576,7 +3623,7 @@ export default function WatchAniList() {
                 </>
               )}
               <button
-                onClick={openMiruroDirect}
+                onClick={openMiruroOsPopup}
                 className="ml-auto text-[10px] font-mono text-purple-400/50 hover:text-purple-400 uppercase tracking-widest underline underline-offset-2"
               >
                 Open in New Window
