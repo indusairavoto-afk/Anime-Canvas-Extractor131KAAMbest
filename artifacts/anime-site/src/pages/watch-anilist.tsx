@@ -1350,19 +1350,36 @@ export default function WatchAniList() {
   // browsers don't treat the resulting window.open() as a popup-blocked
   // background action.
   const openMiruroDirect = useCallback(() => {
-    const popup = window.open("", "_blank", "noopener,width=1280,height=760");
+    // IMPORTANT: do NOT pass "noopener" here — that makes window.open()
+    // return null, which loses the reference needed to navigate the
+    // window once the URL is fetched, and forces a second window.open()
+    // call inside the async .then() (which browsers block as it's no
+    // longer a direct result of the user's click). Keeping the reference
+    // lets us navigate the *same* already-open window once the fetch
+    // resolves, which is not treated as a new popup.
+    const popup = window.open("about:blank", "_blank", "width=1280,height=760");
+    if (popup) {
+      popup.document.write(
+        '<!doctype html><html><head><title>Loading Miruro…</title></head>' +
+        '<body style="margin:0;display:flex;align-items:center;justify-content:center;height:100vh;' +
+        'background:#0a0a0a;color:#c084fc;font-family:monospace;font-size:14px;letter-spacing:0.05em;">' +
+        'Loading Miruro…</body></html>'
+      );
+    }
     fetch(apiUrl(`/api/miruro/direct-url?anilistId=${animeId}&ep=${currentEp}&romajiTitle=${encodeURIComponent(romajiTitle)}&dub=${lang === "DUB" ? "1" : "0"}`))
       .then((r) => r.json())
-      .then((data: { url?: string }) => {
+      .then((data: { url?: string; error?: string }) => {
         if (data.url && popup && !popup.closed) {
           popup.location.href = data.url;
-        } else if (data.url) {
-          window.open(data.url, "_blank", "noopener");
-        } else {
-          popup?.close();
+        } else if (popup && !popup.closed) {
+          popup.document.body.innerText = data.error ?? "Couldn't find a Miruro link for this episode.";
         }
       })
-      .catch(() => { popup?.close(); });
+      .catch(() => {
+        if (popup && !popup.closed) {
+          popup.document.body.innerText = "Failed to reach the server. Please try again.";
+        }
+      });
   }, [animeId, currentEp, romajiTitle, lang]);
 
   // Fetch Miruro iframe URL when server is MIRURO
