@@ -200,6 +200,9 @@ export default function WatchAniList() {
   const [miruroUsingPopup, setMiruroUsingPopup] = useState(false);
   /** URL shown inside the player as an in-page fallback iframe when the inline proxy is unavailable */
   const [miruroInPageUrl, setMiruroInPageUrl] = useState<string | null>(null);
+  /** Increments on every retry so the iframe key always changes, forcing a full remount
+   *  and preventing the browser from serving a stale bfcache document. */
+  const [miruroInPageNonce, setMiruroInPageNonce] = useState(0);
   /** True when the in-page proxy iframe received a CF/upstream-blocked error; shows inline retry CTA */
   const [miruroProxyBlocked, setMiruroProxyBlocked] = useState(false);
   /** Ref mirror of miruroInPageUrl — readable inside postMessage handlers without closure staleness */
@@ -1361,6 +1364,10 @@ export default function WatchAniList() {
     setMiruroProxyBlocked(false);
     setMiruroUsingPopup(true);
     setMiruroInPageUrl("loading");
+    // Bump nonce so the iframe key always changes on retry, forcing a full
+    // React remount — this prevents the browser from serving a stale bfcache
+    // document even if the URL's _t timestamp is somehow reused.
+    setMiruroInPageNonce(n => n + 1);
 
     fetch(apiUrl(`/api/miruro/direct-url?anilistId=${animeId}&ep=${currentEp}&romajiTitle=${encodeURIComponent(romajiTitle)}&dub=${lang === "DUB" ? "1" : "0"}`))
       .then((r) => r.json())
@@ -2329,7 +2336,7 @@ export default function WatchAniList() {
                       </div>
                     </div>
                     <iframe
-                      key={`miruro-inpage-${animeId}-${currentEp}`}
+                      key={`miruro-inpage-${animeId}-${currentEp}-${miruroInPageNonce}`}
                       src={miruroInPageUrl}
                       style={{ position: "absolute", inset: 0, width: "100%", height: "100%", border: "none" }}
                       allowFullScreen

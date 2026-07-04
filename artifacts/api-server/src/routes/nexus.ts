@@ -294,6 +294,12 @@ router.get("/nexus/proxy", async (req, res) => {
       .replace(/url\(\/(?!\/|api\/nexus\/)/g, `url(${PASS_PREFIX}/`);
 
     // ── Inject interceptors ──────────────────────────────────────────────────
+    // JSON.stringify does NOT escape "</" by default, so a value containing a
+    // literal "</script" sequence in the path could prematurely close our
+    // wrapping <script> tag, leaking injected JS as visible page text.
+    // Escape it defensively for every value interpolated into the script block.
+    const jsStringLiteral = (value: string): string =>
+      JSON.stringify(value).replace(/<\/script/gi, "<\\/script");
     const originalPath = targetUrl.pathname + targetUrl.search;
     const PASS = PASS_PREFIX;
 
@@ -319,7 +325,7 @@ video-player,media-player,
 </style>
 <script>
 (function(){
-  try { history.replaceState(null,'',${JSON.stringify(originalPath)}); } catch(e){}
+  try { history.replaceState(null,'',${jsStringLiteral(originalPath)}); } catch(e){}
 
   // Block service worker — would try to precache from root paths that 404 on our proxy
   try {
