@@ -1521,12 +1521,15 @@ export default function WatchAniList() {
       setMiruroIframeUrl(miruroLegacyUrl);
       setSwReady(true); // legacy iframe doesn't need SW; mark as "ready" so it renders
     } else {
-      // No relay — trigger the in-page openMiruroDirect() path.
-      // This fetches the direct miruro URL and routes it through our server proxy.
-      // Uses a stable ref (openMiruroDirectRef) so the call always uses the
-      // latest bound version without needing it in the effect's dependency array.
+      // No relay configured.  The SW cannot proxy miruro.bz cross-origin (CORS), and
+      // auto-calling openMiruroDirect() would load /api/miruro/proxy in an iframe — that
+      // also fails when the server IP is CF-blocked, returning an HTML error page that
+      // postMessages miruro-proxy-error and circles back to this same state.
+      // Surface the "open in browser" overlay immediately without the futile round-trip.
+      // The user can still manually trigger the inline attempt via the "Try inline" button
+      // in the overlay (which is useful if a server-side CF session happens to exist).
       setMiruroIframeUrl(null);
-      openMiruroDirectRef.current();
+      setMiruroProxyBlocked(true);
     }
   }, [swFailed, miruroIframeUrl, miruroLegacyUrl]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -2703,15 +2706,17 @@ export default function WatchAniList() {
                     {banner && <img src={banner} alt="" className="absolute inset-0 w-full h-full object-cover opacity-10 scale-110 blur-sm" />}
                     <div className="relative z-10 flex flex-col items-center gap-4">
                       {miruroProxyBlocked ? (
-                        /* Server IP is CF/upstream blocked — open miruro.bz directly in the user's browser */
+                        /* Miruro can't be embedded — SW CORS failure + no relay configured (or relay also CF-blocked).
+                           The user's browser can still reach miruro.bz directly. */
                         <div className="text-center space-y-3">
                           <div className="w-11 h-11 border border-red-400/30 bg-red-400/5 flex items-center justify-center mx-auto rounded-sm">
                             <span className="text-red-400 text-xl">⚡</span>
                           </div>
-                          <p className="text-white/80 text-sm font-semibold tracking-wide">Server IP Blocked</p>
+                          <p className="text-white/80 text-sm font-semibold tracking-wide">Can't embed Miruro</p>
                           <p className="text-white/40 text-[11px] font-mono max-w-[280px] text-center leading-relaxed">
-                            Miruro is blocking our server's IP address.<br/>
-                            Your browser can still reach it — click below to open it directly.
+                            Miruro can't play inline here — our server is blocked<br/>
+                            and the browser proxy isn't available.<br/>
+                            Your browser can still open it directly.
                           </p>
                           <button
                             onClick={openMiruroInBrowser}
@@ -2729,6 +2734,13 @@ export default function WatchAniList() {
                               </button>
                             </div>
                           )}
+                          {/* Manual inline fallback — useful if a server-side CF session exists */}
+                          <button
+                            onClick={openMiruroOsPopup}
+                            className="text-[10px] font-mono text-white/20 hover:text-white/40 transition-colors underline underline-offset-2 mt-1"
+                          >
+                            Try inline embed anyway
+                          </button>
                         </div>
                       ) : miruroUsingPopup && miruroInPageUrl === "loading" ? (
                         /* Fetching miruro URL — show spinner while the in-page player is preparing */
