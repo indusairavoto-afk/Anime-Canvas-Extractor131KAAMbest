@@ -198,13 +198,12 @@ export default function WatchAniList() {
   const [miruroLoading, setMiruroLoading] = useState(false);
   const [miruroError, setMiruroError] = useState<string | null>(null);
   const [miruroUsingPopup, setMiruroUsingPopup] = useState(false);
-  /** URL shown inside the player as an in-page popup iframe (replaces OS window.open popup) */
+  /** URL shown inside the player as an in-page fallback iframe when the inline proxy is unavailable */
   const [miruroInPageUrl, setMiruroInPageUrl] = useState<string | null>(null);
-  /** True when the in-page proxy iframe received a CF/upstream-blocked error; shows "Open in New Window" CTA */
+  /** True when the in-page proxy iframe received a CF/upstream-blocked error; shows inline retry CTA */
   const [miruroProxyBlocked, setMiruroProxyBlocked] = useState(false);
   /** Ref mirror of miruroInPageUrl — readable inside postMessage handlers without closure staleness */
   const miruroInPageUrlRef = useRef<string | null>(null);
-  const miruroPopupRef = useRef<Window | null>(null);
   const [nexusIframeUrl, setNexusIframeUrl] = useState<string | null>(null);
   const [nexusLoading, setNexusLoading] = useState(false);
   const [nexusError, setNexusError] = useState<string | null>(null);
@@ -1351,105 +1350,12 @@ export default function WatchAniList() {
     return () => { cancelled = true; };
   }, [server, anizoneSlug, currentEp]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Opens miruro.bz directly in the user's own browser (new tab/popup) instead
-  // of through our server proxy. Because the request comes from the visitor's
-  // real browser/IP, Cloudflare treats it as a normal visit — no server-IP
-  // block, and no X-Frame-Options issue since it's a top-level navigation,
-  // not an iframe. Must be called synchronously from a click handler so
-  // browsers don't treat the resulting window.open() as a popup-blocked
-  // background action.
-  // window.open()'s top/left/width/height only control the OUTER window
-  // (title bar + address bar included), but we want the CONTENT (the
-  // video) to land exactly on top of the player box. The browser's own
-  // chrome height/width varies by browser/OS/zoom, so instead of a fixed
-  // guess we measure it directly off the actual popup once it exists
-  // (outerHeight - innerHeight, outerWidth - innerWidth) and correct the
-  // window's position/size to compensate. We cache the last measured
-  // chrome size so repositioning on scroll/resize doesn't need to
-  // re-measure every time.
-  const miruroChromeRef = useRef({ width: 8, height: 76 });
-
-  const getMiruroPopupGeometry = useCallback((chrome = miruroChromeRef.current) => {
-    const rect = playerContainerRef.current?.getBoundingClientRect();
-    const contentLeft = Math.round((rect ? rect.left : 0) + window.screenX);
-    const contentTop = Math.round((rect ? rect.top : 0) + window.screenY);
-    const contentWidth = Math.round(rect?.width || 1280);
-    const contentHeight = Math.round(rect?.height || 720);
-    return {
-      left: contentLeft,
-      top: Math.max(0, contentTop - chrome.height),
-      width: contentWidth + chrome.width,
-      height: contentHeight + chrome.height,
-    };
-  }, []);
-
-  // Once the popup exists, measure its real chrome size and snap it into
-  // exact alignment with the player box (fixes the initial guess being
-  // off, which is what caused the popup to land in the wrong spot).
-  const calibrateMiruroPopup = useCallback((popup: Window) => {
-    const measureAndSnap = () => {
-      if (popup.closed) return;
-      try {
-        const measuredWidth = Math.max(0, popup.outerWidth - popup.innerWidth);
-        const measuredHeight = Math.max(0, popup.outerHeight - popup.innerHeight);
-        if (measuredHeight > 0) {
-          miruroChromeRef.current = { width: measuredWidth, height: measuredHeight };
-        }
-        const { left, top, width, height } = getMiruroPopupGeometry(miruroChromeRef.current);
-        try {
-          popup.moveTo(left, top);
-          popup.resizeTo(width, height);
-        } catch {
-          // Ignore — some browsers restrict moveTo/resizeTo.
-        }
-      } catch {
-        // outerWidth/outerHeight blocked by cross-origin policy — skip measurement.
-      }
-    };
-    // Measure a couple of times: immediately (works in most Chromium
-    // builds) and again shortly after (covers browsers that don't report
-    // accurate outer/inner dimensions until the window has fully painted).
-    measureAndSnap();
-    setTimeout(measureAndSnap, 150);
-  }, [getMiruroPopupGeometry]);
-
-  // Keeps the Miruro popup glued to the player box whenever the main page
-  // is scrolled or resized (e.g. window resize, mobile browser chrome
-  // showing/hiding) — otherwise the popup would stay put while the player
-  // box moves underneath it, breaking the "embedded" illusion.
-  useEffect(() => {
-    const reposition = () => {
-      const popup = miruroPopupRef.current;
-      if (!popup || popup.closed) return;
-      const { left, top, width, height } = getMiruroPopupGeometry();
-      try {
-        popup.moveTo(left, top);
-        popup.resizeTo(width, height);
-      } catch {
-        // Some browsers restrict moveTo/resizeTo on windows they didn't
-        // create the "normal" way — safe to ignore, popup just won't
-        // track anymore.
-      }
-    };
-    let raf = 0;
-    const scheduled = () => {
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(reposition);
-    };
-    window.addEventListener("resize", scheduled);
-    window.addEventListener("scroll", scheduled, true);
-    return () => {
-      cancelAnimationFrame(raf);
-      window.removeEventListener("resize", scheduled);
-      window.removeEventListener("scroll", scheduled, true);
-    };
-  }, [getMiruroPopupGeometry]);
-
   /**
-   * Opens Miruro as an in-page popup iframe inside the player area.
-   * Fetches the direct miruro URL then sets miruroInPageUrl so the player
-   * renders it as an iframe rather than a floating OS window.
-   * Falls back to the OS popup only if the URL fetch itself fails.
+   * Opens Miruro as an in-page iframe inside the player area (never a
+   * separate OS window). Fetches the direct miruro URL, then routes it
+   * through our proxy so it can render inline. If the lookup itself fails,
+   * miruroInPageUrl stays null and the overlay below shows an inline error
+   * with a retry button — no external window is ever opened.
    */
   const openMiruroDirect = useCallback(() => {
     setMiruroProxyBlocked(false);
@@ -1462,59 +1368,24 @@ export default function WatchAniList() {
         if (data.url) {
           setMiruroInPageUrl(apiUrl(`/api/miruro/proxy?url=${encodeURIComponent(data.url)}`));
         } else {
-          // URL lookup failed — genuine last resort: OS popup
           setMiruroInPageUrl(null);
-          openMiruroOsPopup();
+          setMiruroError(data.error ?? "Couldn't find a Miruro link for this episode.");
         }
       })
       .catch(() => {
         setMiruroInPageUrl(null);
-        openMiruroOsPopup();
+        setMiruroError("Failed to reach the server. Please try again.");
       });
   }, [animeId, currentEp, romajiTitle, lang]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
-   * True last-resort OS popup — used only when in-page iframe fails, or when
-   * the user explicitly clicks "Open in New Window" in the status panel.
-   * Positions the window over the player box so it feels embedded.
+   * Kept as the single entry point used by all "retry" buttons in the
+   * overlay below. Always resolves in-page — never opens a separate browser
+   * window/tab, so Miruro always stays embedded inside the app.
    */
   const openMiruroOsPopup = useCallback(() => {
-    const { left, top, width, height } = getMiruroPopupGeometry();
-    const features = `width=${width},height=${height},left=${left},top=${top},menubar=no,toolbar=no,location=no,status=no`;
-    const popup = window.open("about:blank", "miruroPlayer", features);
-    miruroPopupRef.current = popup;
-    if (popup) {
-      popup.focus();
-      try {
-        popup.document.write(
-          '<!doctype html><html><head><title>Loading Miruro…</title></head>' +
-          '<body style="margin:0;display:flex;align-items:center;justify-content:center;height:100vh;' +
-          'background:#0a0a0a;color:#c084fc;font-family:monospace;font-size:14px;letter-spacing:0.05em;">' +
-          'Loading Miruro…</body></html>'
-        );
-      } catch {
-        // Cross-origin reuse — skip
-      }
-      calibrateMiruroPopup(popup);
-    }
-    fetch(apiUrl(`/api/miruro/direct-url?anilistId=${animeId}&ep=${currentEp}&romajiTitle=${encodeURIComponent(romajiTitle)}&dub=${lang === "DUB" ? "1" : "0"}`))
-      .then((r) => r.json())
-      .then((data: { url?: string; error?: string }) => {
-        if (data.url && popup && !popup.closed) {
-          // Navigate the popup directly to miruro.bz in the user's own browser.
-          // The user's browser IP is NOT blocked by Cloudflare — only our server's IP is.
-          // A top-level popup window is also exempt from X-Frame-Options (only iframes are affected).
-          popup.location.href = data.url;
-        } else if (popup && !popup.closed) {
-          try { popup.document.body.innerText = data.error ?? "Couldn't find a Miruro link for this episode."; } catch { /* cross-origin */ }
-        }
-      })
-      .catch(() => {
-        if (popup && !popup.closed) {
-          try { popup.document.body.innerText = "Failed to reach the server. Please try again."; } catch { /* cross-origin */ }
-        }
-      });
-  }, [animeId, currentEp, romajiTitle, lang, getMiruroPopupGeometry, calibrateMiruroPopup]);
+    openMiruroDirect();
+  }, [openMiruroDirect]);
 
   // Keep miruroInPageUrlRef in sync so postMessage handlers can read the current
   // value without needing it in their own closure/dependency array.
@@ -1528,10 +1399,6 @@ export default function WatchAniList() {
       setMiruroUsingPopup(false);
       setMiruroInPageUrl(null);
       setMiruroProxyBlocked(false);
-      // Close any open Miruro OS popup when switching away
-      if (miruroPopupRef.current && !miruroPopupRef.current.closed) {
-        miruroPopupRef.current.close();
-      }
       return;
     }
     const cached = raceCache.current.miruro;
@@ -1543,10 +1410,6 @@ export default function WatchAniList() {
         setMiruroUsingPopup(false);
         setMiruroInPageUrl(null);
         setMiruroProxyBlocked(false);
-        // Close OS popup — inline player won the race
-        if (miruroPopupRef.current && !miruroPopupRef.current.closed) {
-          miruroPopupRef.current.close();
-        }
         raceCache.current.miruro = undefined;
         return;
       }
@@ -1564,18 +1427,15 @@ export default function WatchAniList() {
       .then((data: { iframeUrl?: string; error?: string }) => {
         if (cancelled) return;
         if (data.iframeUrl) {
-          // Inline proxy works — dismiss in-page popup and show inline iframe
+          // Inline proxy works — dismiss in-page fallback and show inline iframe
           setMiruroIframeUrl(data.iframeUrl);
           setActualLang(lang === "DUB" ? "DUB" : "SUB");
           setMiruroInPageUrl(null);
           setMiruroProxyBlocked(false);
-          if (miruroPopupRef.current && !miruroPopupRef.current.closed) {
-            miruroPopupRef.current.close();
-          }
         } else {
           // Server-side proxy unavailable (relay blocked, CF issue, etc.).
           // Set miruroError so the auto-switch countdown triggers, and also
-          // enable popup mode so the user can still open Miruro directly.
+          // enable in-page fallback mode so the user can retry loading it inline.
           setMiruroError(data.error ?? "Miruro is currently unavailable. Please try another server.");
           setMiruroUsingPopup(true);
         }
@@ -2441,7 +2301,7 @@ export default function WatchAniList() {
                   />
                 )}
 
-                {/* MIRURO in-page popup — shown when CF session unavailable; user's browser loads proxy directly */}
+                {/* MIRURO in-page fallback — shown when CF session unavailable; user's browser loads proxy directly, embedded inline */}
                 {server === "MIRURO" && !miruroIframeUrl && miruroInPageUrl && miruroInPageUrl !== "loading" && (
                   <div className="absolute inset-0 z-20" style={{ background: "#000" }}>
                     {/* Close / escape hatch strip */}
@@ -2452,9 +2312,9 @@ export default function WatchAniList() {
                         <button
                           onClick={() => openMiruroOsPopup()}
                           className="text-[10px] font-mono text-white/30 hover:text-white/60 uppercase tracking-widest transition-colors"
-                          title="Open in separate window"
+                          title="Reload"
                         >
-                          ↗ New Window
+                          ↻ Reload
                         </button>
                         <button
                           onClick={() => { setMiruroInPageUrl(null); setMiruroUsingPopup(false); }}
@@ -2674,7 +2534,7 @@ export default function WatchAniList() {
                     {banner && <img src={banner} alt="" className="absolute inset-0 w-full h-full object-cover opacity-10 scale-110 blur-sm" />}
                     <div className="relative z-10 flex flex-col items-center gap-4">
                       {miruroProxyBlocked ? (
-                        /* Server IP is CF/upstream blocked — user must open via their own browser */
+                        /* Server IP is CF/upstream blocked — retry loads it inline via the visitor's own browser */
                         <div className="text-center space-y-3">
                           <div className="w-11 h-11 border border-red-400/30 bg-red-400/5 flex items-center justify-center mx-auto rounded-sm">
                             <span className="text-red-400 text-xl">⚡</span>
@@ -2682,13 +2542,13 @@ export default function WatchAniList() {
                           <p className="text-white/80 text-sm font-semibold tracking-wide">Server IP Blocked</p>
                           <p className="text-white/40 text-[11px] font-mono max-w-[280px] text-center leading-relaxed">
                             Miruro is blocking our server's IP address.<br/>
-                            Your browser can still reach it — click below to open it in a new window.
+                            Your browser can still reach it — click below to load it here.
                           </p>
                           <button
                             onClick={openMiruroOsPopup}
                             className="inline-flex items-center gap-2 text-[11px] font-mono font-bold px-5 py-2.5 border border-purple-400/70 text-purple-400 hover:bg-purple-400/10 transition-all uppercase tracking-widest"
                           >
-                            <span>↗</span> Open in New Window
+                            <span>↻</span> Retry
                           </button>
                           {suggestedServer && SERVER_META[suggestedServer] && (
                             <div className="flex items-center gap-2 mt-1">
@@ -2702,7 +2562,7 @@ export default function WatchAniList() {
                           )}
                         </div>
                       ) : miruroUsingPopup && miruroInPageUrl === "loading" ? (
-                        /* Fetching miruro URL — show spinner while in-page popup is preparing */
+                        /* Fetching miruro URL — show spinner while the in-page player is preparing */
                         <>
                           <div className="relative w-14 h-14">
                             <div className="absolute inset-0 rounded-full border-2 border-white/10" />
@@ -2712,20 +2572,20 @@ export default function WatchAniList() {
                           <p className="text-white/70 text-sm font-semibold tracking-wide">Opening Miruro…</p>
                         </>
                       ) : miruroUsingPopup && !miruroInPageUrl ? (
-                        /* In-page popup failed — video is in the OS popup window */
+                        /* In-page player failed to load — offer an inline retry */
                         <div className="text-center space-y-3">
                           <div className="w-11 h-11 border border-purple-400/30 bg-purple-400/5 flex items-center justify-center mx-auto rounded-sm">
                             <Play className="w-5 h-5 text-purple-400 fill-current" />
                           </div>
-                          <p className="text-white/80 text-sm font-semibold tracking-wide">Playing in Miruro</p>
+                          <p className="text-white/80 text-sm font-semibold tracking-wide">Couldn't load Miruro</p>
                           <p className="text-white/35 text-[11px] font-mono max-w-[260px] text-center leading-relaxed">
-                            Your video is playing in the popup window.<br/>If it closed, reopen it below.
+                            {miruroError ?? "Something went wrong loading the player."}<br/>Try again below.
                           </p>
                           <button
                             onClick={openMiruroOsPopup}
                             className="inline-flex items-center gap-2 text-[11px] font-mono font-bold px-5 py-2.5 border border-purple-400/70 text-purple-400 hover:bg-purple-400/10 transition-all uppercase tracking-widest"
                           >
-                            <Play className="w-3 h-3 fill-current" /> Reopen Player
+                            <Play className="w-3 h-3 fill-current" /> Retry
                           </button>
                           {suggestedServer && SERVER_META[suggestedServer] && (
                             <div className="flex items-center gap-2 mt-1">
@@ -2744,12 +2604,12 @@ export default function WatchAniList() {
                             <span className="text-yellow-400 text-xl">🔧</span>
                           </div>
                           <p className="text-white/80 text-sm font-semibold tracking-wide">Miruro Under Maintenance</p>
-                          <p className="text-white/35 text-[11px] font-mono max-w-[260px] text-center leading-relaxed">Our server can't reach Miruro right now,<br/>but your browser can. Try opening it directly.</p>
+                          <p className="text-white/35 text-[11px] font-mono max-w-[260px] text-center leading-relaxed">Our server can't reach Miruro right now,<br/>but your browser can. Try loading it here.</p>
                           <button
                             onClick={openMiruroOsPopup}
                             className="inline-flex items-center gap-2 text-[11px] font-mono font-bold px-5 py-2.5 border border-purple-400/70 text-purple-400 hover:bg-purple-400/10 transition-all uppercase tracking-widest"
                           >
-                            <Play className="w-3 h-3 fill-current" /> Open Miruro in New Window
+                            <Play className="w-3 h-3 fill-current" /> Load Miruro
                           </button>
                           {suggestedServer && SERVER_META[suggestedServer] && (
                             <>
@@ -3682,7 +3542,7 @@ export default function WatchAniList() {
                 onClick={openMiruroOsPopup}
                 className="ml-auto text-[10px] font-mono text-purple-400/50 hover:text-purple-400 uppercase tracking-widest underline underline-offset-2"
               >
-                Open in New Window
+                Reload
               </button>
             </div>
           )}
