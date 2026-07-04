@@ -4,6 +4,7 @@ import * as tls from "tls";
 import { SocksClient } from "socks";
 import { getCfSession, invalidateCfSession, warmCfSession } from "../lib/miruro-cf-solver.js";
 import { isMiruroRelayConfigured, relayFetch } from "../lib/miruro-relay.js";
+import { fetchMiruroNativeStream } from "../lib/miruro-sidecar.js";
 
 const router = Router();
 
@@ -997,6 +998,50 @@ router.get("/miruro/stream", async (req, res) => {
   // Always return swUrl so the health race always succeeds for MIRURO.
   // The SW handles the actual CF bypass in the user's browser.
   res.json({ iframeUrl: swUrl, swUrl, legacyIframeUrl });
+});
+
+/**
+ * GET /api/miruro/native-stream?anilistId=...&ep=...&dub=0|1
+ *
+ * Resolves a direct m3u8 stream via the local Python sidecar (curl_cffi
+ * TLS-impersonation against miruro's /api/secure/pipe backend) instead of
+ * embedding an iframe. When successful this is strictly better than the
+ * iframe/SW path: no X-Frame-Options fight, native player controls, and
+ * intro/outro skip data. Requires MIRURO_PROXY_URL (or another non-datacenter
+ * egress) for the sidecar itself to get past Cloudflare — returns 503 with an
+ * explanatory error otherwise, and the frontend falls back to the iframe/SW path.
+ */
+router.get("/miruro/native-stream", async (req, res) => {
+  const anilistId = (req.query.anilistId as string | undefined)?.trim();
+  const ep = (req.query.ep as string | undefined)?.trim();
+  const preferDub = (req.query.dub as string | undefined) === "1";
+
+  if (!anilistId || !ep) {
+    res.status(400).json({ error: "anilistId and ep query params are required" });
+    return;
+  }
+  const anilistIdNum = parseInt(anilistId);
+  const epNum = parseInt(ep);
+  if (isNaN(anilistIdNum) || isNaN(epNum) || epNum <= 0) {
+    res.status(400).json({ error: `Invalid anilistId/ep: "${anilistId}"/"${ep}"` });
+    return;
+  }
+
+  try {
+    const native = await fetchMiruroNativeStream(anilistIdNum, epNum, preferDub ? "dub" : "sub");
+    const referer = "https://www.miruro.tv/";
+    const hlsUrl = `/api/anizone/hls?u=${Buffer.from(native.streamUrl).toString("base64url")}&ref=${Buffer.from(referer).toString("base64url")}`;
+    const subtitles = native.subtitles.map((s) => ({
+      src: `/api/anizone/hls?u=${Buffer.from(s.url).toString("base64url")}&ref=${Buffer.from(referer).toString("base64url")}`,
+      label: s.label,
+      srclang: s.lang,
+      isDefault: s.isDefault,
+    }));
+    res.json({ hlsUrl, subtitles, intro: native.intro, outro: native.outro, provider: native.provider });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Miruro sidecar error";
+    res.status(503).json({ error: msg });
+  }
 });
 
 export default router;

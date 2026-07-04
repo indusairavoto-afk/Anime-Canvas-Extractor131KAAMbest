@@ -1,0 +1,146 @@
+"""
+Miruro sidecar service.
+
+Talks directly to miruro's `/api/secure/pipe` backend using curl_cffi's
+Chrome-110 TLS fingerprint impersonation instead of a headless browser.
+The "secure" pipe is not encrypted — payloads are just base64(json) requests
+and base64(gzip(json)) responses — so once we have a TLS fingerprint that
+Cloudflare accepts, this is a handful of plain HTTP requests.
+
+This process is started alongside the Node API server and is only ever
+called from within the container (127.0.0.1) — it is not exposed publicly.
+"""
+
+import base64
+import gzip
+import json
+import os
+
+from curl_cffi.requests import AsyncSession
+from fastapi import FastAPI, HTTPException, Query
+from fastapi.responses import JSONResponse
+
+app = FastAPI(title="Miruro Sidecar")
+
+MIRURO_SIDECAR_ORIGIN = os.environ.get("MIRURO_SIDECAR_ORIGIN", "https://www.miruro.tv")
+MIRURO_PIPE_URL = f"{MIRURO_SIDECAR_ORIGIN}/api/secure/pipe"
+
+# When set, routes all outbound pipe requests through a residential/rotating
+# proxy — Cloudflare hard-blocks Replit's own IPs, same constraint as the
+# existing Puppeteer-based bypass (see MIRURO_PROXY_URL in the Node API server).
+MIRURO_PROXY_URL = os.environ.get("MIRURO_PROXY_URL")
+PROXIES = {"http": MIRURO_PROXY_URL, "https": MIRURO_PROXY_URL} if MIRURO_PROXY_URL else None
+
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36",
+    "Referer": f"{MIRURO_SIDECAR_ORIGIN}/",
+    "Origin": MIRURO_SIDECAR_ORIGIN,
+    "Accept": "*/*",
+    "Accept-Language": "en-US,en;q=0.9",
+    "sec-fetch-site": "same-origin",
+    "sec-fetch-mode": "cors",
+    "sec-fetch-dest": "empty",
+    "sec-ch-ua": '"Chromium";v="110", "Not A(Brand";v="24", "Google Chrome";v="110"',
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": '"Windows"',
+}
+
+
+def _encode_pipe_request(payload: dict) -> str:
+    return base64.urlsafe_b64encode(json.dumps(payload).encode()).decode().rstrip("=")
+
+
+def _decode_pipe_response(encoded_str: str) -> dict:
+    try:
+        padded = encoded_str + "=" * (4 - len(encoded_str) % 4)
+        compressed = base64.urlsafe_b64decode(padded)
+        return json.loads(gzip.decompress(compressed).decode("utf-8"))
+    except Exception as exc:
+        raise ValueError(f"Failed to decode pipe response: {exc}")
+
+
+async def _pipe_request(path: str, query: dict) -> dict:
+    payload = {"path": path, "method": "GET", "query": query, "body": None, "version": "0.1.0"}
+    encoded_req = _encode_pipe_request(payload)
+    async with AsyncSession(impersonate="chrome110", proxies=PROXIES, timeout=15) as client:
+        res = await client.get(f"{MIRURO_PIPE_URL}?e={encoded_req}", headers=HEADERS)
+        if res.status_code != 200:
+            raise HTTPException(
+                status_code=502,
+                detail={"upstreamStatus": res.status_code, "body": res.text[:300]},
+            )
+        try:
+            return _decode_pipe_response(res.text.strip())
+        except ValueError as exc:
+            raise HTTPException(status_code=502, detail=str(exc))
+
+
+def _inject_source_slugs(data: dict, anilist_id: int) -> dict:
+    providers = data.get("providers", {})
+    for provider_name, provider_data in providers.items():
+        if not isinstance(provider_data, dict):
+            continue
+        episodes = provider_data.get("episodes", {})
+        if not isinstance(episodes, dict):
+            continue
+        for category, ep_list in episodes.items():
+            if not isinstance(ep_list, list):
+                continue
+            for ep in ep_list:
+                if not isinstance(ep, dict) or "id" not in ep or "number" not in ep:
+                    continue
+                orig_id = ep["id"]
+                prefix = orig_id.split(":")[0] if ":" in orig_id else orig_id
+                ep["slug"] = f"{prefix}-{ep['number']}"
+    return data
+
+
+@app.get("/health")
+async def health():
+    return {"ok": True, "proxyConfigured": bool(MIRURO_PROXY_URL)}
+
+
+@app.get("/episodes/{anilist_id}")
+async def get_episodes(anilist_id: int):
+    data = await _pipe_request("episodes", {"anilistId": anilist_id})
+    return JSONResponse(_inject_source_slugs(data, anilist_id))
+
+
+@app.get("/sources")
+async def get_sources(
+    episode_id: str = Query(..., alias="episodeId"),
+    provider: str = Query(...),
+    anilist_id: int = Query(..., alias="anilistId"),
+    category: str = Query("sub"),
+):
+    enc_id = base64.urlsafe_b64encode(episode_id.encode()).decode().rstrip("=")
+    data = await _pipe_request(
+        "sources",
+        {"episodeId": enc_id, "provider": provider, "category": category, "anilistId": anilist_id},
+    )
+    return JSONResponse(data)
+
+
+@app.get("/watch/{provider}/{anilist_id}/{category}/{slug}")
+async def get_watch(provider: str, anilist_id: int, category: str, slug: str):
+    episodes = await _pipe_request("episodes", {"anilistId": anilist_id})
+    provider_data = episodes.get("providers", {}).get(provider, {})
+    ep_list = provider_data.get("episodes", {}).get(category, [])
+
+    target_id = None
+    for ep in ep_list:
+        orig_id = ep.get("id", "")
+        prefix = orig_id.split(":")[0] if ":" in orig_id else orig_id
+        if f"{prefix}-{ep.get('number')}" == slug:
+            target_id = orig_id
+            break
+
+    if not target_id:
+        raise HTTPException(status_code=404, detail=f"Episode slug '{slug}' not found for provider {provider}")
+
+    enc_id = base64.urlsafe_b64encode(target_id.encode()).decode().rstrip("=")
+    data = await _pipe_request(
+        "sources",
+        {"episodeId": enc_id, "provider": provider, "category": category, "anilistId": anilist_id},
+    )
+    return JSONResponse(data)

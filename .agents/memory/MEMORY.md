@@ -20,3 +20,4 @@
 - [Render single-server deployment](render-deployment.md) — Express serves built frontend static files; all /api/ fetch calls must use apiUrl(); render.yaml builds frontend then API server in one service.
 - [AnimeonSen Cloudflare IP block](animeonsen-cf-block.md) — api.animeonsen.xyz hard IP-blocks Replit servers; iframe-only approach is correct; user's browser handles CF challenges without login.
 - [Named popup cross-origin document access](named-popup-cross-origin.md) — reusing a named window.open() popup across clicks can hold a cross-origin page from a prior navigation; guard every later popup.document access in try/catch.
+- [Miruro Python sidecar (curl_cffi)](miruro-sidecar-curl-cffi.md) — native m3u8 via curl_cffi TLS impersonation, not Puppeteer; uvicorn must use `--loop asyncio` or AsyncSession silently kills the worker.

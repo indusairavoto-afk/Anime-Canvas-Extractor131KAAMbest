@@ -212,6 +212,11 @@ export default function WatchAniList() {
   const [miruroLoading, setMiruroLoading] = useState(false);
   const [miruroError, setMiruroError] = useState<string | null>(null);
   const [miruroUsingPopup, setMiruroUsingPopup] = useState(false);
+  /** Direct m3u8 stream resolved via the Miruro sidecar (curl_cffi TLS impersonation).
+   *  When present, takes priority over the iframe/SW path — no X-Frame-Options fight,
+   *  native player controls, subtitles, and intro/outro skip data. */
+  const [miruroHlsUrl, setMiruroHlsUrl] = useState<string | null>(null);
+  const [miruroSubtitles, setMiruroSubtitles] = useState<{ src: string; label: string; srclang: string; isDefault: boolean }[]>([]);
   /** URL shown inside the player as an in-page fallback iframe when the inline proxy is unavailable */
   const [miruroInPageUrl, setMiruroInPageUrl] = useState<string | null>(null);
   /** Increments on every retry so the iframe key always changes, forcing a full remount
@@ -1662,6 +1667,32 @@ export default function WatchAniList() {
     return () => { cancelled = true; };
   }, [server, animeId, currentEp, lang]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  /**
+   * Try to resolve a direct m3u8 stream via the Miruro sidecar. Runs alongside
+   * the iframe/SW fetch above — when it succeeds, the native HlsPlayer render
+   * takes priority; on failure (sidecar down or still Cloudflare-blocked
+   * without a proxy) we silently keep the existing iframe/SW path as-is.
+   */
+  useEffect(() => {
+    if (server !== "MIRURO") {
+      setMiruroHlsUrl(null);
+      setMiruroSubtitles([]);
+      return;
+    }
+    let cancelled = false;
+    setMiruroHlsUrl(null);
+    setMiruroSubtitles([]);
+    fetch(apiUrl(`/api/miruro/native-stream?anilistId=${animeId}&ep=${currentEp}&dub=${lang === "DUB" ? "1" : "0"}`))
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { hlsUrl?: string; subtitles?: { src: string; label: string; srclang: string; isDefault: boolean }[] } | null) => {
+        if (cancelled || !data?.hlsUrl) return;
+        setMiruroHlsUrl(data.hlsUrl);
+        setMiruroSubtitles(data.subtitles ?? []);
+      })
+      .catch(() => { /* sidecar unavailable — iframe/SW path remains the fallback */ });
+    return () => { cancelled = true; };
+  }, [server, animeId, currentEp, lang]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Load saved AniNeko slug from localStorage
   useEffect(() => {
     if (!animeId) return;
@@ -2520,8 +2551,27 @@ export default function WatchAniList() {
                   />
                 )}
 
+                {/* MIRURO native HLS player — direct m3u8 via the curl_cffi sidecar,
+                    no iframe/X-Frame-Options fight when it resolves successfully. */}
+                {server === "MIRURO" && miruroHlsUrl && (
+                  <HlsPlayer
+                    key={`miruro-native-${animeId}-${currentEp}`}
+                    hlsUrl={miruroHlsUrl}
+                    subtitles={miruroSubtitles}
+                    preferDub={lang === "DUB"}
+                    title={getEpTitle(currentEp) !== `Episode ${currentEp}` ? `${title} — Ep ${currentEp}: ${getEpTitle(currentEp)}` : `${title} — Episode ${currentEp}`}
+                    progressKey={`al_${animeId}_${currentEp}`}
+                    onFatalError={() => setMiruroHlsUrl(null)}
+                    syncCommand={wtSyncCmd}
+                    onPlayStateChange={(playing, time) => playing ? wt.sendPlay(time) : wt.sendPause(time)}
+                    onSeek={(t) => wt.sendSeek(t)}
+                    onBuffering={wt.sendBuffering}
+                    onTimeUpdate={(t) => { playerTimeRef.current = t; }}
+                  />
+                )}
+
                 {/* MIRURO iframe embed — proxied via Service Worker (browser IP, no CF block) */}
-                {server === "MIRURO" && miruroIframeUrl && swReady && (
+                {server === "MIRURO" && !miruroHlsUrl && miruroIframeUrl && swReady && (
                   <iframe
                     ref={iframeRef}
                     key={`miruro-${animeId}-${currentEp}`}
@@ -2535,7 +2585,7 @@ export default function WatchAniList() {
                 )}
 
                 {/* MIRURO in-page fallback — shown when CF session unavailable; user's browser loads proxy directly, embedded inline */}
-                {server === "MIRURO" && !miruroIframeUrl && miruroInPageUrl && miruroInPageUrl !== "loading" && (
+                {server === "MIRURO" && !miruroHlsUrl && !miruroIframeUrl && miruroInPageUrl && miruroInPageUrl !== "loading" && (
                   <div className="absolute inset-0 z-20" style={{ background: "#000" }}>
                     {/* Close / escape hatch strip */}
                     <div className="absolute top-0 left-0 right-0 z-30 flex items-center justify-between px-3 py-1.5"
@@ -2761,8 +2811,8 @@ export default function WatchAniList() {
                   </div>
                 )}
 
-                {/* MIRURO loading / popup / error overlay — hidden when in-page iframe is active */}
-                {server === "MIRURO" && ((!miruroIframeUrl && (miruroProxyBlocked || !(miruroInPageUrl && miruroInPageUrl !== "loading"))) || (miruroIframeUrl && !swReady)) && (
+                {/* MIRURO loading / popup / error overlay — hidden when in-page iframe or native player is active */}
+                {server === "MIRURO" && !miruroHlsUrl && ((!miruroIframeUrl && (miruroProxyBlocked || !(miruroInPageUrl && miruroInPageUrl !== "loading"))) || (miruroIframeUrl && !swReady)) && (
                   <div className="absolute inset-0 z-10 flex flex-col items-center justify-center" style={{ background: "rgba(0,0,0,0.92)" }}>
                     {banner && <img src={banner} alt="" className="absolute inset-0 w-full h-full object-cover opacity-10 scale-110 blur-sm" />}
                     <div className="relative z-10 flex flex-col items-center gap-4">
