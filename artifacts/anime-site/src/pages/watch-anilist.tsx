@@ -3028,7 +3028,7 @@ export default function WatchAniList() {
                           <Play className="w-3 h-3 fill-current" /> AniZone
                         </button>
                         <button
-                          onClick={() => { setServer("MIRURO"); setGogoMaybeBroken(false); setGogoMaybeCountdown(null); setGogoStreamError(false); setIframeLoaded(false); bridgeLiveRef.current = false; setBridgeLive(false); openMiruroOsPopup(); }}
+                          onClick={() => { setServer("MIRURO"); setGogoMaybeBroken(false); setGogoMaybeCountdown(null); setGogoStreamError(false); setIframeLoaded(false); bridgeLiveRef.current = false; setBridgeLive(false); }}
                           className="flex items-center gap-1.5 text-[10px] font-mono font-bold px-3 py-2 border border-purple-400/70 text-purple-400 hover:bg-purple-400/10 transition-all uppercase tracking-widest"
                         >
                           <Play className="w-3 h-3 fill-current" /> Miruro
@@ -3076,7 +3076,7 @@ export default function WatchAniList() {
                           <Play className="w-3 h-3 fill-current" /> AniZone
                         </button>
                         <button
-                          onClick={() => { setServer("MIRURO"); setGogoStreamError(false); setIframeLoaded(false); bridgeLiveRef.current = false; setBridgeLive(false); setAutoSwitchMsg(null); openMiruroOsPopup(); }}
+                          onClick={() => { setServer("MIRURO"); setGogoStreamError(false); setIframeLoaded(false); bridgeLiveRef.current = false; setBridgeLive(false); setAutoSwitchMsg(null); }}
                           className="flex items-center gap-1.5 text-[10px] font-mono font-bold px-3 py-2 border border-purple-400/70 text-purple-400 hover:bg-purple-400/10 transition-all uppercase tracking-widest"
                         >
                           <Play className="w-3 h-3 fill-current" /> Miruro
@@ -3484,7 +3484,7 @@ export default function WatchAniList() {
                       { key: "GOGO",       label: "GOGO",       color: "orange" as const, onClick: () => { userPickedRef.current = true; setServer("GOGO"); setCdnNotFound(false); setIframeLoaded(false); setGogoStreamError(false); bridgeLiveRef.current = false; setBridgeLive(false); } },
                       { key: "KOTO",       label: "KOTO",       color: "teal"   as const, onClick: () => { userPickedRef.current = true; setServer("KOTO"); setIframeLoaded(false); } },
                       { key: "ANIZONE",    label: "ANIZONE",    color: "blue"   as const, onClick: () => { userPickedRef.current = true; setServer("ANIZONE"); setIframeLoaded(false); } },
-                      { key: "MIRURO",     label: "MIRURO",     color: "purple" as const, onClick: () => { userPickedRef.current = true; setServer("MIRURO"); setIframeLoaded(false); openMiruroOsPopup(); } },
+                      { key: "MIRURO",     label: "MIRURO",     color: "purple" as const, onClick: () => { userPickedRef.current = true; setServer("MIRURO"); setIframeLoaded(false); } },
                       { key: "ANIMEONSEN", label: "ANIMEONSEN", color: "green"  as const, onClick: () => { userPickedRef.current = true; setServer("ANIMEONSEN"); setIframeLoaded(false); if (aoCfReady) setAnimeonsenInitializing(false); } },
                       { key: "ANINEKO",    label: "ANINEKO",    color: "pink"   as const, onClick: () => { userPickedRef.current = true; setServer("ANINEKO"); setIframeLoaded(false); } },
                       { key: "SHIROKO",    label: "SHIROKO",    color: "sky"    as const, onClick: () => { userPickedRef.current = true; setServer("SHIROKO"); setIframeLoaded(false); } },
