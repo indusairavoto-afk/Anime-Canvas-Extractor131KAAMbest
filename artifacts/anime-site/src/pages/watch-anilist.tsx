@@ -237,6 +237,8 @@ export default function WatchAniList() {
    * configured and reachable. Used as fallback when the SW path fails.
    */
   const [miruroLegacyUrl, setMiruroLegacyUrl] = useState<string | null>(null);
+  /** True while the Miruro popup window is open (polled from miruroPopupRef.current?.closed) */
+  const [miruroPopupOpen, setMiruroPopupOpen] = useState(false);
   /** Ref mirror of miruroIframeUrl — lets the postMessage handler guard against
    *  stale events without needing miruroIframeUrl in the listener closure. */
   const miruroIframeUrlRef = useRef<string | null>(null);
@@ -246,6 +248,8 @@ export default function WatchAniList() {
    * function without needing it in the effect's dependency array.
    */
   const openMiruroDirectRef = useRef<() => void>(() => {});
+  /** Ref to the Miruro popup window — lets us poll .closed and focus/reopen it */
+  const miruroPopupRef = useRef<Window | null>(null);
   const [nexusIframeUrl, setNexusIframeUrl] = useState<string | null>(null);
   const [nexusLoading, setNexusLoading] = useState(false);
   const [nexusError, setNexusError] = useState<string | null>(null);
@@ -1443,23 +1447,80 @@ export default function WatchAniList() {
   }, [openMiruroDirect]);
 
   /**
-   * Opens miruro.bz directly in the user's own browser tab — bypasses the
-   * server-side proxy (Replit IP is CF-blocked) by routing through the
-   * visitor's real IP instead.  Must be called synchronously within a click
-   * handler so browsers don't treat window.open() as a popup.
+   * Opens miruro.bz in a centered popup window — bypasses both X-Frame-Options
+   * (popups are top-level windows, not iframes) and the server CF block (routes
+   * through the visitor's real IP).  Must be called inside a click handler so
+   * browsers don't treat window.open() as an unwanted popup.
+   * Falls back to a new tab if the browser blocks the popup.
    */
-  const openMiruroInBrowser = useCallback(() => {
+  const openMiruroPopup = useCallback(() => {
     const slug = romajiTitle ? toMiruroSlugClient(romajiTitle) : null;
     const dubSuffix = lang === "DUB" ? "&dub=true" : "";
     const url = slug
       ? `${MIRURO_WATCH_ORIGIN}/watch/${animeId}/${slug}?ep=${currentEp}${dubSuffix}`
       : `${MIRURO_WATCH_ORIGIN}/watch/${animeId}?ep=${currentEp}${dubSuffix}`;
-    window.open(url, "_blank", "noopener,noreferrer");
+
+    // If a popup is already open, just focus and navigate it to the new URL.
+    if (miruroPopupRef.current && !miruroPopupRef.current.closed) {
+      try {
+        miruroPopupRef.current.location.href = url;
+        miruroPopupRef.current.focus();
+        setMiruroPopupOpen(true);
+        return;
+      } catch { /* cross-origin guard — fall through to open fresh */ }
+    }
+
+    // Size and center the popup on the user's screen.
+    const w = Math.min(1280, Math.round((window.screen.availWidth  ?? 1440) * 0.85));
+    const h = Math.min(820,  Math.round((window.screen.availHeight ?? 900)  * 0.85));
+    const left = Math.round(((window.screen.availWidth  ?? 1440) - w) / 2);
+    const top  = Math.round(((window.screen.availHeight ?? 900)  - h) / 2);
+    const features = `width=${w},height=${h},left=${left},top=${top},resizable=yes,scrollbars=yes`;
+
+    const popup = window.open(url, "miruro-player", features);
+    if (popup) {
+      miruroPopupRef.current = popup;
+      setMiruroPopupOpen(true);
+    } else {
+      // Popup blocked by browser — fall back to new tab.
+      window.open(url, "_blank", "noopener,noreferrer");
+    }
   }, [animeId, currentEp, romajiTitle, lang]);
 
   // Keep refs in sync so postMessage handlers read current values without closure staleness.
   useEffect(() => { miruroInPageUrlRef.current = miruroInPageUrl; }, [miruroInPageUrl]);
   useEffect(() => { miruroIframeUrlRef.current = miruroIframeUrl; }, [miruroIframeUrl]);
+
+  // Poll the popup window once per second so we can update miruroPopupOpen when
+  // the user closes it themselves.
+  useEffect(() => {
+    if (!miruroPopupOpen) return;
+    const id = setInterval(() => {
+      if (miruroPopupRef.current?.closed) {
+        setMiruroPopupOpen(false);
+      }
+    }, 1000);
+    return () => clearInterval(id);
+  }, [miruroPopupOpen]);
+
+  // Reset popup tracking when the server or episode changes so a stale popup
+  // reference from a previous watch session doesn't bleed through.
+  // Also close the actual window so it doesn't orphan on the user's desktop.
+  useEffect(() => {
+    return () => {
+      try { miruroPopupRef.current?.close(); } catch { /* cross-origin guard */ }
+      miruroPopupRef.current = null;
+      setMiruroPopupOpen(false);
+    };
+  }, [server, animeId, currentEp]);
+
+  // Close any open Miruro popup when the watch page unmounts entirely.
+  useEffect(() => {
+    return () => {
+      try { miruroPopupRef.current?.close(); } catch { /* cross-origin guard */ }
+      miruroPopupRef.current = null;
+    };
+  }, []);
 
   // Register /sw-miruro.js Service Worker on mount.
   // The SW intercepts /miruro-sw/* requests and proxies them to miruro.bz using
@@ -2706,42 +2767,71 @@ export default function WatchAniList() {
                     {banner && <img src={banner} alt="" className="absolute inset-0 w-full h-full object-cover opacity-10 scale-110 blur-sm" />}
                     <div className="relative z-10 flex flex-col items-center gap-4">
                       {miruroProxyBlocked ? (
-                        /* Miruro can't be embedded — SW CORS failure + no relay configured (or relay also CF-blocked).
-                           The user's browser can still reach miruro.bz directly. */
-                        <div className="text-center space-y-3">
-                          <div className="w-11 h-11 border border-red-400/30 bg-red-400/5 flex items-center justify-center mx-auto rounded-sm">
-                            <span className="text-red-400 text-xl">⚡</span>
-                          </div>
-                          <p className="text-white/80 text-sm font-semibold tracking-wide">Can't embed Miruro</p>
-                          <p className="text-white/40 text-[11px] font-mono max-w-[280px] text-center leading-relaxed">
-                            Miruro can't play inline here — our server is blocked<br/>
-                            and the browser proxy isn't available.<br/>
-                            Your browser can still open it directly.
-                          </p>
-                          <button
-                            onClick={openMiruroInBrowser}
-                            className="inline-flex items-center gap-2 text-[11px] font-mono font-bold px-5 py-2.5 border border-purple-400/70 text-purple-400 hover:bg-purple-400/10 transition-all uppercase tracking-widest"
-                          >
-                            <span>↗</span> Open in Browser
-                          </button>
-                          {suggestedServer && SERVER_META[suggestedServer] && (
-                            <div className="flex items-center gap-2 mt-1">
-                              <button
-                                onClick={() => switchToServer(suggestedServer)}
-                                className={`inline-flex items-center gap-2 text-[11px] font-mono font-bold px-5 py-2.5 border ${SERVER_META[suggestedServer].borderCls} ${SERVER_META[suggestedServer].colorCls} ${SERVER_META[suggestedServer].hoverCls} transition-all uppercase tracking-widest`}
-                              >
-                                <Play className="w-3 h-3 fill-current" /> Try {SERVER_META[suggestedServer].label}
-                              </button>
+                        /* Miruro can't be embedded inline — use a popup window instead.
+                           Popups are top-level browser windows: no X-Frame-Options, no CF server block. */
+                        miruroPopupOpen ? (
+                          /* Popup is currently open — show a "playing" indicator with Reopen / focus */
+                          <div className="text-center space-y-3">
+                            <div className="w-11 h-11 border border-green-400/30 bg-green-400/5 flex items-center justify-center mx-auto rounded-sm">
+                              <span className="text-green-400 text-xl">▶</span>
                             </div>
-                          )}
-                          {/* Manual inline fallback — useful if a server-side CF session exists */}
-                          <button
-                            onClick={openMiruroOsPopup}
-                            className="text-[10px] font-mono text-white/20 hover:text-white/40 transition-colors underline underline-offset-2 mt-1"
-                          >
-                            Try inline embed anyway
-                          </button>
-                        </div>
+                            <p className="text-white/80 text-sm font-semibold tracking-wide">Playing in popup</p>
+                            <p className="text-white/40 text-[11px] font-mono max-w-[260px] text-center leading-relaxed">
+                              Miruro is open in a separate window.<br/>
+                              Switch to it or reopen it below.
+                            </p>
+                            <button
+                              onClick={openMiruroPopup}
+                              className="inline-flex items-center gap-2 text-[11px] font-mono font-bold px-5 py-2.5 border border-purple-400/70 text-purple-400 hover:bg-purple-400/10 transition-all uppercase tracking-widest"
+                            >
+                              <span>↗</span> Reopen / Focus
+                            </button>
+                            {suggestedServer && SERVER_META[suggestedServer] && (
+                              <div className="flex items-center gap-2 mt-1">
+                                <button
+                                  onClick={() => switchToServer(suggestedServer)}
+                                  className={`inline-flex items-center gap-2 text-[11px] font-mono font-bold px-5 py-2.5 border ${SERVER_META[suggestedServer].borderCls} ${SERVER_META[suggestedServer].colorCls} ${SERVER_META[suggestedServer].hoverCls} transition-all uppercase tracking-widest`}
+                                >
+                                  <Play className="w-3 h-3 fill-current" /> Watch inline on {SERVER_META[suggestedServer].label}
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          /* No popup open yet — prompt the user to open one */
+                          <div className="text-center space-y-3">
+                            <div className="w-11 h-11 border border-purple-400/30 bg-purple-400/5 flex items-center justify-center mx-auto rounded-sm">
+                              <span className="text-purple-400 text-xl">⧉</span>
+                            </div>
+                            <p className="text-white/80 text-sm font-semibold tracking-wide">Open Miruro in a popup</p>
+                            <p className="text-white/40 text-[11px] font-mono max-w-[280px] text-center leading-relaxed">
+                              Miruro can't embed here — our server is blocked.<br/>
+                              A popup window bypasses all restrictions.
+                            </p>
+                            <button
+                              onClick={openMiruroPopup}
+                              className="inline-flex items-center gap-2 text-[11px] font-mono font-bold px-5 py-2.5 border border-purple-400/70 text-purple-400 hover:bg-purple-400/10 transition-all uppercase tracking-widest"
+                            >
+                              <span>⧉</span> Open in Popup
+                            </button>
+                            {suggestedServer && SERVER_META[suggestedServer] && (
+                              <div className="flex items-center gap-2 mt-1">
+                                <button
+                                  onClick={() => switchToServer(suggestedServer)}
+                                  className={`inline-flex items-center gap-2 text-[11px] font-mono font-bold px-5 py-2.5 border ${SERVER_META[suggestedServer].borderCls} ${SERVER_META[suggestedServer].colorCls} ${SERVER_META[suggestedServer].hoverCls} transition-all uppercase tracking-widest`}
+                                >
+                                  <Play className="w-3 h-3 fill-current" /> Try {SERVER_META[suggestedServer].label}
+                                </button>
+                              </div>
+                            )}
+                            <button
+                              onClick={openMiruroOsPopup}
+                              className="text-[10px] font-mono text-white/20 hover:text-white/40 transition-colors underline underline-offset-2 mt-1"
+                            >
+                              Try inline embed anyway
+                            </button>
+                          </div>
+                        )
                       ) : miruroUsingPopup && miruroInPageUrl === "loading" ? (
                         /* Fetching miruro URL — show spinner while the in-page player is preparing */
                         <>
