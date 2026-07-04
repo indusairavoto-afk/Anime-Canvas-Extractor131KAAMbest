@@ -1,0 +1,47 @@
+2026-07-04T11:36:37.425458564Z ==> Cloning from https://github.com/indusairavoto-afk/Anime-Canvas-Extractor131KAAMbest
+2026-07-04T11:36:43.456390876Z ==> Checking out commit 76d09a2890b70815bab4706a72696f38610452f5 in branch main
+2026-07-04T11:36:45.503543592Z ==> Using Python version 3.14.3 (default)
+2026-07-04T11:36:45.503554673Z ==> Docs on specifying a Python version: https://render.com/docs/python-version
+2026-07-04T11:36:45.50368196Z ==> Installing Python version 3.14.3...
+2026-07-04T11:36:53.831923906Z ==> Using Poetry version 2.1.3 (default)
+2026-07-04T11:36:53.875572675Z ==> Docs on specifying a Poetry version: https://render.com/docs/poetry-version
+2026-07-04T11:36:53.938489886Z ==> Using uv version 0.10.2 (default)
+2026-07-04T11:36:53.938499047Z ==> Docs on specifying a uv version: https://render.com/docs/uv-version
+2026-07-04T11:36:53.938631784Z ==> Installing uv version 0.10.2...
+2026-07-04T11:36:54.042685204Z ==> Running build command 'npx --yes pnpm@10 install --frozen-lockfile && npx --yes pnpm@10 --filter @workspace/miruro-relay run build && npx --yes playwright install chromium --with-deps'...
+2026-07-04T11:36:54.139789998Z ==> Using Node.js version 24.14.1 (default)
+2026-07-04T11:36:54.139805309Z ==> Docs on specifying a Node.js version: https://render.com/docs/node-version
+2026-07-04T11:37:11.618012289Z 
+2026-07-04T11:37:11.61804023Z > @workspace/miruro-relay@0.0.0 build /opt/render/project/src/artifacts/miruro-relay
+2026-07-04T11:37:11.618050361Z > node ./build.mjs
+2026-07-04T11:37:11.618068912Z 
+2026-07-04T11:37:11.818185618Z 
+2026-07-04T11:37:11.818212279Z   dist/index.mjs      1.1mb ⚠️
+2026-07-04T11:37:11.818216699Z   dist/index.mjs.map  1.7mb
+2026-07-04T11:37:11.818219599Z 
+2026-07-04T11:37:11.81822765Z ⚡ Done in 143ms
+2026-07-04T11:37:14.357088276Z ╔═══════════════════════════════════════════════════════════════════════════════╗
+2026-07-04T11:37:14.357116347Z ║ WARNING: It looks like you are running 'npx playwright install' without first ║
+2026-07-04T11:37:14.357120618Z ║ installing your project's dependencies.                                       ║
+2026-07-04T11:37:14.357124078Z ║                                                                               ║
+2026-07-04T11:37:14.357127118Z ║ To avoid unexpected behavior, please install your dependencies first, and     ║
+2026-07-04T11:37:14.357133398Z ║ then run Playwright's install command:                                        ║
+2026-07-04T11:37:14.357136688Z ║                                                                               ║
+2026-07-04T11:37:14.357139468Z ║     npm install                                                               ║
+2026-07-04T11:37:14.357142509Z ║     npx playwright install                                                    ║
+2026-07-04T11:37:14.357145509Z ║                                                                               ║
+2026-07-04T11:37:14.357148489Z ║ If your project does not yet depend on Playwright, first install the          ║
+2026-07-04T11:37:14.357151629Z ║ applicable npm package (most commonly @playwright/test), and                  ║
+2026-07-04T11:37:14.357155469Z ║ then run Playwright's install command to download the browsers:               ║
+2026-07-04T11:37:14.35715844Z ║                                                                               ║
+2026-07-04T11:37:14.35716137Z ║     npm install @playwright/test                                              ║
+2026-07-04T11:37:14.35716439Z ║     npx playwright install                                                    ║
+2026-07-04T11:37:14.35716724Z ║                                                                               ║
+2026-07-04T11:37:14.35717019Z ╚═══════════════════════════════════════════════════════════════════════════════╝
+2026-07-04T11:37:14.357655997Z Installing dependencies...
+2026-07-04T11:37:14.365155995Z Switching to root user to install dependencies...
+2026-07-04T11:37:15.430268014Z Password: su: Authentication failure
+2026-07-04T11:37:15.431228337Z Failed to install browsers
+2026-07-04T11:37:15.431239957Z Error: Installation process exited with code: 1
+2026-07-04T11:37:15.510235873Z ==> Build failed 😞
+2026-07-04T11:37:15.510263165Z ==> Common ways to troubleshoot your deploy: https://render.com/docs/troubleshooting-deploys
