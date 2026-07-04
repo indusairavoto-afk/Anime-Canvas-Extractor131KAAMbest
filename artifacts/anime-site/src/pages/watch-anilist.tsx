@@ -1775,6 +1775,19 @@ export default function WatchAniList() {
         miruroInPageUrlRef.current = null;
         setMiruroProxyBlocked(true);
       }
+
+      // The SW sends this when its cross-origin fetch to miruro.bz throws a TypeError
+      // (CORS / network error) — meaning the SW cannot proxy from this app's origin,
+      // NOT that the user's browser IP is blocked.  Treat it the same as a SW
+      // activation failure: fall back to the relay URL (if configured) or
+      // openMiruroDirect, reusing the existing swFailed fallback effect.
+      if (
+        evt.data?.type === "miruro-sw-failed" &&
+        server === "MIRURO" &&
+        miruroIframeUrlRef.current?.startsWith("/miruro-sw/")
+      ) {
+        setSwFailed(true);
+      }
     };
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);

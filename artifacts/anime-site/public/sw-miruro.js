@@ -96,10 +96,13 @@ async function handleProxy(request, url) {
     if (ct.includes('text/html')) {
       let html = await upstream.text();
 
-      // Hard CF block — unrecoverable, notify parent overlay immediately
+      // Hard CF block — unrecoverable, notify parent overlay immediately.
+      // Use precise markers only: cf-error-details is a CF-specific CSS class that
+      // only appears on error pages, and "Sorry, you have been blocked" is CF's hard
+      // block message. Avoid "Cloudflare Ray ID" — it can appear in analytics scripts
+      // on normal pages, causing false positives that wrongly surface "Server IP Blocked".
       if (
         html.includes('cf-error-details') ||
-        (html.includes('Cloudflare Ray ID') && !html.includes('Just a moment')) ||
         html.includes('Sorry, you have been blocked')
       ) {
         return cfBlockResponse();
@@ -189,9 +192,16 @@ async function handleProxy(request, url) {
     return new Response(upstream.body, { status: upstream.status, headers: newHeaders });
 
   } catch (err) {
-    // Network error (CORS, connection refused, etc.) → tell parent overlay
     const msg = err instanceof Error ? err.message : String(err);
     console.warn('[sw-miruro] proxy error for', miruroPath, ':', msg);
+    // TypeError = CORS/network failure = the SW cannot read a cross-origin response
+    // from miruro.bz (the server doesn't return CORS headers for this app's origin).
+    // This is a SW limitation, NOT a CF IP block of the user's browser.  Signal
+    // "miruro-sw-failed" so the parent falls back to the relay/openMiruroDirect path
+    // instead of showing the misleading "Server IP Blocked" overlay.
+    if (err instanceof TypeError) {
+      return swFailedResponse(msg);
+    }
     return cfBlockResponse(msg);
   }
 }
@@ -223,6 +233,24 @@ function buildDownstreamHeaders(upstreamHeaders) {
   // Preserve x-obfuscated — miruro SPA uses it to decide XOR decryption mode
   // (already preserved since we copy all non-blocked headers above)
   return h;
+}
+
+/**
+ * Signals the parent watch page that the SW cannot proxy miruro.bz from this
+ * app's origin — typically because miruro.bz doesn't return CORS headers for
+ * cross-origin fetch() calls.  This is a SW limitation, not a CF IP block.
+ * The parent handles this by setting swFailed=true and falling back to the
+ * server-side relay or openMiruroDirect.
+ */
+function swFailedResponse(detail) {
+  const jsonDetail = JSON.stringify(detail || 'SW CORS/network error');
+  return new Response(
+    `<!doctype html><html><head><meta charset="utf-8"></head><body>
+<script>
+try{window.parent.postMessage({type:'miruro-sw-failed',error:${jsonDetail}},'*');}catch(e){}
+</script></body></html>`,
+    { status: 200, headers: { 'content-type': 'text/html; charset=utf-8' } }
+  );
 }
 
 /** Error page that notifies the parent frame via postMessage */
