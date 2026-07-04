@@ -39,11 +39,16 @@ export async function relayFetch(url: string, init: RequestInit = {}): Promise<R
   const method = init.method ?? "GET";
   const hasBody = init.body !== undefined && init.body !== null && method !== "GET" && method !== "HEAD";
 
+  const extraHeaders: Record<string, string> = {
+    "x-relay-headers": encodeHeaders(init.headers),
+  };
+  if (process.env.MIRURO_RELAY_SECRET) {
+    extraHeaders["x-relay-secret"] = process.env.MIRURO_RELAY_SECRET;
+  }
+
   const relayInit: RequestInit & { duplex?: "half" } = {
     method,
-    headers: {
-      "x-relay-headers": encodeHeaders(init.headers),
-    },
+    headers: extraHeaders,
     body: hasBody ? init.body : undefined,
   };
   if (hasBody) relayInit.duplex = "half";

@@ -1,0 +1,12 @@
+name = "miruro-relay"
+main = "src/index.ts"
+compatibility_date = "2024-09-23"
+
+# To set the shared secret (recommended):
+#   npx wrangler secret put RELAY_SECRET
+# Then copy the same value into Replit's MIRURO_RELAY_SECRET secret.
+#
+# After deploying, copy the Worker URL (e.g. https://miruro-relay.<you>.workers.dev)
+# and set it as both:
+#   MIRURO_RELAY_URL   — used by the api-server Node code
+# in Replit's Secrets panel.

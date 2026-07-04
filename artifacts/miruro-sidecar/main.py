@@ -16,6 +16,7 @@ import gzip
 import json
 import os
 
+import httpx
 from curl_cffi.requests import AsyncSession
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import JSONResponse
@@ -25,9 +26,16 @@ app = FastAPI(title="Miruro Sidecar")
 MIRURO_SIDECAR_ORIGIN = os.environ.get("MIRURO_SIDECAR_ORIGIN", "https://www.miruro.tv")
 MIRURO_PIPE_URL = f"{MIRURO_SIDECAR_ORIGIN}/api/secure/pipe"
 
-# When set, routes all outbound pipe requests through a residential/rotating
-# proxy — Cloudflare hard-blocks Replit's own IPs, same constraint as the
-# existing Puppeteer-based bypass (see MIRURO_PROXY_URL in the Node API server).
+# ── Cloudflare Worker relay (preferred bypass) ────────────────────────────────
+# When MIRURO_RELAY_URL is set (pointing at the deployed CF Worker), pipe
+# requests are forwarded through it rather than going direct.  CF Worker IPs
+# (ASN 13335) are Cloudflare's own edge — miruro.bz's firewall that blocks
+# Replit/DigitalOcean IPs does not apply to them.
+MIRURO_RELAY_URL = os.environ.get("MIRURO_RELAY_URL", "").rstrip("/")
+MIRURO_RELAY_SECRET = os.environ.get("MIRURO_RELAY_SECRET", "")
+
+# ── Legacy HTTP proxy (fallback) ──────────────────────────────────────────────
+# When set, routes curl_cffi requests through a residential/rotating proxy.
 MIRURO_PROXY_URL = os.environ.get("MIRURO_PROXY_URL")
 PROXIES = {"http": MIRURO_PROXY_URL, "https": MIRURO_PROXY_URL} if MIRURO_PROXY_URL else None
 
@@ -62,17 +70,34 @@ def _decode_pipe_response(encoded_str: str) -> dict:
 async def _pipe_request(path: str, query: dict) -> dict:
     payload = {"path": path, "method": "GET", "query": query, "body": None, "version": "0.1.0"}
     encoded_req = _encode_pipe_request(payload)
-    async with AsyncSession(impersonate="chrome110", proxies=PROXIES, timeout=15) as client:
-        res = await client.get(f"{MIRURO_PIPE_URL}?e={encoded_req}", headers=HEADERS)
-        if res.status_code != 200:
-            raise HTTPException(
-                status_code=502,
-                detail={"upstreamStatus": res.status_code, "body": res.text[:300]},
+
+    if MIRURO_RELAY_URL:
+        # Route through Cloudflare Worker — CF edge IPs are not blocked by miruro
+        worker_url = f"{MIRURO_RELAY_URL}/pipe"
+        req_headers: dict = {}
+        if MIRURO_RELAY_SECRET:
+            req_headers["x-relay-secret"] = MIRURO_RELAY_SECRET
+        async with httpx.AsyncClient(timeout=15) as client:
+            res = await client.get(
+                worker_url,
+                params={"e": encoded_req, "origin": MIRURO_SIDECAR_ORIGIN},
+                headers=req_headers,
             )
-        try:
-            return _decode_pipe_response(res.text.strip())
-        except ValueError as exc:
-            raise HTTPException(status_code=502, detail=str(exc))
+    else:
+        # Direct curl_cffi with TLS impersonation (works when not IP-blocked,
+        # or when MIRURO_PROXY_URL points to a residential proxy)
+        async with AsyncSession(impersonate="chrome110", proxies=PROXIES, timeout=15) as client:
+            res = await client.get(f"{MIRURO_PIPE_URL}?e={encoded_req}", headers=HEADERS)
+
+    if res.status_code != 200:
+        raise HTTPException(
+            status_code=502,
+            detail={"upstreamStatus": res.status_code, "body": res.text[:300]},
+        )
+    try:
+        return _decode_pipe_response(res.text.strip())
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
 
 
 def _inject_source_slugs(data: dict, anilist_id: int) -> dict:
@@ -97,7 +122,11 @@ def _inject_source_slugs(data: dict, anilist_id: int) -> dict:
 
 @app.get("/health")
 async def health():
-    return {"ok": True, "proxyConfigured": bool(MIRURO_PROXY_URL)}
+    return {
+        "ok": True,
+        "relayConfigured": bool(MIRURO_RELAY_URL),
+        "proxyConfigured": bool(MIRURO_PROXY_URL),
+    }
 
 
 @app.get("/episodes/{anilist_id}")

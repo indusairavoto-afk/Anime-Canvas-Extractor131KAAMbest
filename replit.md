@@ -31,7 +31,25 @@ PORT=5000 pnpm --filter @workspace/anime-site run dev
 - Frontend: http://localhost:5000 (proxied to port 80 externally)
 - API: http://localhost:8080 (proxied to port 8080 externally)
 - Frontend proxies `/api` and `/ws` to the API server automatically
-- `MIRURO_PROXY_URL` secret provides the HTTP proxy for Miruro CF-bypass (format: `http://user:pass@host:port`)
+
+## Miruro stream bypass (Cloudflare Worker)
+
+Miruro's Cloudflare firewall hard-blocks Replit IPs. The fix is a free Cloudflare Worker that proxies the requests — CF edge IPs are never blocked by CF itself.
+
+**One-time deploy (~2 minutes):**
+```bash
+cd workers/miruro-relay
+npm install
+npx wrangler login      # opens browser — free CF account needed
+npx wrangler secret put RELAY_SECRET   # any random string
+npx wrangler deploy     # prints the Worker URL
+```
+
+**Then set these Replit secrets:**
+- `MIRURO_RELAY_URL` — the Worker URL (e.g. `https://miruro-relay.you.workers.dev`)
+- `MIRURO_RELAY_SECRET` — same value you gave `wrangler secret put`
+
+Restart the workflow after setting secrets. See `workers/miruro-relay/README.md` for full details.
 
 ## Database
 
