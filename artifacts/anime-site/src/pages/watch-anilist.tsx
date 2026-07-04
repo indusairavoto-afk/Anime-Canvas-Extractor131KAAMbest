@@ -320,7 +320,8 @@ export default function WatchAniList() {
     const hasError =
       (server === "ANINEKO" && !!aninekoError) ||
       (server === "KOTO" && !!kotoPlayerError) ||
-      (server === "MIRURO" && !!miruroError) ||
+      // Miruro in popup mode = intentional, not a failure — never auto-switch away.
+      (server === "MIRURO" && !!miruroError && !miruroUsingPopup) ||
       (server === "ANIMEONSEN" && !!animeonsenError) ||
       (server === "SHIROKO" && !!shirokoError);
 
@@ -330,7 +331,7 @@ export default function WatchAniList() {
     const iv = setInterval(() => setFailCountdown(n => (n !== null && n > 1 ? n - 1 : n)), 1000);
     const t = setTimeout(() => { switchToServer(suggestedServer); setFailCountdown(null); }, 5000);
     return () => { clearInterval(iv); clearTimeout(t); };
-  }, [server, aninekoError, kotoPlayerError, miruroError, animeonsenError, suggestedServer]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [server, aninekoError, kotoPlayerError, miruroError, miruroUsingPopup, animeonsenError, suggestedServer]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Watch Together sync command for HlsPlayer ───────────────────────────
   const [wtSyncCmd, setWtSyncCmd] = useState<HlsSyncCommand | null>(null);
