@@ -31,7 +31,7 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "PORT=8080 bash -c 'cd artifacts/api-server && pnpm run dev' & PORT=5000 pnpm --filter @workspace/anime-site run dev"
+args = "pnpm install --frozen-lockfile && (PORT=8080 bash -c 'cd artifacts/api-server && pnpm run dev' & PORT=5000 pnpm --filter @workspace/anime-site run dev)"
 waitForPort = 5000
 
 [agent]
