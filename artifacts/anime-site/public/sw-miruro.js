@@ -11,8 +11,9 @@
  */
 
 const MIRURO_ORIGIN = 'https://www.miruro.bz';
+const MIRURO_HOSTNAMES = new Set(['www.miruro.bz', 'miruro.bz', 'www.miruro.to', 'miruro.to']);
 const SW_PREFIX = '/miruro-sw';
-const VERSION = 'v3';
+const VERSION = 'v4';
 
 /** Response headers that would block the iframe or cause CORS issues */
 const DROP_RESP_HEADERS = new Set([
@@ -35,8 +36,20 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
-  if (!url.pathname.startsWith(SW_PREFIX + '/')) return;
-  event.respondWith(handleProxy(event.request, url));
+
+  // Primary: intercept /miruro-sw/* (our proxy path)
+  if (url.pathname.startsWith(SW_PREFIX + '/')) {
+    event.respondWith(handleProxy(event.request, url));
+    return;
+  }
+
+  // Secondary: intercept direct miruro.bz navigations that originate from pages
+  // we control (e.g. CF post-challenge redirect back to the real miruro URL).
+  // Rewrite to go through our SW proxy so X-Frame-Options is stripped.
+  if (MIRURO_HOSTNAMES.has(url.hostname)) {
+    const proxyUrl = new URL(SW_PREFIX + url.pathname + url.search, self.location.origin);
+    event.respondWith(handleProxy(new Request(proxyUrl, { method: event.request.method, headers: event.request.headers }), proxyUrl));
+  }
 });
 
 /**
@@ -83,14 +96,53 @@ async function handleProxy(request, url) {
     if (ct.includes('text/html')) {
       let html = await upstream.text();
 
-      // Detect CF block page — return error that postMessages the parent overlay
+      // Hard CF block — unrecoverable, notify parent overlay immediately
       if (
         html.includes('cf-error-details') ||
-        html.includes('Cloudflare Ray ID') ||
-        html.includes('Just a moment') ||
+        (html.includes('Cloudflare Ray ID') && !html.includes('Just a moment')) ||
         html.includes('Sorry, you have been blocked')
       ) {
         return cfBlockResponse();
+      }
+
+      // Soft CF challenge ("Just a moment…") — pass it through so the user can
+      // solve the Turnstile/JS challenge inside the iframe. Inject a redirect
+      // interceptor so CF's post-solve navigation (to https://www.miruro.bz/...)
+      // is rewritten to go through our /miruro-sw/ proxy instead of hitting
+      // miruro.bz directly (which would be blocked by X-Frame-Options).
+      if (html.includes('Just a moment')) {
+        const redirectInterceptor = `<script>
+(function(){
+  var SW='/miruro-sw';
+  var MORIG=['https://www.miruro.bz','https://miruro.bz','https://www.miruro.to','https://miruro.to'];
+  function rewriteToProxy(href){
+    for(var i=0;i<MORIG.length;i++){
+      if(href.startsWith(MORIG[i])){
+        return SW+href.slice(MORIG[i].length);
+      }
+    }
+    return null;
+  }
+  // Intercept location.href / location.replace / location.assign
+  var _replace=location.replace.bind(location);
+  var _assign=location.assign.bind(location);
+  try{
+    Object.defineProperty(location,'href',{
+      set:function(v){var p=rewriteToProxy(v);if(p){_replace(p);}else{_replace(v);}}
+    });
+  }catch(e){}
+  location.replace=function(v){var p=rewriteToProxy(v);_replace(p||v);};
+  location.assign=function(v){var p=rewriteToProxy(v);_assign(p||v);};
+  // Intercept history navigation used by CF challenge completion
+  var _push=history.pushState.bind(history);
+  var _rep=history.replaceState.bind(history);
+  history.pushState=function(s,t,u){if(u){var p=rewriteToProxy(u);if(p)return _rep(s,t,p);}return _push(s,t,u);};
+  history.replaceState=function(s,t,u){if(u){var p=rewriteToProxy(u);if(p)return _rep(s,t,p);}return _rep(s,t,u);};
+})();
+</script>`;
+        html = redirectInterceptor + html;
+        newHeaders.set('content-type', 'text/html; charset=utf-8');
+        return new Response(html, { status: upstream.status, headers: newHeaders });
       }
 
       // Rewrite absolute miruro.bz URLs → SW-proxied paths
