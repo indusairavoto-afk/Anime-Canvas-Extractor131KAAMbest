@@ -1,5 +1,7 @@
 import { Router } from "express";
-import { ProxyAgent, fetch as undiciFetch } from "undici";
+import { ProxyAgent, Agent as UndiciAgent, fetch as undiciFetch } from "undici";
+import * as tls from "tls";
+import { SocksClient } from "socks";
 import { getCfSession, invalidateCfSession, warmCfSession } from "../lib/miruro-cf-solver.js";
 import { isMiruroRelayConfigured, relayFetch } from "../lib/miruro-relay.js";
 
@@ -7,32 +9,77 @@ const router = Router();
 
 // ── Proxy-aware fetch ────────────────────────────────────────────────────────
 // When MIRURO_PROXY_URL is set, ALL direct upstream fetches to miruro.bz exit
-// via the residential proxy rather than Replit's own (CF-blocked) IP.
-// This is separate from the Puppeteer browser proxy (miruro-cf-solver.ts) —
-// that only affects the browser used to solve the CF JS challenge.
-// Both need the proxy: browser to get cookies, fetch to actually retrieve pages.
-let _proxyAgent: ProxyAgent | undefined;
+// via the configured proxy rather than Replit's own (CF-blocked) IP.
+// Supports:
+//   http://host:port    — HTTP CONNECT proxy (undici ProxyAgent)
+//   socks5://host:port  — Tor / SOCKS5 proxy  (custom undici Agent connector)
+//   socks://host:port   — same as socks5
+
+/**
+ * Build an undici Agent that tunnels every connection through a SOCKS5 proxy
+ * (e.g. Tor on localhost:9050).  Handles both HTTP and HTTPS targets.
+ */
+function createSocks5Agent(socksHost: string, socksPort: number): UndiciAgent {
+  return new UndiciAgent({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    connect: (opts: any, callback: any) => {
+      const isHttps = opts.protocol === "https:";
+      const targetPort = Number(opts.port ?? (isHttps ? 443 : 80));
+      const targetHost: string = opts.hostname;
+
+      SocksClient.createConnection({
+        proxy: { host: socksHost, port: socksPort, type: 5 },
+        command: "connect",
+        destination: { host: targetHost, port: targetPort },
+      })
+        .then(({ socket }) => {
+          if (!isHttps) {
+            callback(null, socket);
+            return;
+          }
+          // Wrap the raw SOCKS tunnel with TLS for HTTPS targets
+          const tlsSocket = tls.connect({
+            socket: socket as Parameters<typeof tls.connect>[0] extends { socket?: infer S } ? S : never,
+            servername: (opts.servername as string | undefined) ?? targetHost,
+            rejectUnauthorized: opts.rejectUnauthorized !== false,
+          });
+          tlsSocket.once("secureConnect", () => callback(null, tlsSocket));
+          tlsSocket.once("error", (err: Error) => callback(err, null));
+        })
+        .catch((err: Error) => callback(err, null));
+    },
+  });
+}
+
+type AnyDispatcher = ProxyAgent | UndiciAgent;
+let _dispatcher: AnyDispatcher | undefined;
 const MIRURO_PROXY_URL = process.env.MIRURO_PROXY_URL;
 if (MIRURO_PROXY_URL) {
   try {
-    _proxyAgent = new ProxyAgent(MIRURO_PROXY_URL);
-    console.info(
-      `[miruro] Proxy agent ready: ${MIRURO_PROXY_URL.replace(/:\/\/.*@/, "://<redacted>@")}`
-    );
+    if (MIRURO_PROXY_URL.startsWith("socks5://") || MIRURO_PROXY_URL.startsWith("socks://")) {
+      const u = new URL(MIRURO_PROXY_URL);
+      _dispatcher = createSocks5Agent(u.hostname, parseInt(u.port, 10) || 9050);
+      console.info(`[miruro] SOCKS5 proxy agent ready: ${u.hostname}:${u.port}`);
+    } else {
+      _dispatcher = new ProxyAgent(MIRURO_PROXY_URL);
+      console.info(
+        `[miruro] HTTP proxy agent ready: ${MIRURO_PROXY_URL.replace(/:\/\/.*@/, "://<redacted>@")}`
+      );
+    }
   } catch (e) {
-    console.error("[miruro] Failed to create ProxyAgent:", e);
+    console.error("[miruro] Failed to create proxy agent:", e);
   }
 }
 
 /**
  * Drop-in fetch replacement that routes through MIRURO_PROXY_URL when set.
- * undici's ProxyAgent correctly handles authenticated proxies (user:pass@host:port).
+ * Supports HTTP CONNECT proxies and SOCKS5 (including Tor on socks5://localhost:9050).
  * Falls back to native fetch when no proxy is configured.
  */
 function proxiedFetch(url: string, init: RequestInit = {}): Promise<Response> {
-  if (_proxyAgent) {
+  if (_dispatcher) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return undiciFetch(url, { ...init, dispatcher: _proxyAgent } as any) as unknown as Promise<Response>;
+    return undiciFetch(url, { ...init, dispatcher: _dispatcher } as any) as unknown as Promise<Response>;
   }
   return fetch(url, init);
 }

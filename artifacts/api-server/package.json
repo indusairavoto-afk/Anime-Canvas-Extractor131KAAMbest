@@ -27,6 +27,7 @@
     "puppeteer-core": "^25.3.0",
     "puppeteer-extra": "^3.3.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "socks": "^2.8.9",
     "undici": "^6.27.0",
     "ws": "^8.21.0"
   },
