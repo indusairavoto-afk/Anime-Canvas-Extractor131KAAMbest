@@ -23,17 +23,14 @@ This installs packages for all 10 workspace projects (frontend, API server, shar
 The "Start application" workflow runs both servers in parallel:
 
 ```
-mkdir -p /tmp/tor-data && chmod 700 /tmp/tor-data && \
-  tor --RunAsDaemon 1 --DataDirectory /tmp/tor-data --SocksPort 9050 \
-      --Log 'notice file /tmp/tor.log' 2>/dev/null; \
-MIRURO_PROXY_URL=socks5://127.0.0.1:9050 PORT=8080 bash -c 'cd artifacts/api-server && pnpm run dev' & \
+PORT=8080 bash -c 'cd artifacts/api-server && pnpm run dev' & \
 PORT=5000 pnpm --filter @workspace/anime-site run dev
 ```
 
 - Frontend: http://localhost:5000 (proxied to port 80 externally)
 - API: http://localhost:8080 (proxied to port 8080 externally)
 - Frontend proxies `/api` and `/ws` to the API server automatically
-- Tor is started first to provide a SOCKS5 proxy for the Miruro CF-bypass layer
+- `MIRURO_PROXY_URL` secret provides the HTTP proxy for Miruro CF-bypass (format: `http://user:pass@host:port`)
 
 ## Database
 
