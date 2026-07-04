@@ -1481,11 +1481,24 @@ export default function WatchAniList() {
       } catch { /* cross-origin guard — fall through to open fresh */ }
     }
 
-    // Size and center the popup on the user's screen.
-    const w = Math.min(1280, Math.round((window.screen.availWidth  ?? 1440) * 0.85));
-    const h = Math.min(820,  Math.round((window.screen.availHeight ?? 900)  * 0.85));
-    const left = Math.round(((window.screen.availWidth  ?? 1440) - w) / 2);
-    const top  = Math.round(((window.screen.availHeight ?? 900)  - h) / 2);
+    // Position and size the popup to snap over the player div so it looks
+    // embedded.  We use the player container's bounding rect + the window's
+    // screen offset + the browser chrome height (outerHeight - innerHeight).
+    // If the ref isn't mounted yet, fall back to a centred popup.
+    let left: number, top: number, w: number, h: number;
+    const rect = playerContainerRef.current?.getBoundingClientRect();
+    if (rect && rect.width > 100 && rect.height > 60) {
+      const chromeH = window.outerHeight - window.innerHeight;
+      w = Math.round(rect.width);
+      h = Math.round(rect.height);
+      left = Math.round(window.screenX + rect.left);
+      top  = Math.round(window.screenY + chromeH + rect.top - window.scrollY);
+    } else {
+      w    = Math.min(1280, Math.round((window.screen.availWidth  ?? 1440) * 0.85));
+      h    = Math.min(820,  Math.round((window.screen.availHeight ?? 900)  * 0.85));
+      left = Math.round(((window.screen.availWidth  ?? 1440) - w) / 2);
+      top  = Math.round(((window.screen.availHeight ?? 900)  - h) / 2);
+    }
     const features = `width=${w},height=${h},left=${left},top=${top},resizable=yes,scrollbars=yes`;
 
     const popup = window.open(url, "miruro-player", features);
