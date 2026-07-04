@@ -236,7 +236,10 @@ export default function WatchAniList() {
    * True when SW registration failed or timed out (5 s). Triggers fallback to
    * legacyIframeUrl (relay proxy) or the in-page openMiruroDirect() path.
    */
-  const [swFailed, setSwFailed] = useState(false);
+  // Initialise from sessionStorage so a prior CF-block on miruro-sw in the same
+  // browser session skips the SW path immediately and shows the popup button
+  // without the 2-3 s black-screen flash while the SW tries and fails again.
+  const [swFailed, setSwFailed] = useState(() => !!sessionStorage.getItem("miruro_sw_blocked"));
   /**
    * Server-side proxy URL returned by /api/miruro/stream when a relay is
    * configured and reachable. Used as fallback when the SW path fails.
@@ -1556,6 +1559,9 @@ export default function WatchAniList() {
   // • On success: setSwReady(true) → MIRURO iframe renders with the /miruro-sw/ URL.
   // • On failure or 5 s timeout: setSwFailed(true) → fallback effect below kicks in.
   useEffect(() => {
+    // If the SW was already known to be CF-blocked this session, skip registration
+    // entirely — no black-screen flash, popup button appears immediately.
+    if (swFailed) return;
     if (!("serviceWorker" in navigator)) {
       setSwFailed(true); // SW not supported → trigger fallback immediately
       return;
@@ -1565,6 +1571,7 @@ export default function WatchAniList() {
     const timeout = setTimeout(() => {
       if (mounted) {
         console.warn("[miruro-sw] SW activation timeout — switching to fallback");
+        sessionStorage.setItem("miruro_sw_blocked", "1");
         setSwFailed(true);
       }
     }, 5000);
@@ -1574,6 +1581,7 @@ export default function WatchAniList() {
       clearTimeout(timeout);
       setSwReady(true);
       setSwFailed(false); // clear any earlier timeout/failure flag so SW path stays active
+      sessionStorage.removeItem("miruro_sw_blocked"); // SW is working — clear stale block flag
     };
 
     navigator.serviceWorker
@@ -1618,6 +1626,7 @@ export default function WatchAniList() {
       // The user can still manually trigger the inline attempt via the "Try inline" button
       // in the overlay (which is useful if a server-side CF session happens to exist).
       setMiruroIframeUrl(null);
+      sessionStorage.setItem("miruro_sw_blocked", "1"); // remember so next visit skips the black-screen flash
       setMiruroProxyBlocked(true);
     }
   }, [swFailed, miruroIframeUrl, miruroLegacyUrl]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1904,6 +1913,7 @@ export default function WatchAniList() {
         server === "MIRURO" &&
         miruroIframeUrlRef.current?.startsWith("/miruro-sw/")
       ) {
+        sessionStorage.setItem("miruro_sw_blocked", "1");
         setSwFailed(true);
       }
     };
