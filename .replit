@@ -1,9 +1,9 @@
-modules = ["nodejs-20", "web", "bash", "python-3.12"]
+modules = ["nodejs-20", "web", "bash", "python-3.11"]
 
 [deployment]
 router = "application"
 deploymentTarget = "autoscale"
-run = ["node", "artifacts/api-server/dist/index.mjs"]
+run = ["gunicorn", "--bind", "0.0.0.0:5000", "main:app"]
 build = ["sh", "-c", "pnpm install --frozen-lockfile && pnpm --filter @workspace/anime-site run build && pnpm --filter @workspace/api-server run build"]
 
 [deployment.postBuild]
@@ -45,6 +45,10 @@ timeoutMs = 20000
 [[ports]]
 localPort = 5000
 externalPort = 80
+
+[[ports]]
+localPort = 8080
+externalPort = 8080
 
 [nix]
 channel = "stable-25_05"
