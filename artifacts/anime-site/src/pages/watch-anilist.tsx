@@ -370,8 +370,10 @@ export default function WatchAniList() {
     const hasError =
       (server === "ANINEKO" && !!aninekoError) ||
       (server === "KOTO" && !!kotoPlayerError) ||
-      // Miruro in popup mode = intentional, not a failure — never auto-switch away.
-      (server === "MIRURO" && !!miruroError && !miruroUsingPopup) ||
+      // Miruro can't embed inline (no proxy configured) — auto-switch away rather than
+      // forcing the user to open an external popup. If they already opened one and it's
+      // actively playing, leave them alone (that's an intentional choice, not a failure).
+      (server === "MIRURO" && ((!!miruroError && !miruroUsingPopup) || (miruroProxyBlocked && !miruroPopupOpen))) ||
       (server === "ANIMEONSEN" && !!animeonsenError) ||
       (server === "SHIROKO" && !!shirokoError);
 
@@ -381,7 +383,7 @@ export default function WatchAniList() {
     const iv = setInterval(() => setFailCountdown(n => (n !== null && n > 1 ? n - 1 : n)), 1000);
     const t = setTimeout(() => { switchToServer(suggestedServer); setFailCountdown(null); }, 5000);
     return () => { clearInterval(iv); clearTimeout(t); };
-  }, [server, aninekoError, kotoPlayerError, miruroError, miruroUsingPopup, animeonsenError, suggestedServer]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [server, aninekoError, kotoPlayerError, miruroError, miruroUsingPopup, miruroProxyBlocked, miruroPopupOpen, animeonsenError, suggestedServer]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Watch Together sync command for HlsPlayer ───────────────────────────
   const [wtSyncCmd, setWtSyncCmd] = useState<HlsSyncCommand | null>(null);
