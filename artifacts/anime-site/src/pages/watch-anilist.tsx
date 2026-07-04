@@ -1500,7 +1500,10 @@ export default function WatchAniList() {
       .then((r) => r.json())
       .then((data: { url?: string; error?: string }) => {
         if (data.url && popup && !popup.closed) {
-          popup.location.href = apiUrl(`/api/miruro/proxy?url=${encodeURIComponent(data.url)}`);
+          // Navigate the popup directly to miruro.bz in the user's own browser.
+          // The user's browser IP is NOT blocked by Cloudflare — only our server's IP is.
+          // A top-level popup window is also exempt from X-Frame-Options (only iframes are affected).
+          popup.location.href = data.url;
         } else if (popup && !popup.closed) {
           try { popup.document.body.innerText = data.error ?? "Couldn't find a Miruro link for this episode."; } catch { /* cross-origin */ }
         }
@@ -2718,7 +2721,7 @@ export default function WatchAniList() {
                             Your video is playing in the popup window.<br/>If it closed, reopen it below.
                           </p>
                           <button
-                            onClick={openMiruroDirect}
+                            onClick={openMiruroOsPopup}
                             className="inline-flex items-center gap-2 text-[11px] font-mono font-bold px-5 py-2.5 border border-purple-400/70 text-purple-400 hover:bg-purple-400/10 transition-all uppercase tracking-widest"
                           >
                             <Play className="w-3 h-3 fill-current" /> Reopen Player
@@ -2742,7 +2745,7 @@ export default function WatchAniList() {
                           <p className="text-white/80 text-sm font-semibold tracking-wide">Miruro Under Maintenance</p>
                           <p className="text-white/35 text-[11px] font-mono max-w-[260px] text-center leading-relaxed">Our server can't reach Miruro right now,<br/>but your browser can. Try opening it directly.</p>
                           <button
-                            onClick={openMiruroDirect}
+                            onClick={openMiruroOsPopup}
                             className="inline-flex items-center gap-2 text-[11px] font-mono font-bold px-5 py-2.5 border border-purple-400/70 text-purple-400 hover:bg-purple-400/10 transition-all uppercase tracking-widest"
                           >
                             <Play className="w-3 h-3 fill-current" /> Open Miruro in New Window
@@ -3024,7 +3027,7 @@ export default function WatchAniList() {
                           <Play className="w-3 h-3 fill-current" /> AniZone
                         </button>
                         <button
-                          onClick={() => { setServer("MIRURO"); setGogoMaybeBroken(false); setGogoMaybeCountdown(null); setGogoStreamError(false); setIframeLoaded(false); bridgeLiveRef.current = false; setBridgeLive(false); openMiruroDirect(); }}
+                          onClick={() => { setServer("MIRURO"); setGogoMaybeBroken(false); setGogoMaybeCountdown(null); setGogoStreamError(false); setIframeLoaded(false); bridgeLiveRef.current = false; setBridgeLive(false); openMiruroOsPopup(); }}
                           className="flex items-center gap-1.5 text-[10px] font-mono font-bold px-3 py-2 border border-purple-400/70 text-purple-400 hover:bg-purple-400/10 transition-all uppercase tracking-widest"
                         >
                           <Play className="w-3 h-3 fill-current" /> Miruro
@@ -3072,7 +3075,7 @@ export default function WatchAniList() {
                           <Play className="w-3 h-3 fill-current" /> AniZone
                         </button>
                         <button
-                          onClick={() => { setServer("MIRURO"); setGogoStreamError(false); setIframeLoaded(false); bridgeLiveRef.current = false; setBridgeLive(false); setAutoSwitchMsg(null); openMiruroDirect(); }}
+                          onClick={() => { setServer("MIRURO"); setGogoStreamError(false); setIframeLoaded(false); bridgeLiveRef.current = false; setBridgeLive(false); setAutoSwitchMsg(null); openMiruroOsPopup(); }}
                           className="flex items-center gap-1.5 text-[10px] font-mono font-bold px-3 py-2 border border-purple-400/70 text-purple-400 hover:bg-purple-400/10 transition-all uppercase tracking-widest"
                         >
                           <Play className="w-3 h-3 fill-current" /> Miruro
@@ -3480,7 +3483,7 @@ export default function WatchAniList() {
                       { key: "GOGO",       label: "GOGO",       color: "orange" as const, onClick: () => { userPickedRef.current = true; setServer("GOGO"); setCdnNotFound(false); setIframeLoaded(false); setGogoStreamError(false); bridgeLiveRef.current = false; setBridgeLive(false); } },
                       { key: "KOTO",       label: "KOTO",       color: "teal"   as const, onClick: () => { userPickedRef.current = true; setServer("KOTO"); setIframeLoaded(false); } },
                       { key: "ANIZONE",    label: "ANIZONE",    color: "blue"   as const, onClick: () => { userPickedRef.current = true; setServer("ANIZONE"); setIframeLoaded(false); } },
-                      { key: "MIRURO",     label: "MIRURO",     color: "purple" as const, onClick: () => { userPickedRef.current = true; setServer("MIRURO"); setIframeLoaded(false); openMiruroDirect(); } },
+                      { key: "MIRURO",     label: "MIRURO",     color: "purple" as const, onClick: () => { userPickedRef.current = true; setServer("MIRURO"); setIframeLoaded(false); openMiruroOsPopup(); } },
                       { key: "ANIMEONSEN", label: "ANIMEONSEN", color: "green"  as const, onClick: () => { userPickedRef.current = true; setServer("ANIMEONSEN"); setIframeLoaded(false); if (aoCfReady) setAnimeonsenInitializing(false); } },
                       { key: "ANINEKO",    label: "ANINEKO",    color: "pink"   as const, onClick: () => { userPickedRef.current = true; setServer("ANINEKO"); setIframeLoaded(false); } },
                       { key: "SHIROKO",    label: "SHIROKO",    color: "sky"    as const, onClick: () => { userPickedRef.current = true; setServer("SHIROKO"); setIframeLoaded(false); } },
