@@ -7,6 +7,7 @@ An anime streaming and discovery site with a React/Vite frontend and an Express 
 - **Frontend** (`artifacts/anime-site`): React 19, Vite, Tailwind CSS, shadcn/ui, TanStack Query, wouter
 - **Backend** (`artifacts/api-server`): Express 5, Drizzle ORM, PostgreSQL, WebSockets (watch-together)
 - **DB schema** (`lib/db`): Drizzle Kit, PostgreSQL (Replit built-in)
+- **Python sidecar** (`artifacts/miruro-sidecar`): FastAPI + uvicorn + curl_cffi; handles Miruro TLS/CF bypass on port 8090
 
 ## First-time setup
 
