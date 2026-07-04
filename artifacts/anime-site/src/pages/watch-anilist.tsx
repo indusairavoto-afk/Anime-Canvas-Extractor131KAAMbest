@@ -141,6 +141,20 @@ query ($id: Int!) {
   }
 }`;
 
+/** Mirror of the server-side toMiruroSlug — construct miruro.bz URLs client-side
+ *  so the blocked-overlay RETRY can call window.open() synchronously (in the click
+ *  handler) without waiting for a fetch, which would be blocked as a popup. */
+function toMiruroSlugClient(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+const MIRURO_WATCH_ORIGIN = "https://www.miruro.bz";
+
 export default function WatchAniList() {
   const params = useParams<{ animeId: string; episode: string }>();
   const animeId = parseInt(params.animeId ?? "0");
@@ -1397,6 +1411,21 @@ export default function WatchAniList() {
     openMiruroDirect();
   }, [openMiruroDirect]);
 
+  /**
+   * Opens miruro.bz directly in the user's own browser tab — bypasses the
+   * server-side proxy (Replit IP is CF-blocked) by routing through the
+   * visitor's real IP instead.  Must be called synchronously within a click
+   * handler so browsers don't treat window.open() as a popup.
+   */
+  const openMiruroInBrowser = useCallback(() => {
+    const slug = romajiTitle ? toMiruroSlugClient(romajiTitle) : null;
+    const dubSuffix = lang === "DUB" ? "&dub=true" : "";
+    const url = slug
+      ? `${MIRURO_WATCH_ORIGIN}/watch/${animeId}/${slug}?ep=${currentEp}${dubSuffix}`
+      : `${MIRURO_WATCH_ORIGIN}/watch/${animeId}?ep=${currentEp}${dubSuffix}`;
+    window.open(url, "_blank", "noopener,noreferrer");
+  }, [animeId, currentEp, romajiTitle, lang]);
+
   // Keep miruroInPageUrlRef in sync so postMessage handlers can read the current
   // value without needing it in their own closure/dependency array.
   useEffect(() => { miruroInPageUrlRef.current = miruroInPageUrl; }, [miruroInPageUrl]);
@@ -2544,7 +2573,7 @@ export default function WatchAniList() {
                     {banner && <img src={banner} alt="" className="absolute inset-0 w-full h-full object-cover opacity-10 scale-110 blur-sm" />}
                     <div className="relative z-10 flex flex-col items-center gap-4">
                       {miruroProxyBlocked ? (
-                        /* Server IP is CF/upstream blocked — retry loads it inline via the visitor's own browser */
+                        /* Server IP is CF/upstream blocked — open miruro.bz directly in the user's browser */
                         <div className="text-center space-y-3">
                           <div className="w-11 h-11 border border-red-400/30 bg-red-400/5 flex items-center justify-center mx-auto rounded-sm">
                             <span className="text-red-400 text-xl">⚡</span>
@@ -2552,13 +2581,13 @@ export default function WatchAniList() {
                           <p className="text-white/80 text-sm font-semibold tracking-wide">Server IP Blocked</p>
                           <p className="text-white/40 text-[11px] font-mono max-w-[280px] text-center leading-relaxed">
                             Miruro is blocking our server's IP address.<br/>
-                            Your browser can still reach it — click below to load it here.
+                            Your browser can still reach it — click below to open it directly.
                           </p>
                           <button
-                            onClick={openMiruroOsPopup}
+                            onClick={openMiruroInBrowser}
                             className="inline-flex items-center gap-2 text-[11px] font-mono font-bold px-5 py-2.5 border border-purple-400/70 text-purple-400 hover:bg-purple-400/10 transition-all uppercase tracking-widest"
                           >
-                            <span>↻</span> Retry
+                            <span>↗</span> Open in Browser
                           </button>
                           {suggestedServer && SERVER_META[suggestedServer] && (
                             <div className="flex items-center gap-2 mt-1">
