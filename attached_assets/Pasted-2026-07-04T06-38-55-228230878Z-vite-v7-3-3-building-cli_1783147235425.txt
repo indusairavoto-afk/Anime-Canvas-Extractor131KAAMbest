@@ -1,0 +1,53 @@
+2026-07-04T06:38:55.228230878Z vite v7.3.3 building client environment for production...
+2026-07-04T06:38:55.29513225Z transforming...
+2026-07-04T06:38:55.767157282Z src/components/ui/tooltip.tsx (2:0): Error when using sourcemap for reporting an error: Can't resolve original location of error.
+2026-07-04T06:38:59.696411898Z ✓ 2212 modules transformed.
+2026-07-04T06:39:00.524121936Z rendering chunks...
+2026-07-04T06:39:00.541382837Z computing gzip size...
+2026-07-04T06:39:00.583031441Z dist/index.html                     1.59 kB │ gzip:   0.59 kB
+2026-07-04T06:39:00.583049082Z dist/assets/index-DO2l-qMQ.css    199.64 kB │ gzip:  28.11 kB
+2026-07-04T06:39:00.583065183Z dist/assets/index-P6Exur57.js   1,490.88 kB │ gzip: 424.49 kB
+2026-07-04T06:39:00.583145079Z 
+2026-07-04T06:39:00.58315398Z (!) Some chunks are larger than 500 kB after minification. Consider:
+2026-07-04T06:39:00.583159091Z - Using dynamic import() to code-split the application
+2026-07-04T06:39:00.583163721Z - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+2026-07-04T06:39:00.583167591Z - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+2026-07-04T06:39:00.583348435Z ✓ built in 5.33s
+2026-07-04T06:39:01.65431227Z 
+2026-07-04T06:39:01.654344182Z > @workspace/api-server@0.0.0 build /opt/render/project/src/artifacts/api-server
+2026-07-04T06:39:01.654352243Z > node ./build.mjs
+2026-07-04T06:39:01.654358553Z 
+2026-07-04T06:39:02.277256766Z 
+2026-07-04T06:39:02.277277997Z   dist/index.mjs                       2.7mb ⚠️
+2026-07-04T06:39:02.277282668Z   dist/pino-worker.mjs               153.4kb
+2026-07-04T06:39:02.277285888Z   dist/pino-file.mjs                 142.1kb
+2026-07-04T06:39:02.277288848Z   dist/pino-pretty.mjs               114.6kb
+2026-07-04T06:39:02.277291728Z   dist/thread-stream-worker.mjs        7.3kb
+2026-07-04T06:39:02.277294598Z   dist/index.mjs.map                   4.6mb
+2026-07-04T06:39:02.277297479Z   dist/pino-worker.mjs.map           256.9kb
+2026-07-04T06:39:02.277300479Z   dist/pino-file.mjs.map             229.0kb
+2026-07-04T06:39:02.277303349Z   dist/pino-pretty.mjs.map           204.0kb
+2026-07-04T06:39:02.277306309Z   dist/thread-stream-worker.mjs.map   12.0kb
+2026-07-04T06:39:02.27730914Z 
+2026-07-04T06:39:02.27731543Z ⚡ Done in 562ms
+2026-07-04T06:39:04.427097337Z ==> Uploading build...
+2026-07-04T06:39:19.982445238Z ==> Uploaded in 9.7s. Compression took 5.8s
+2026-07-04T06:39:20.066929985Z ==> Build successful 🎉
+2026-07-04T06:39:27.279304558Z ==> Deploying...
+2026-07-04T06:39:27.348263285Z ==> Setting WEB_CONCURRENCY=1 by default, based on available CPUs in the instance
+2026-07-04T06:39:52.728346185Z ==> Running 'npx --yes pnpm@10 --filter @workspace/db run push-force && node artifacts/api-server/dist/index.mjs'
+2026-07-04T06:40:03.118951043Z 
+2026-07-04T06:40:03.118974363Z > @workspace/db@0.0.0 push-force /opt/render/project/src/lib/db
+2026-07-04T06:40:03.118980424Z > drizzle-kit push --force --config ./drizzle.config.ts
+2026-07-04T06:40:03.118983504Z 
+2026-07-04T06:40:04.427072221Z Reading config file '/opt/render/project/src/lib/db/drizzle.config.ts'
+2026-07-04T06:40:11.52113928Z Using 'pg' driver for database querying
+2026-07-04T06:40:16.322946627Z [⣷] Pulling schema from database...
+2026-07-04T06:40:16.41585436Z [⣯] Pulling schema from database...
+2026-07-04T06:40:16.427513731Z [⣯] Pulling schema from database...
+2026-07-04T06:40:16.616934133Z /opt/render/project/src/lib/db:
+2026-07-04T06:40:16.616954074Z  ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @workspace/db@0.0.0 push-force: `drizzle-kit push --force --config ./drizzle.config.ts`
+2026-07-04T06:40:16.616960484Z Exit status 1
+2026-07-04T06:40:18.759071446Z ==> Exited with status 1
+2026-07-04T06:40:18.76165421Z ==> Common ways to troubleshoot your deploy: https://render.com/docs/troubleshooting-deploys
+2026-07-04T06:40:23.714008855Z ==> Running 'npx --yes pnpm@10 --filter @workspace/db run push-force && node artifacts/api-server/dist/index.mjs'
