@@ -1366,7 +1366,10 @@ export default function WatchAniList() {
       .then((r) => r.json())
       .then((data: { url?: string; error?: string }) => {
         if (data.url) {
-          setMiruroInPageUrl(apiUrl(`/api/miruro/proxy?url=${encodeURIComponent(data.url)}`));
+          // Cache-bust with a nonce so every retry is guaranteed a genuinely
+          // fresh iframe load — never a stale/stuck document left over from
+          // a prior attempt (the src string always changes, forcing a remount).
+          setMiruroInPageUrl(apiUrl(`/api/miruro/proxy?url=${encodeURIComponent(data.url)}&_t=${Date.now()}`));
         } else {
           setMiruroInPageUrl(null);
           setMiruroError(data.error ?? "Couldn't find a Miruro link for this episode.");

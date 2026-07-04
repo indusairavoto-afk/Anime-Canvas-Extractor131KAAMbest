@@ -444,13 +444,29 @@ router.get("/miruro/proxy", async (req, res) => {
     // Build the inlined env2.js content with our proxy URL rewrites applied.
     // We replace VITE_PROXY_A/B to point at our server instead of ultracloud.cc
     // directly — ultracloud blocks browser cross-origin requests.
+    // Guard: only inline env2.js if it actually looks like JS. If the upstream
+    // fetch returns an HTML error/challenge page instead (e.g. a partial CF
+    // block, a 404, or — historically — our own app's index.html when the
+    // relay was misconfigured), inlining it verbatim inside a <script> tag
+    // would let a literal "</script>" in that HTML close our wrapper script
+    // early. The browser then renders the rest of our injected JS as plain
+    // visible page text instead of executing it. Belt-and-suspenders: also
+    // escape any "</script" sequence so it can never prematurely terminate
+    // the wrapping <script> tag, no matter what content type comes back.
     let env2Inline = "";
     if (env2Upstream?.ok) {
+      const env2ContentType = env2Upstream.headers.get("content-type") ?? "";
       let env2js = await env2Upstream.text();
-      env2js = env2js
-        .replace(/https:\/\/pro\.ultracloud\.cc\//g, "/api/miruro/ultra/pro/")
-        .replace(/https:\/\/pru\.ultracloud\.cc\//g, "/api/miruro/ultra/pru/");
-      env2Inline = env2js;
+      const looksLikeHtml = /^\s*<(!doctype|html)/i.test(env2js);
+      if (!env2ContentType.includes("javascript") && looksLikeHtml) {
+        console.warn("[miruro] env2.js fetch returned HTML instead of JS — skipping inline (upstream likely blocked)");
+      } else {
+        env2js = env2js
+          .replace(/https:\/\/pro\.ultracloud\.cc\//g, "/api/miruro/ultra/pro/")
+          .replace(/https:\/\/pru\.ultracloud\.cc\//g, "/api/miruro/ultra/pru/")
+          .replace(/<\/script/gi, "<\\/script");
+        env2Inline = env2js;
+      }
     }
 
     // ── Rewrite asset URLs ──────────────────────────────────────────────────
@@ -487,6 +503,12 @@ router.get("/miruro/proxy", async (req, res) => {
     // 4. Block service worker registration (the miruro SW tries to precache
     //    files at root paths like /assets/vidstack-*.js that don't exist on
     //    our server, flooding the console with 404s and crashing workbox).
+    // JSON.stringify does NOT escape "</" by default, so a value containing a
+    // literal "</script" sequence (e.g. a crafted url= query param) could
+    // prematurely close our wrapping <script> tag the same way a corrupted
+    // env2.js fetch could — leaking the rest of our injected JS as visible
+    // page text. Escape it defensively for any value interpolated below.
+    const jsStringLiteral = (value: string): string => JSON.stringify(value).replace(/<\/script/gi, "<\\/script");
     const originalPath = targetUrl.pathname + targetUrl.search;
     const PASS = PASS_PREFIX; // e.g. /api/miruro/pass
     const routerFix = `<style id="na-player-only">
@@ -544,7 +566,7 @@ ${env2Inline ? `// env2.js inlined synchronously to ensure window.env is set bef
     });
   } catch(e) {}
 
-  try { history.replaceState(null, '', ${JSON.stringify(originalPath)}); } catch(e) {}
+  try { history.replaceState(null, '', ${jsStringLiteral(originalPath)}); } catch(e) {}
 
   // ── Audio language: always set miruro's localStorage preference ────────────
   // Miruro stores settings under "miruro:settings:*" keys. Since our proxy
