@@ -1,8 +1,41 @@
 import { Router } from "express";
+import { ProxyAgent, fetch as undiciFetch } from "undici";
 import { getCfSession, invalidateCfSession, warmCfSession } from "../lib/miruro-cf-solver.js";
 import { isMiruroRelayConfigured, relayFetch } from "../lib/miruro-relay.js";
 
 const router = Router();
+
+// ── Proxy-aware fetch ────────────────────────────────────────────────────────
+// When MIRURO_PROXY_URL is set, ALL direct upstream fetches to miruro.bz exit
+// via the residential proxy rather than Replit's own (CF-blocked) IP.
+// This is separate from the Puppeteer browser proxy (miruro-cf-solver.ts) —
+// that only affects the browser used to solve the CF JS challenge.
+// Both need the proxy: browser to get cookies, fetch to actually retrieve pages.
+let _proxyAgent: ProxyAgent | undefined;
+const MIRURO_PROXY_URL = process.env.MIRURO_PROXY_URL;
+if (MIRURO_PROXY_URL) {
+  try {
+    _proxyAgent = new ProxyAgent(MIRURO_PROXY_URL);
+    console.info(
+      `[miruro] Proxy agent ready: ${MIRURO_PROXY_URL.replace(/:\/\/.*@/, "://<redacted>@")}`
+    );
+  } catch (e) {
+    console.error("[miruro] Failed to create ProxyAgent:", e);
+  }
+}
+
+/**
+ * Drop-in fetch replacement that routes through MIRURO_PROXY_URL when set.
+ * undici's ProxyAgent correctly handles authenticated proxies (user:pass@host:port).
+ * Falls back to native fetch when no proxy is configured.
+ */
+function proxiedFetch(url: string, init: RequestInit = {}): Promise<Response> {
+  if (_proxyAgent) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return undiciFetch(url, { ...init, dispatcher: _proxyAgent } as any) as unknown as Promise<Response>;
+  }
+  return fetch(url, init);
+}
 
 const MIRURO_ORIGIN = "https://www.miruro.bz";
 const PASS_PREFIX = "/api/miruro/pass";
@@ -50,12 +83,13 @@ async function miruroFetch(url: string, init: RequestInit = {}): Promise<Respons
   };
 
   const firstInit = await addSession(init);
-  const resp = await fetch(url, firstInit);
+  const resp = await proxiedFetch(url, firstInit);
 
   if (resp.status === 403 || resp.status === 429) {
+    await resp.body?.cancel().catch(() => {});
     invalidateCfSession();
     const retryInit = await addSession(init); // triggers a fresh solve
-    return fetch(url, retryInit);
+    return proxiedFetch(url, retryInit);
   }
   return resp;
 }
@@ -269,7 +303,7 @@ router.use("/miruro/ultra", async (req, res, next) => {
     };
     const upstream = isMiruroRelayConfigured()
       ? await relayFetch(upstreamUrl, { method: req.method, headers: ultraHeaders })
-      : await fetch(upstreamUrl, {
+      : await proxiedFetch(upstreamUrl, {
           method: req.method,
           headers: ultraHeaders,
           body: req.method !== "GET" && req.method !== "HEAD" ? req : undefined,

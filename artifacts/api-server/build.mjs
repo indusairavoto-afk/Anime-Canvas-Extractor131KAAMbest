@@ -106,6 +106,7 @@ async function buildAll() {
       "puppeteer-core",
       "puppeteer-extra",
       "puppeteer-extra-plugin-stealth",
+      "undici",
       "electron",
     ],
     sourcemap: "linked",

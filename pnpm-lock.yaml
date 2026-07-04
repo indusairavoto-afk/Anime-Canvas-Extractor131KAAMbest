@@ -416,6 +416,9 @@ importers:
       puppeteer-extra-plugin-stealth:
         specifier: ^2.11.2
         version: 2.11.2(playwright-extra@4.3.6(playwright-core@1.60.0))(puppeteer-extra@3.3.6(puppeteer-core@25.3.0))
+      undici:
+        specifier: ^6.27.0
+        version: 6.27.0
       ws:
         specifier: ^8.21.0
         version: 8.21.0
@@ -463,8 +466,8 @@ importers:
         specifier: ^2.11.2
         version: 2.11.2(playwright-extra@4.3.6(playwright-core@1.60.0))(puppeteer-extra@3.3.6(puppeteer-core@25.3.0))
       undici:
-        specifier: ^8.6.0
-        version: 8.6.0
+        specifier: ^6.27.0
+        version: 6.27.0
     devDependencies:
       '@types/express':
         specifier: ^5.0.6
@@ -3490,9 +3493,9 @@ packages:
   undici-types@7.19.2:
     resolution: {integrity: sha512-qYVnV5OEm2AW8cJMCpdV20CDyaN3g0AjDlOGf1OW4iaDEx8MwdtChUp4zu4H0VP3nDRF/8RKWH+IPp9uW0YGZg==}
 
-  undici@8.6.0:
-    resolution: {integrity: sha512-l2FlC6I510GawyEd1qgcE/okihKrzy+BRTEBlu6T0fdbM9m5yxtIH5Oa3ysRsH0zC4EhmWUEaSDsy2QngBeRlw==}
-    engines: {node: '>=22.19.0'}
+  undici@6.27.0:
+    resolution: {integrity: sha512-YmfV3YnEDzXRC5lZ2jWtWWHKGUm1zIt8AhesR1tens+HTNv+YZlN/dp6G727LOvMJ8xjP9Be7Y2Sdr96LDm+pg==}
+    engines: {node: '>=18.17'}
 
   unicorn-magic@0.3.0:
     resolution: {integrity: sha512-+QBBXBCvifc56fsbuxZQ6Sic3wqqc3WWaqxs58gvJrcOuN83HGTCwz3oS5phzU9LthRNE9VrJCFCLUgHeeFnfA==}
@@ -6426,7 +6429,7 @@ snapshots:
 
   undici-types@7.19.2: {}
 
-  undici@8.6.0: {}
+  undici@6.27.0: {}
 
   unicorn-magic@0.3.0: {}
 
