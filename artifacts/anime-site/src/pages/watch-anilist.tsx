@@ -776,7 +776,11 @@ export default function WatchAniList() {
     if (malId) {
       setServerHealth(h => ({ ...h, KOTO: "checking" }));
       schedule(preferred === "KOTO" ? 0 : HEAD_START, () => {
-        const params = new URLSearchParams({ ep: String(currentEp), malId: String(malId), ...(lang === "DUB" ? { preferDub: "1" } : {}) });
+        // Include the slug in the health-check call if already resolved from
+        // localStorage — the native anikoto scraper needs it, and the mapper
+        // fallback (malId-only) fails for many anime on nekostream.site.
+        const savedKotoSlug = localStorage.getItem(`na_koto3_${animeId}`) ?? "";
+        const params = new URLSearchParams({ ep: String(currentEp), malId: String(malId), ...(savedKotoSlug ? { slug: savedKotoSlug } : {}), ...(lang === "DUB" ? { preferDub: "1" } : {}) });
         fetch(apiUrl(`/api/koto/stream?${params}`))
           .then(r => r.json())
           .then((data: { url?: string; hlsUrl?: string | null; error?: string }) => {
@@ -2670,15 +2674,17 @@ export default function WatchAniList() {
                 )}
 
                 {/* KOTO fallback iframe: player URL found but no extractable HLS.
-                    vidtube.site has no X-Frame-Options so it embeds directly — the browser
-                    handles cookies + same-origin API calls correctly without our proxy.
-                    Other player URLs go through the proxy as before. */}
+                    vidtube.site and megaplay.buzz have no X-Frame-Options and must load
+                    directly — the browser handles cookies + same-origin API calls correctly
+                    without our proxy. megaplay.buzz in particular breaks when proxied
+                    (renders a 404 error page instead of the player). Other player URLs go
+                    through the proxy as before. */}
                 {server === "KOTO" && kotoPlayerUrl && !kotoHlsUrl && (
                   <iframe
                     ref={iframeRef}
                     key={`koto-iframe-${kotoSlug || "mal"}-${currentEp}`}
                     src={
-                      /^https?:\/\/vidtube\.site/i.test(kotoPlayerUrl)
+                      /^https?:\/\/(vidtube\.site|megaplay\.buzz)/i.test(kotoPlayerUrl)
                         ? kotoPlayerUrl
                         : `/api/proxy?url=${encodeURIComponent(kotoPlayerUrl)}&hideChrome=1`
                     }
