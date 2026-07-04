@@ -221,6 +221,31 @@ export default function WatchAniList() {
   const [miruroProxyBlocked, setMiruroProxyBlocked] = useState(false);
   /** Ref mirror of miruroInPageUrl — readable inside postMessage handlers without closure staleness */
   const miruroInPageUrlRef = useRef<string | null>(null);
+  /**
+   * True once the /sw-miruro.js Service Worker is installed and active.
+   * The MIRURO iframe is not rendered until the SW is ready — navigating to
+   * /miruro-sw/* before the SW activates would 404 (no server route exists).
+   */
+  const [swReady, setSwReady] = useState(false);
+  /**
+   * True when SW registration failed or timed out (5 s). Triggers fallback to
+   * legacyIframeUrl (relay proxy) or the in-page openMiruroDirect() path.
+   */
+  const [swFailed, setSwFailed] = useState(false);
+  /**
+   * Server-side proxy URL returned by /api/miruro/stream when a relay is
+   * configured and reachable. Used as fallback when the SW path fails.
+   */
+  const [miruroLegacyUrl, setMiruroLegacyUrl] = useState<string | null>(null);
+  /** Ref mirror of miruroIframeUrl — lets the postMessage handler guard against
+   *  stale events without needing miruroIframeUrl in the listener closure. */
+  const miruroIframeUrlRef = useRef<string | null>(null);
+  /**
+   * Stable ref to openMiruroDirect — allows the SW-fallback effect (which runs
+   * asynchronously on swFailed state change) to call the latest version of the
+   * function without needing it in the effect's dependency array.
+   */
+  const openMiruroDirectRef = useRef<() => void>(() => {});
   const [nexusIframeUrl, setNexusIframeUrl] = useState<string | null>(null);
   const [nexusLoading, setNexusLoading] = useState(false);
   const [nexusError, setNexusError] = useState<string | null>(null);
@@ -792,10 +817,12 @@ export default function WatchAniList() {
     schedule(preferred === "MIRURO" ? 0 : HEAD_START, () => {
       fetch(apiUrl(`/api/miruro/stream?anilistId=${animeId}&ep=${currentEp}&romajiTitle=${encodeURIComponent(romajiTitle)}&dub=${lang === "DUB" ? "1" : "0"}`))
         .then(r => r.json())
-        .then((data: { iframeUrl?: string; error?: string }) => {
+        .then((data: { iframeUrl?: string; swUrl?: string; legacyIframeUrl?: string; error?: string }) => {
           if (cancelled) return;
-          if (data.iframeUrl) {
-            raceCache.current.miruro = { iframeUrl: data.iframeUrl };
+          // Prefer swUrl (browser-SW bypass, always available) over legacy server proxy
+          const url = data.swUrl ?? data.iframeUrl;
+          if (url) {
+            raceCache.current.miruro = { iframeUrl: url };
             setServerHealth(h => ({ ...h, MIRURO: "ok" }));
             setActualLang(lang === "DUB" ? "DUB" : "SUB");
             tryWin("MIRURO");
@@ -1402,6 +1429,10 @@ export default function WatchAniList() {
       });
   }, [animeId, currentEp, romajiTitle, lang]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Keep openMiruroDirectRef in sync so the SW-fallback effect can always call
+  // the latest bound version without stale closure issues.
+  useEffect(() => { openMiruroDirectRef.current = openMiruroDirect; }, [openMiruroDirect]);
+
   /**
    * Kept as the single entry point used by all "retry" buttons in the
    * overlay below. Always resolves in-page — never opens a separate browser
@@ -1426,9 +1457,78 @@ export default function WatchAniList() {
     window.open(url, "_blank", "noopener,noreferrer");
   }, [animeId, currentEp, romajiTitle, lang]);
 
-  // Keep miruroInPageUrlRef in sync so postMessage handlers can read the current
-  // value without needing it in their own closure/dependency array.
+  // Keep refs in sync so postMessage handlers read current values without closure staleness.
   useEffect(() => { miruroInPageUrlRef.current = miruroInPageUrl; }, [miruroInPageUrl]);
+  useEffect(() => { miruroIframeUrlRef.current = miruroIframeUrl; }, [miruroIframeUrl]);
+
+  // Register /sw-miruro.js Service Worker on mount.
+  // The SW intercepts /miruro-sw/* requests and proxies them to miruro.bz using
+  // the user's browser IP (which is NOT CF-blocked, unlike our server's IP).
+  // • On success: setSwReady(true) → MIRURO iframe renders with the /miruro-sw/ URL.
+  // • On failure or 5 s timeout: setSwFailed(true) → fallback effect below kicks in.
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) {
+      setSwFailed(true); // SW not supported → trigger fallback immediately
+      return;
+    }
+    let mounted = true;
+    // 5-second timeout: if SW hasn't activated by then, surface legacy fallback
+    const timeout = setTimeout(() => {
+      if (mounted) {
+        console.warn("[miruro-sw] SW activation timeout — switching to fallback");
+        setSwFailed(true);
+      }
+    }, 5000);
+
+    const markReady = () => {
+      if (!mounted) return;
+      clearTimeout(timeout);
+      setSwReady(true);
+      setSwFailed(false); // clear any earlier timeout/failure flag so SW path stays active
+    };
+
+    navigator.serviceWorker
+      .register("/sw-miruro.js", { scope: "/miruro-sw/" })
+      .then((reg) => {
+        if (reg.active) { markReady(); return; }
+        // SW installing or waiting — listen for activation
+        const worker = reg.installing ?? reg.waiting;
+        if (worker) {
+          worker.addEventListener("statechange", () => {
+            if (worker.state === "activated") markReady();
+          });
+        }
+        // Also fires when controller changes (covers skipWaiting + clients.claim)
+        navigator.serviceWorker.addEventListener("controllerchange", markReady, { once: true });
+      })
+      .catch((err) => {
+        console.warn("[miruro-sw] SW registration failed:", err);
+        clearTimeout(timeout);
+        if (mounted) setSwFailed(true);
+      });
+
+    return () => { mounted = false; clearTimeout(timeout); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fallback: when the SW path fails (not supported, registration error, or timeout),
+  // switch to the legacy server-proxy URL if a relay is configured and reachable,
+  // or drop into the in-page openMiruroDirect() popup path.
+  useEffect(() => {
+    if (!swFailed) return;
+    if (!miruroIframeUrl?.startsWith("/miruro-sw/")) return; // already on legacy URL or null
+    if (miruroLegacyUrl) {
+      // Relay configured + reachable — use server-side proxy directly (no SW needed)
+      setMiruroIframeUrl(miruroLegacyUrl);
+      setSwReady(true); // legacy iframe doesn't need SW; mark as "ready" so it renders
+    } else {
+      // No relay — trigger the in-page openMiruroDirect() path.
+      // This fetches the direct miruro URL and routes it through our server proxy.
+      // Uses a stable ref (openMiruroDirectRef) so the call always uses the
+      // latest bound version without needing it in the effect's dependency array.
+      setMiruroIframeUrl(null);
+      openMiruroDirectRef.current();
+    }
+  }, [swFailed, miruroIframeUrl, miruroLegacyUrl]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch Miruro iframe URL when server is MIRURO
   useEffect(() => {
@@ -1461,20 +1561,29 @@ export default function WatchAniList() {
     setMiruroUsingPopup(false);
     setMiruroInPageUrl(null);
     setMiruroProxyBlocked(false);
+    // Reset legacy URL before each request so a stale relay URL from a prior
+    // episode or server switch can never bleed into the new request's fallback path.
+    setMiruroLegacyUrl(null);
     fetch(apiUrl(`/api/miruro/stream?anilistId=${animeId}&ep=${currentEp}&romajiTitle=${encodeURIComponent(romajiTitle)}&dub=${lang === "DUB" ? "1" : "0"}`))
       .then((r) => r.json())
-      .then((data: { iframeUrl?: string; error?: string }) => {
+      .then((data: { iframeUrl?: string; swUrl?: string; legacyIframeUrl?: string; error?: string }) => {
         if (cancelled) return;
-        if (data.iframeUrl) {
-          // Inline proxy works — dismiss in-page fallback and show inline iframe
-          setMiruroIframeUrl(data.iframeUrl);
+        // Deterministically set or clear the legacy URL — never leave stale value
+        setMiruroLegacyUrl(data.legacyIframeUrl ?? null);
+
+        // Prefer swUrl (browser-side SW CF bypass) when SW is functional.
+        // Fall back to legacyIframeUrl immediately if SW has already failed.
+        const swUrl = data.swUrl ?? data.iframeUrl;
+        const url = swFailed ? (data.legacyIframeUrl ?? swUrl) : swUrl;
+        if (url) {
+          setMiruroIframeUrl(url);
+          // If using legacy URL directly (SW failed), mark as ready so it renders
+          if (swFailed && data.legacyIframeUrl) setSwReady(true);
           setActualLang(lang === "DUB" ? "DUB" : "SUB");
           setMiruroInPageUrl(null);
           setMiruroProxyBlocked(false);
         } else {
-          // Server-side proxy unavailable (relay blocked, CF issue, etc.).
-          // Set miruroError so the auto-switch countdown triggers, and also
-          // enable in-page fallback mode so the user can retry loading it inline.
+          // No URL returned — server couldn't construct one (bad params, etc.)
           setMiruroError(data.error ?? "Miruro is currently unavailable. Please try another server.");
           setMiruroUsingPopup(true);
         }
@@ -1649,10 +1758,18 @@ export default function WatchAniList() {
         setAoCfReady(true);
       }
       // Miruro proxy iframe sends this when upstream is blocked (CF/IP block).
-      // Only handle if there's an active in-page iframe (ref guard) to prevent
-      // stale messages from old episodes/iframes from poisoning the current session.
-      if (evt.data?.type === "miruro-proxy-error" && server === "MIRURO" && miruroInPageUrlRef.current !== null) {
+      // Fires from:
+      //   (a) the SW-proxied iframe (/miruro-sw/*) when CF blocks the SW fetch
+      //   (b) the legacy server-proxy iframe (/api/miruro/proxy) when relay is blocked
+      // Guard against stale messages: require that an active Miruro iframe is actually
+      // shown right now (either the SW/relay iframe OR the in-page fallback iframe).
+      if (
+        evt.data?.type === "miruro-proxy-error" &&
+        server === "MIRURO" &&
+        (miruroIframeUrlRef.current !== null || miruroInPageUrlRef.current !== null)
+      ) {
         setMiruroIframeUrl(null);
+        miruroIframeUrlRef.current = null;
         setMiruroLoading(false);
         setMiruroInPageUrl(null);
         miruroInPageUrlRef.current = null;
@@ -2326,8 +2443,8 @@ export default function WatchAniList() {
                   />
                 )}
 
-                {/* MIRURO iframe embed — loads miruro.to watch page directly (server-side CF session) */}
-                {server === "MIRURO" && miruroIframeUrl && (
+                {/* MIRURO iframe embed — proxied via Service Worker (browser IP, no CF block) */}
+                {server === "MIRURO" && miruroIframeUrl && swReady && (
                   <iframe
                     ref={iframeRef}
                     key={`miruro-${animeId}-${currentEp}`}
@@ -2568,7 +2685,7 @@ export default function WatchAniList() {
                 )}
 
                 {/* MIRURO loading / popup / error overlay — hidden when in-page iframe is active */}
-                {server === "MIRURO" && !miruroIframeUrl && (miruroProxyBlocked || !(miruroInPageUrl && miruroInPageUrl !== "loading")) && (
+                {server === "MIRURO" && ((!miruroIframeUrl && (miruroProxyBlocked || !(miruroInPageUrl && miruroInPageUrl !== "loading"))) || (miruroIframeUrl && !swReady)) && (
                   <div className="absolute inset-0 z-10 flex flex-col items-center justify-center" style={{ background: "rgba(0,0,0,0.92)" }}>
                     {banner && <img src={banner} alt="" className="absolute inset-0 w-full h-full object-cover opacity-10 scale-110 blur-sm" />}
                     <div className="relative z-10 flex flex-col items-center gap-4">

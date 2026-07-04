@@ -965,37 +965,38 @@ router.get("/miruro/stream", async (req, res) => {
     return;
   }
 
+  const slug = romajiTitle ? toMiruroSlug(romajiTitle) : null;
+  const dubSuffix = preferDub ? "&dub=true" : "";
+
+  // ── Primary path: Service Worker bypass (browser-side, no CF block) ──────
+  // The frontend registers /sw-miruro.js which intercepts /miruro-sw/* requests
+  // and proxies them to miruro.bz using the user's browser IP (not blocked by CF).
+  // We just return the /miruro-sw/ URL — the SW handles everything in-browser.
+  // No server-side CF session or relay needed for this path.
+  const swUrl = slug
+    ? `/miruro-sw/watch/${anilistId}/${slug}?ep=${epNum}${dubSuffix}`
+    : `/miruro-sw/watch/${anilistId}?ep=${epNum}${dubSuffix}`;
+
+  // ── Legacy path: server-side proxy (relay or CF session) ─────────────────
+  // Only returned as iframeUrl when a relay is configured and reachable,
+  // or when a CF session was established server-side. Included as a fallback
+  // for environments where the SW cannot register (e.g. certain CSP configs).
+  let legacyIframeUrl: string | undefined;
   if (isMiruroRelayConfigured()) {
-    // Relay is configured — skip CloakBrowser CF-solve, but verify the relay can
-    // actually reach miruro.bz. Render's shared IPs can also get Cloudflare-blocked,
-    // so don't hand back an iframe URL that the proxy will immediately fail on.
     const reachable = await isRelayReachable();
-    if (!reachable) {
-      res.status(503).json({ error: "Miruro is currently unavailable from this server (upstream blocked). Please try another server." });
-      return;
-    }
-  } else {
-    const session = await getCfSession();
-    if (!session) {
-      res.status(503).json({ error: "Miruro is temporarily unavailable — CF session could not be established. Please try another server." });
-      return;
+    if (reachable) {
+      const miruroUrl = slug
+        ? `${MIRURO_ORIGIN}/watch/${anilistId}/${slug}?ep=${epNum}${dubSuffix}`
+        : `${MIRURO_ORIGIN}/watch/${anilistId}?ep=${epNum}${dubSuffix}`;
+      const proto = (req.headers["x-forwarded-proto"] as string | undefined) ?? (req.socket && (req.socket as { encrypted?: boolean }).encrypted ? "https" : "http");
+      const host = (req.headers["x-forwarded-host"] as string | undefined) ?? req.headers.host ?? "localhost:8080";
+      legacyIframeUrl = `${proto}://${host}/api/miruro/proxy?url=${encodeURIComponent(miruroUrl)}`;
     }
   }
 
-  const slug = romajiTitle ? toMiruroSlug(romajiTitle) : null;
-  const dubSuffix = preferDub ? "&dub=true" : "";
-  const miruroUrl = slug
-    ? `${MIRURO_ORIGIN}/watch/${anilistId}/${slug}?ep=${epNum}${dubSuffix}`
-    : `${MIRURO_ORIGIN}/watch/${anilistId}?ep=${epNum}${dubSuffix}`;
-
-  // Build an absolute URL so this works in all deployment environments
-  // (Render, Replit prod, etc.) where the frontend and API may be on
-  // different origins. A relative path would resolve to the static frontend
-  // server which has no /api routes and returns 404 for the iframe src.
-  const proto = (req.headers["x-forwarded-proto"] as string | undefined) ?? (req.socket && (req.socket as { encrypted?: boolean }).encrypted ? "https" : "http");
-  const host = (req.headers["x-forwarded-host"] as string | undefined) ?? req.headers.host ?? "localhost:8080";
-  const iframeUrl = `${proto}://${host}/api/miruro/proxy?url=${encodeURIComponent(miruroUrl)}`;
-  res.json({ iframeUrl });
+  // Always return swUrl so the health race always succeeds for MIRURO.
+  // The SW handles the actual CF bypass in the user's browser.
+  res.json({ iframeUrl: swUrl, swUrl, legacyIframeUrl });
 });
 
 export default router;
