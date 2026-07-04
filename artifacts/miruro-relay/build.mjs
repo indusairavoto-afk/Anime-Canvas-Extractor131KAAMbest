@@ -17,7 +17,18 @@ async function buildAll() {
     outdir: distDir,
     outExtension: { ".js": ".mjs" },
     logLevel: "info",
-    external: ["*.node"],
+    // Mark playwright-extra, stealth plugin, and undici as external.
+    // playwright-extra uses internal dynamic require() calls and native bindings
+    // that don't bundle cleanly with esbuild. undici's ProxyAgent has native
+    // addon dependencies. Both are installed in node_modules and resolved at runtime.
+    external: [
+      "*.node",
+      "playwright-extra",
+      "playwright-core",
+      "puppeteer-extra-plugin-stealth",
+      "playwright",
+      "undici",
+    ],
     sourcemap: "linked",
     banner: {
       js: `import { createRequire as __bannerCrReq } from 'node:module';

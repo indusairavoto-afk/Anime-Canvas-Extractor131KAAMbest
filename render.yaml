@@ -58,6 +58,10 @@ services:
     plan: free
     buildCommand: >-
       npx --yes pnpm@10 install --frozen-lockfile &&
-      npx --yes pnpm@10 --filter @workspace/miruro-relay run build
+      npx --yes pnpm@10 --filter @workspace/miruro-relay run build &&
+      npx --yes playwright install chromium --with-deps
     startCommand: node artifacts/miruro-relay/dist/index.mjs
+    envVars:
+      - key: PROXY_URL
+        sync: false
     healthCheckPath: /healthz

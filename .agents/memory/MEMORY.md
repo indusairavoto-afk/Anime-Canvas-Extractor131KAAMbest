@@ -1,3 +1,4 @@
+- [Miruro Playwright + stealth CF bypass](miruro-playwright-stealth.md) — puppeteer-extra + stealth must be external in esbuild (kind-of CJS issue); proxy auth needs URL parsing; drain body before retry.
 - [GoGo iframe origin rule](gogo-iframe-origin.md) — megaplay.buzz must load directly in iframe (no proxy); streaming.php double-nest causes silent JW Player error.
 - [megaplay.buzz bridge detection](megaplay-bridge-detection.md) — megaplay always returns 200 HTML even for DMCA'd videos; use bridgeLive state (not isCdnWorking) to hide error pages; auto-switch after 2.5s.
 - [Koto player fallback](koto-player-fallback.md) — kotoPlayerUrl (iframe fallback) vs kotoHlsUrl (HLS); overlay only when both are null.

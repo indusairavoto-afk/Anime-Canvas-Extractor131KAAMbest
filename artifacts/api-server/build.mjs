@@ -104,6 +104,8 @@ async function buildAll() {
       "chromium-bidi/*",
       "puppeteer",
       "puppeteer-core",
+      "puppeteer-extra",
+      "puppeteer-extra-plugin-stealth",
       "electron",
     ],
     sourcemap: "linked",
