@@ -389,6 +389,27 @@ const ERROR_NOTIFY_SCRIPT = `<script>
 })();
 </script>`;
 
+/** Returns true if the hostname resolves to a private/loopback address we must not proxy. */
+function isPrivateHost(hostname: string): boolean {
+  // Reject localhost by name
+  if (/^localhost$/i.test(hostname)) return true;
+  // Reject IPv6 loopback / link-local
+  if (/^\[?::1\]?$/.test(hostname) || /^\[?::ffff:/i.test(hostname)) return true;
+  // Parse dotted-decimal IPv4
+  const parts = hostname.split(".");
+  if (parts.length !== 4) return false;
+  const [a, b, c] = parts.map(Number);
+  if (parts.some(p => !/^\d+$/.test(p) || Number(p) > 255)) return false;
+  return (
+    a === 10 ||                             // 10.0.0.0/8
+    a === 127 ||                            // 127.0.0.0/8
+    (a === 172 && b >= 16 && b <= 31) ||    // 172.16.0.0/12
+    (a === 192 && b === 168) ||             // 192.168.0.0/16
+    (a === 169 && b === 254) ||             // 169.254.0.0/16 (link-local / IMDS)
+    (a === 100 && b >= 64 && b <= 127)      // 100.64.0.0/10 (carrier-grade NAT)
+  );
+}
+
 router.get("/proxy", async (req, res) => {
   const rawUrl = req.query.url as string | undefined;
   if (!rawUrl) {
@@ -403,6 +424,10 @@ router.get("/proxy", async (req, res) => {
     }
   } catch {
     return res.status(400).json({ error: "Invalid URL" });
+  }
+
+  if (isPrivateHost(targetUrl.hostname)) {
+    return res.status(403).json({ error: "Requests to private/internal addresses are not allowed" });
   }
 
   try {
