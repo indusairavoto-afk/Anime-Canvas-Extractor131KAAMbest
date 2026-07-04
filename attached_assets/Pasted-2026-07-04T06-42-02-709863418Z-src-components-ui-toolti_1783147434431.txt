@@ -1,0 +1,50 @@
+2026-07-04T06:42:02.709863418Z src/components/ui/tooltip.tsx (2:0): Error when using sourcemap for reporting an error: Can't resolve original location of error.
+2026-07-04T06:42:06.563024043Z ✓ 2212 modules transformed.
+2026-07-04T06:42:07.130855293Z rendering chunks...
+2026-07-04T06:42:07.148967288Z computing gzip size...
+2026-07-04T06:42:07.190285434Z dist/index.html                     1.59 kB │ gzip:   0.59 kB
+2026-07-04T06:42:07.190307315Z dist/assets/index-DO2l-qMQ.css    199.64 kB │ gzip:  28.11 kB
+2026-07-04T06:42:07.190350748Z dist/assets/index-P6Exur57.js   1,490.88 kB │ gzip: 424.49 kB
+2026-07-04T06:42:07.190415553Z 
+2026-07-04T06:42:07.190428003Z (!) Some chunks are larger than 500 kB after minification. Consider:
+2026-07-04T06:42:07.190431964Z - Using dynamic import() to code-split the application
+2026-07-04T06:42:07.190436074Z - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+2026-07-04T06:42:07.190439494Z - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+2026-07-04T06:42:07.190724214Z ✓ built in 4.95s
+2026-07-04T06:42:08.284282223Z 
+2026-07-04T06:42:08.284299534Z > @workspace/api-server@0.0.0 build /opt/render/project/src/artifacts/api-server
+2026-07-04T06:42:08.284304065Z > node ./build.mjs
+2026-07-04T06:42:08.284307155Z 
+2026-07-04T06:42:08.807375793Z 
+2026-07-04T06:42:08.807403375Z   dist/index.mjs                       2.7mb ⚠️
+2026-07-04T06:42:08.807408865Z   dist/pino-worker.mjs               153.4kb
+2026-07-04T06:42:08.807412875Z   dist/pino-file.mjs                 142.1kb
+2026-07-04T06:42:08.807416696Z   dist/pino-pretty.mjs               114.6kb
+2026-07-04T06:42:08.807420556Z   dist/thread-stream-worker.mjs        7.3kb
+2026-07-04T06:42:08.807425276Z   dist/index.mjs.map                   4.6mb
+2026-07-04T06:42:08.807429466Z   dist/pino-worker.mjs.map           256.9kb
+2026-07-04T06:42:08.807433197Z   dist/pino-file.mjs.map             229.0kb
+2026-07-04T06:42:08.807436867Z   dist/pino-pretty.mjs.map           204.0kb
+2026-07-04T06:42:08.807440697Z   dist/thread-stream-worker.mjs.map   12.0kb
+2026-07-04T06:42:08.807445738Z 
+2026-07-04T06:42:08.807452988Z ⚡ Done in 468ms
+2026-07-04T06:42:16.103009904Z ==> Uploading build...
+2026-07-04T06:42:30.422011789Z ==> Uploaded in 9.9s. Compression took 4.4s
+2026-07-04T06:42:30.50821783Z ==> Build successful 🎉
+2026-07-04T06:42:33.090934804Z ==> Deploying...
+2026-07-04T06:42:33.166043926Z ==> Setting WEB_CONCURRENCY=1 by default, based on available CPUs in the instance
+2026-07-04T06:42:59.940413609Z ==> Running 'npx --yes pnpm@10 --filter @workspace/db run push-force && node artifacts/api-server/dist/index.mjs'
+2026-07-04T06:43:12.042240497Z 
+2026-07-04T06:43:12.042264108Z > @workspace/db@0.0.0 push-force /opt/render/project/src/lib/db
+2026-07-04T06:43:12.042269578Z > drizzle-kit push --force --config ./drizzle.config.ts
+2026-07-04T06:43:12.042272819Z 
+2026-07-04T06:43:13.347627863Z Reading config file '/opt/render/project/src/lib/db/drizzle.config.ts'
+2026-07-04T06:43:20.143176593Z Using 'pg' driver for database querying
+2026-07-04T06:43:25.140530091Z [⣷] Pulling schema from database...
+2026-07-04T06:43:25.152930887Z [⣷] Pulling schema from database...
+2026-07-04T06:43:25.347323966Z /opt/render/project/src/lib/db:
+2026-07-04T06:43:25.347347927Z  ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @workspace/db@0.0.0 push-force: `drizzle-kit push --force --config ./drizzle.config.ts`
+2026-07-04T06:43:25.347356908Z Exit status 1
+2026-07-04T06:43:26.665425323Z ==> Exited with status 1
+2026-07-04T06:43:26.667592915Z ==> Common ways to troubleshoot your deploy: https://render.com/docs/troubleshooting-deploys
+2026-07-04T06:43:31.654321887Z ==> Running 'npx --yes pnpm@10 --filter @workspace/db run push-force && node artifacts/api-server/dist/index.mjs'
