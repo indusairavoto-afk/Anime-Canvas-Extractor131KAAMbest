@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { buildProxifyFallbacks } from "../lib/proxify.js";
 
 const router = Router();
 
@@ -226,19 +227,43 @@ router.get("/anizone/hls", async (req, res) => {
     } catch { /* ignore invalid ref, keep default */ }
   }
 
-  try {
-    const upstream = await fetch(cdnUrl, {
+  const directFetch = () =>
+    fetch(cdnUrl, {
       headers: {
         "User-Agent": BROWSER_HEADERS["User-Agent"],
         "Accept-Encoding": "identity",
         Referer: referer,
         Origin: new URL(referer).origin,
       },
+      signal: AbortSignal.timeout(8000),
     });
 
-    if (!upstream.ok) {
-      return res.status(upstream.status).send(`CDN returned ${upstream.status}`);
+  // ── Third-party proxy fallback chain ────────────────────────────────────
+  // If our own server IP can't reach the CDN directly (blocked, timed out,
+  // non-2xx), retry the same resource through independent third-party proxy
+  // CDNs (different infrastructure/IP ranges) before giving up entirely.
+  async function fetchWithFallbacks(): Promise<Response> {
+    try {
+      const direct = await directFetch();
+      if (direct.ok) return direct;
+    } catch { /* fall through to proxy fallbacks */ }
+
+    const fallbacks = buildProxifyFallbacks(cdnUrl, referer);
+    for (const fb of fallbacks) {
+      try {
+        const resp = await fetch(fb.url, {
+          headers: { "User-Agent": BROWSER_HEADERS["User-Agent"] },
+          signal: AbortSignal.timeout(8000),
+        });
+        if (resp.ok) return resp;
+      } catch { /* try next fallback */ }
     }
+
+    throw new Error("All direct and fallback CDN sources failed");
+  }
+
+  try {
+    const upstream = await fetchWithFallbacks();
 
     const contentType = upstream.headers.get("content-type") ?? "";
 
