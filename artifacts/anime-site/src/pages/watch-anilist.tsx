@@ -1499,7 +1499,11 @@ export default function WatchAniList() {
       left = Math.round(((window.screen.availWidth  ?? 1440) - w) / 2);
       top  = Math.round(((window.screen.availHeight ?? 900)  - h) / 2);
     }
-    const features = `width=${w},height=${h},left=${left},top=${top},resizable=yes,scrollbars=yes`;
+    // toolbar=no strips the address/reload bar in most browsers; location=no
+    // removes the URL field; together they give the most app-like chrome.
+    // Modern Chrome still shows a minimal infobar for cross-origin windows but
+    // the full toolbar is gone, so the video takes up nearly the full popup.
+    const features = `width=${w},height=${h},left=${left},top=${top},resizable=yes,scrollbars=no,toolbar=no,location=no,menubar=no,status=no`;
 
     const popup = window.open(url, "miruro-player", features);
     if (popup) {
