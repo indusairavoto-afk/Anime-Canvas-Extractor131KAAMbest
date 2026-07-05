@@ -168,15 +168,24 @@ warmCfSession();
 /**
  * Cached relay reachability check.
  * Render's shared IPs can also be Cloudflare-challenged for miruro.bz.
- * Cache the result for 60 s so every stream request doesn't pay HEAD latency.
+ * Cache a successful result for 60 s so every stream request doesn't pay
+ * HEAD latency. Failures are cached for only 5 s — a single cold-start/
+ * transient blip on the Worker should not lock every viewer into the
+ * "blocked" popup overlay for a full minute (observed in practice: the
+ * first request after a restart timed out, then a manual retry a few
+ * seconds later succeeded immediately).
  */
 let relayReachableCache: { ts: number; ok: boolean } | null = null;
-const RELAY_CHECK_TTL_MS = 60_000;
+const RELAY_CHECK_OK_TTL_MS = 60_000;
+const RELAY_CHECK_FAIL_TTL_MS = 5_000;
 
 async function isRelayReachable(): Promise<boolean> {
   const now = Date.now();
-  if (relayReachableCache && now - relayReachableCache.ts < RELAY_CHECK_TTL_MS) {
-    return relayReachableCache.ok;
+  if (relayReachableCache) {
+    const ttl = relayReachableCache.ok ? RELAY_CHECK_OK_TTL_MS : RELAY_CHECK_FAIL_TTL_MS;
+    if (now - relayReachableCache.ts < ttl) {
+      return relayReachableCache.ok;
+    }
   }
   try {
     const relayBase = (process.env.MIRURO_RELAY_URL ?? "").replace(/\/$/, "");
