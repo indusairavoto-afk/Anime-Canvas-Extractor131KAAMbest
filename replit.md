@@ -21,15 +21,19 @@ This installs packages for all 10 workspace projects (frontend, API server, shar
 
 ## Running the project
 
-The "Start application" workflow runs both servers in parallel:
+The "Start application" workflow runs all three servers in parallel:
 
 ```
-PORT=8080 bash -c 'cd artifacts/api-server && pnpm run dev' & \
-PORT=5000 pnpm --filter @workspace/anime-site run dev
+pnpm install --frozen-lockfile && \
+(cd artifacts/miruro-sidecar && pip install -q -r requirements.txt && \
+  uvicorn main:app --host 127.0.0.1 --port 8090 --loop asyncio > /tmp/miruro-sidecar.log 2>&1 &) && \
+(PORT=8080 bash -c 'cd artifacts/api-server && pnpm run dev' & \
+ PORT=5000 pnpm --filter @workspace/anime-site run dev)
 ```
 
-- Frontend: http://localhost:5000 (proxied to port 80 externally)
-- API: http://localhost:8080 (proxied to port 8080 externally)
+- Frontend: http://localhost:5000 (proxied externally)
+- API: http://localhost:8080
+- Python Miruro sidecar: http://127.0.0.1:8090 (internal only — logs at `/tmp/miruro-sidecar.log`)
 - Frontend proxies `/api` and `/ws` to the API server automatically
 
 ## Miruro stream bypass (Cloudflare Worker)
