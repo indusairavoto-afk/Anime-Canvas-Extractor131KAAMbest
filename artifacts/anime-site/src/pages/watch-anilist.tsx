@@ -175,7 +175,7 @@ export default function WatchAniList() {
   const [loading, setLoading] = useState(true);
   const [lang, setLang] = useState<"SUB" | "DUB">(initialLang as "SUB" | "DUB");
   const [actualLang, setActualLang] = useState<"SUB" | "DUB" | null>(null);
-  const [server, setServer] = useState<"GOGO" | "KOTO" | "ANIZONE" | "MIRURO" | "NEXUS" | "ANIMEONSEN" | "ANINEKO" | "SHIROKO" | "PAHE" | "CUSTOM">("GOGO");
+  const [server, setServer] = useState<"GOGO" | "KOTO" | "ANIZONE" | "MIRURO" | "NEXUS" | "ANIMEONSEN" | "ANINEKO" | "SHIROKO" | "PAHE" | "CUSTOM">("MIRURO");
   const [anizoneSlug, setAnizoneSlug] = useState("");
   const [anizoneSlugInput, setAnizoneSlugInput] = useState("");
   const [anizoneSearching, setAnizoneSearching] = useState(false);
@@ -716,7 +716,11 @@ export default function WatchAniList() {
     let won = false;
     setAutoDetecting(true);
 
-    const preferred = localStorage.getItem(`na_preferred_${animeId}`) as "GOGO" | "KOTO" | "ANIZONE" | "MIRURO" | "NEXUS" | "ANIMEONSEN" | "ANINEKO" | "SHIROKO" | "PAHE" | null;
+    // Default to MIRURO when no preference is saved. Once the user manually picks
+    // a different server it is persisted normally — we don't overwrite that choice.
+    const saved = localStorage.getItem(`na_preferred_${animeId}`) as "GOGO" | "KOTO" | "ANIZONE" | "MIRURO" | "NEXUS" | "ANIMEONSEN" | "ANINEKO" | "SHIROKO" | "PAHE" | null;
+    if (!saved) localStorage.setItem(`na_preferred_${animeId}`, "MIRURO");
+    const preferred = saved ?? "MIRURO";
     // Non-preferred servers wait this long before their fetch fires, giving preferred a head start
     const HEAD_START = preferred ? 800 : 0;
 
@@ -859,12 +863,8 @@ export default function WatchAniList() {
             raceCache.current.miruro = { iframeUrl: url };
             setServerHealth(h => ({ ...h, MIRURO: "ok" }));
             setActualLang(lang === "DUB" ? "DUB" : "SUB");
-            // Delay MIRURO's race win so HLS sources (GOGO, KOTO, ANIZONE) can
-            // win first. MIRURO's health check is instant (URL construction only,
-            // no upstream fetch), so without this delay it always wins even when
-            // a real HLS stream is available. MIRURO only wins if all other
-            // sources fail to respond within ~4 seconds.
-            timers.push(setTimeout(() => tryWin("MIRURO"), 4000));
+            // MIRURO is the preferred server — win the race immediately.
+            tryWin("MIRURO");
           } else {
             raceCache.current.miruro = null;
             setServerHealth(h => ({ ...h, MIRURO: "fail" }));
@@ -1754,21 +1754,39 @@ export default function WatchAniList() {
       return;
     }
     let cancelled = false;
+    const retryTimers: ReturnType<typeof setTimeout>[] = [];
     setMiruroHlsUrl(null);
     setMiruroSubtitles([]);
     setMiruroNativeLoading(true);
-    fetch(apiUrl(`/api/miruro/native-stream?anilistId=${animeId}&ep=${currentEp}&dub=${lang === "DUB" ? "1" : "0"}`), { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data: { hlsUrl?: string; subtitles?: { src: string; label: string; srclang: string; isDefault: boolean }[] } | null) => {
-        if (cancelled) return;
-        setMiruroNativeLoading(false);
-        if (!data?.hlsUrl) return;
-        setMiruroHlsUrl(data.hlsUrl);
-        setMiruroSubtitles(data.subtitles ?? []);
-      })
-      .catch(() => { if (!cancelled) setMiruroNativeLoading(false); })
-      .catch(() => { /* sidecar unavailable — iframe/SW path remains the fallback */ });
-    return () => { cancelled = true; };
+
+    const tryFetch = (attempt: number) => {
+      if (cancelled) return;
+      fetch(apiUrl(`/api/miruro/native-stream?anilistId=${animeId}&ep=${currentEp}&dub=${lang === "DUB" ? "1" : "0"}`), { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data: { hlsUrl?: string; subtitles?: { src: string; label: string; srclang: string; isDefault: boolean }[] } | null) => {
+          if (cancelled) return;
+          if (data?.hlsUrl) {
+            setMiruroNativeLoading(false);
+            setMiruroHlsUrl(data.hlsUrl);
+            setMiruroSubtitles(data.subtitles ?? []);
+          } else if (attempt < 2) {
+            // Retry up to 2 times — sidecar may still be warming up
+            retryTimers.push(setTimeout(() => tryFetch(attempt + 1), 3000));
+          } else {
+            setMiruroNativeLoading(false);
+          }
+        })
+        .catch(() => {
+          if (cancelled) return;
+          if (attempt < 2) {
+            retryTimers.push(setTimeout(() => tryFetch(attempt + 1), 3000));
+          } else {
+            setMiruroNativeLoading(false);
+          }
+        });
+    };
+    tryFetch(0);
+    return () => { cancelled = true; retryTimers.forEach(clearTimeout); };
   }, [server, animeId, currentEp, lang]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load saved AniNeko slug from localStorage
@@ -2702,6 +2720,17 @@ export default function WatchAniList() {
                     onBuffering={wt.sendBuffering}
                     onTimeUpdate={(t) => { playerTimeRef.current = t; }}
                   />
+                )}
+
+                {/* MIRURO — loading spinner while native-stream sidecar fetch is in flight */}
+                {server === "MIRURO" && miruroNativeLoading && !miruroHlsUrl && (
+                  <div className="absolute inset-0 z-20 flex flex-col items-center justify-center" style={{ background: "rgba(0,0,0,0.92)" }}>
+                    {banner && <img src={banner} alt="" className="absolute inset-0 w-full h-full object-cover opacity-10 scale-110 blur-sm" />}
+                    <div className="relative z-10 flex flex-col items-center gap-3">
+                      <div className="w-8 h-8 border-2 border-purple-400/40 border-t-purple-400 rounded-full animate-spin" />
+                      <p className="text-white/50 text-[11px] font-mono uppercase tracking-widest">Fetching stream…</p>
+                    </div>
+                  </div>
                 )}
 
                 {/* MIRURO native HLS player — direct m3u8 via the curl_cffi sidecar,
