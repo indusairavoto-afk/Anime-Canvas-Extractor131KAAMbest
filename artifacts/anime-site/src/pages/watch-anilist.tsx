@@ -175,7 +175,7 @@ export default function WatchAniList() {
   const [loading, setLoading] = useState(true);
   const [lang, setLang] = useState<"SUB" | "DUB">(initialLang as "SUB" | "DUB");
   const [actualLang, setActualLang] = useState<"SUB" | "DUB" | null>(null);
-  const [server, setServer] = useState<"GOGO" | "KOTO" | "ANIZONE" | "MIRURO" | "NEXUS" | "ANIMEONSEN" | "ANINEKO" | "SHIROKO" | "CUSTOM">("GOGO");
+  const [server, setServer] = useState<"GOGO" | "KOTO" | "ANIZONE" | "MIRURO" | "NEXUS" | "ANIMEONSEN" | "ANINEKO" | "SHIROKO" | "PAHE" | "CUSTOM">("GOGO");
   const [anizoneSlug, setAnizoneSlug] = useState("");
   const [anizoneSlugInput, setAnizoneSlugInput] = useState("");
   const [anizoneSearching, setAnizoneSearching] = useState(false);
@@ -311,12 +311,15 @@ export default function WatchAniList() {
     animeonsen?: { iframeUrl?: string; contentId?: string } | null;
     anineko?: { iframeUrl?: string; slug?: string } | null;
     shiroko?: { iframeUrl?: string } | null;
+    pahe?: { hlsUrl?: string } | null;
   }>({});
   const [autoDetecting, setAutoDetecting] = useState(false);
   const [autoSwitchMsg, setAutoSwitchMsg] = useState<string | null>(null);
   const [gogoMaybeBroken, setGogoMaybeBroken] = useState(false);
   const [gogoMaybeCountdown, setGogoMaybeCountdown] = useState<number | null>(null);
-  const [serverHealth, setServerHealth] = useState<{ GOGO: "unknown" | "checking" | "ok" | "fail"; KOTO: "unknown" | "checking" | "ok" | "fail"; ANIZONE: "unknown" | "checking" | "ok" | "fail"; MIRURO: "unknown" | "checking" | "ok" | "fail"; NEXUS: "unknown" | "checking" | "ok" | "fail"; ANIMEONSEN: "unknown" | "checking" | "ok" | "fail"; ANINEKO: "unknown" | "checking" | "ok" | "fail"; SHIROKO: "unknown" | "checking" | "ok" | "fail" }>({ GOGO: "unknown", KOTO: "unknown", ANIZONE: "unknown", MIRURO: "unknown", NEXUS: "unknown", ANIMEONSEN: "unknown", ANINEKO: "unknown", SHIROKO: "unknown" });
+  const [paheHlsUrl, setPaheHlsUrl] = useState<string | null>(null);
+  const [paheError, setPaheError] = useState<string | null>(null);
+  const [serverHealth, setServerHealth] = useState<{ GOGO: "unknown" | "checking" | "ok" | "fail"; KOTO: "unknown" | "checking" | "ok" | "fail"; ANIZONE: "unknown" | "checking" | "ok" | "fail"; MIRURO: "unknown" | "checking" | "ok" | "fail"; NEXUS: "unknown" | "checking" | "ok" | "fail"; ANIMEONSEN: "unknown" | "checking" | "ok" | "fail"; ANINEKO: "unknown" | "checking" | "ok" | "fail"; SHIROKO: "unknown" | "checking" | "ok" | "fail"; PAHE: "unknown" | "checking" | "ok" | "fail" }>({ GOGO: "unknown", KOTO: "unknown", ANIZONE: "unknown", MIRURO: "unknown", NEXUS: "unknown", ANIMEONSEN: "unknown", ANINEKO: "unknown", SHIROKO: "unknown", PAHE: "unknown" });
   const [sourcePageTitle, setSourcePageTitle] = useState<string | null>(null);
   const [verifyResult, setVerifyResult] = useState<{ correct: boolean; confidence: "high" | "medium" | "low"; reason: string; extractedEpisode: number | null } | null>(null);
   const [newEpNotice, setNewEpNotice] = useState<number | null>(null);
@@ -336,10 +339,11 @@ export default function WatchAniList() {
     ANIMEONSEN: { label: "AnimeonSen", colorCls: "text-green-400",  borderCls: "border-green-400/70",  hoverCls: "hover:bg-green-400/10" },
     ANINEKO:    { label: "AniNeko",    colorCls: "text-pink-400",   borderCls: "border-pink-400/70",   hoverCls: "hover:bg-pink-400/10" },
     SHIROKO:    { label: "Shiroko",    colorCls: "text-sky-400",    borderCls: "border-sky-400/70",    hoverCls: "hover:bg-sky-400/10" },
+    PAHE:       { label: "AnimePahe",  colorCls: "text-rose-400",   borderCls: "border-rose-400/70",   hoverCls: "hover:bg-rose-400/10" },
   };
 
   const suggestedServer = useMemo(() => {
-    const priority = ["GOGO", "KOTO", "ANIZONE", "MIRURO", "ANINEKO", "ANIMEONSEN", "SHIROKO"] as const;
+    const priority = ["GOGO", "KOTO", "ANIZONE", "MIRURO", "ANINEKO", "ANIMEONSEN", "SHIROKO", "PAHE"] as const;
     return priority.find(s => s !== server && serverHealth[s] === "ok") ?? null;
   }, [server, serverHealth]);
 
@@ -378,7 +382,8 @@ export default function WatchAniList() {
       // actively playing, leave them alone (that's an intentional choice, not a failure).
       (server === "MIRURO" && ((!!miruroError && !miruroUsingPopup) || (miruroProxyBlocked && !miruroPopupOpen))) ||
       (server === "ANIMEONSEN" && !!animeonsenError) ||
-      (server === "SHIROKO" && !!shirokoError);
+      (server === "SHIROKO" && !!shirokoError) ||
+      (server === "PAHE" && !!paheError);
 
     if (!hasError || !suggestedServer) { setFailCountdown(null); return; }
 
@@ -386,7 +391,7 @@ export default function WatchAniList() {
     const iv = setInterval(() => setFailCountdown(n => (n !== null && n > 1 ? n - 1 : n)), 1000);
     const t = setTimeout(() => { switchToServer(suggestedServer); setFailCountdown(null); }, 5000);
     return () => { clearInterval(iv); clearTimeout(t); };
-  }, [server, aninekoError, kotoPlayerError, miruroError, miruroUsingPopup, miruroProxyBlocked, miruroPopupOpen, animeonsenError, suggestedServer]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [server, aninekoError, kotoPlayerError, miruroError, miruroUsingPopup, miruroProxyBlocked, miruroPopupOpen, animeonsenError, shirokoError, paheError, suggestedServer]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Watch Together sync command for HlsPlayer ───────────────────────────
   const [wtSyncCmd, setWtSyncCmd] = useState<HlsSyncCommand | null>(null);
@@ -562,7 +567,9 @@ export default function WatchAniList() {
     userPickedRef.current = false;
     raceCache.current = {};
     setAutoDetecting(false);
-    setServerHealth({ GOGO: "unknown", KOTO: "unknown", ANIZONE: "unknown", MIRURO: "unknown", NEXUS: "unknown", ANIMEONSEN: "unknown", ANINEKO: "unknown", SHIROKO: "unknown" });
+    setServerHealth({ GOGO: "unknown", KOTO: "unknown", ANIZONE: "unknown", MIRURO: "unknown", NEXUS: "unknown", ANIMEONSEN: "unknown", ANINEKO: "unknown", SHIROKO: "unknown", PAHE: "unknown" });
+    setPaheHlsUrl(null);
+    setPaheError(null);
     setSourcePageTitle(null);
     setVerifyResult(null);
   }, [animeId, currentEp]);
@@ -700,12 +707,12 @@ export default function WatchAniList() {
     let won = false;
     setAutoDetecting(true);
 
-    const preferred = localStorage.getItem(`na_preferred_${animeId}`) as "GOGO" | "KOTO" | "ANIZONE" | "MIRURO" | "NEXUS" | "ANIMEONSEN" | "ANINEKO" | "SHIROKO" | null;
+    const preferred = localStorage.getItem(`na_preferred_${animeId}`) as "GOGO" | "KOTO" | "ANIZONE" | "MIRURO" | "NEXUS" | "ANIMEONSEN" | "ANINEKO" | "SHIROKO" | "PAHE" | null;
     // Non-preferred servers wait this long before their fetch fires, giving preferred a head start
     const HEAD_START = preferred ? 800 : 0;
 
     setRaceWinnerServer(null);
-    const tryWin = (srv: "GOGO" | "KOTO" | "ANIZONE" | "MIRURO" | "NEXUS" | "ANIMEONSEN" | "ANINEKO" | "SHIROKO") => {
+    const tryWin = (srv: "GOGO" | "KOTO" | "ANIZONE" | "MIRURO" | "NEXUS" | "ANIMEONSEN" | "ANINEKO" | "SHIROKO" | "PAHE") => {
       if (cancelled || won || userPickedRef.current) return;
       won = true;
       setRaceWinnerServer(srv);
@@ -919,6 +926,26 @@ export default function WatchAniList() {
           }
         })
         .catch(() => { if (!cancelled) { raceCache.current.shiroko = null; setServerHealth(h => ({ ...h, SHIROKO: "fail" })); } });
+    });
+
+    // PAHE — AnimePahe → kwik.cx → native HLS; requires CF Worker relay
+    setServerHealth(h => ({ ...h, PAHE: "checking" }));
+    schedule(preferred === "PAHE" ? 0 : HEAD_START + 400, () => {
+      const params = new URLSearchParams({ animeId: String(animeId), ep: String(currentEp), title: title ?? "" });
+      fetch(apiUrl(`/api/pahe/stream?${params}`))
+        .then(r => r.json())
+        .then((data: { hlsUrl?: string; error?: string }) => {
+          if (cancelled) return;
+          if (data.hlsUrl) {
+            raceCache.current.pahe = { hlsUrl: data.hlsUrl };
+            setServerHealth(h => ({ ...h, PAHE: "ok" }));
+            tryWin("PAHE");
+          } else {
+            raceCache.current.pahe = null;
+            setServerHealth(h => ({ ...h, PAHE: "fail" }));
+          }
+        })
+        .catch(() => { if (!cancelled) { raceCache.current.pahe = null; setServerHealth(h => ({ ...h, PAHE: "fail" })); } });
     });
 
     // If nothing wins after 15s, stop the spinner and stay on current server
@@ -1777,6 +1804,34 @@ export default function WatchAniList() {
       })
       .catch((e: Error) => { if (!cancelled) setAninekoError(e.message); })
       .finally(() => { if (!cancelled) setAninekoLoading(false); });
+    return () => { cancelled = true; };
+  }, [server, animeId, currentEp]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load AnimePahe HLS URL when server is PAHE
+  useEffect(() => {
+    if (server !== "PAHE") { setPaheHlsUrl(null); setPaheError(null); return; }
+    const cached = raceCache.current.pahe;
+    if (cached !== undefined) {
+      if (cached?.hlsUrl) {
+        setPaheHlsUrl(cached.hlsUrl);
+        setPaheError(null);
+        raceCache.current.pahe = undefined;
+        return;
+      }
+      raceCache.current.pahe = undefined;
+    }
+    let cancelled = false;
+    setPaheHlsUrl(null);
+    setPaheError(null);
+    const params = new URLSearchParams({ animeId: String(animeId), ep: String(currentEp), title: title ?? "" });
+    fetch(apiUrl(`/api/pahe/stream?${params}`))
+      .then(r => r.json())
+      .then((data: { hlsUrl?: string; error?: string }) => {
+        if (cancelled) return;
+        if (data.hlsUrl) { setPaheHlsUrl(data.hlsUrl); setPaheError(null); }
+        else setPaheError(data.error ?? "Episode not available on AnimePahe");
+      })
+      .catch((e: Error) => { if (!cancelled) setPaheError(e.message); });
     return () => { cancelled = true; };
   }, [server, animeId, currentEp]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -3150,6 +3205,82 @@ export default function WatchAniList() {
                   </div>
                 )}
 
+                {/* PAHE — AnimePahe native HLS via kwik.cx */}
+                {server === "PAHE" && paheHlsUrl && (
+                  <HlsPlayer
+                    key={`pahe-${animeId}-${currentEp}`}
+                    hlsUrl={paheHlsUrl}
+                    preferDub={lang === "DUB"}
+                    title={getEpTitle(currentEp) !== `Episode ${currentEp}` ? `${title} — Ep ${currentEp}: ${getEpTitle(currentEp)}` : `${title} — Episode ${currentEp}`}
+                    progressKey={`al_${animeId}_${currentEp}`}
+                    onFatalError={() => setPaheError("Playback failed — stream may have expired")}
+                    syncCommand={wtSyncCmd}
+                    onPlayStateChange={(playing, time) => playing ? wt.sendPlay(time) : wt.sendPause(time)}
+                    onSeek={(t) => wt.sendSeek(t)}
+                    onBuffering={wt.sendBuffering}
+                    onTimeUpdate={(t) => { playerTimeRef.current = t; }}
+                  />
+                )}
+
+                {/* PAHE loading / error overlay */}
+                {server === "PAHE" && !paheHlsUrl && (
+                  <div className="absolute inset-0 z-10 flex flex-col items-center justify-center" style={{ background: "rgba(0,0,0,0.92)" }}>
+                    {banner && <img src={banner} alt="" className="absolute inset-0 w-full h-full object-cover opacity-10 scale-110 blur-sm" />}
+                    <div className="relative z-10 flex flex-col items-center gap-4">
+                      {paheError ? (
+                        <div className="text-center space-y-3">
+                          <div className="w-11 h-11 border border-rose-400/40 bg-rose-400/5 flex items-center justify-center mx-auto rounded-sm">
+                            <span className="text-rose-400 text-xl">🌸</span>
+                          </div>
+                          <p className="text-white/80 text-sm font-semibold tracking-wide">AnimePahe Unavailable</p>
+                          <p className="text-white/35 text-[11px] font-mono max-w-[280px] text-center leading-relaxed">
+                            {paheError.includes("MIRURO_RELAY_URL")
+                              ? "CF Worker relay not configured. Deploy the Cloudflare Worker to enable AnimePahe."
+                              : paheError}
+                          </p>
+                          {suggestedServer && SERVER_META[suggestedServer] && (
+                            <>
+                              {failCountdown !== null && (
+                                <p className="text-rose-400/80 text-[11px] font-mono animate-pulse">
+                                  Auto-switching to {SERVER_META[suggestedServer].label} in {failCountdown}s…
+                                </p>
+                              )}
+                              <div className="flex items-center gap-2 mt-1">
+                                <button
+                                  onClick={() => switchToServer(suggestedServer)}
+                                  className={`inline-flex items-center gap-2 text-[11px] font-mono font-bold px-5 py-2.5 border ${SERVER_META[suggestedServer].borderCls} ${SERVER_META[suggestedServer].colorCls} ${SERVER_META[suggestedServer].hoverCls} transition-all uppercase tracking-widest`}
+                                >
+                                  <Play className="w-3 h-3 fill-current" /> Try {SERVER_META[suggestedServer].label}
+                                </button>
+                                {failCountdown !== null && (
+                                  <button
+                                    onClick={() => setFailCountdown(null)}
+                                    className="text-[10px] font-mono px-3 py-2.5 border border-white/15 text-white/35 hover:border-white/40 hover:text-white/60 transition-colors uppercase tracking-widest"
+                                  >
+                                    Cancel
+                                  </button>
+                                )}
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      ) : (
+                        <>
+                          <div className="relative w-14 h-14">
+                            <div className="absolute inset-0 rounded-full border-2 border-white/10" />
+                            <div className="absolute inset-0 rounded-full border-2 border-t-rose-400 border-r-transparent border-b-transparent border-l-transparent animate-spin" />
+                            <div className="absolute inset-2 rounded-full border border-white/20 border-t-rose-400/60 animate-spin" style={{ animationDuration: "0.6s", animationDirection: "reverse" }} />
+                          </div>
+                          <p className="text-white/70 text-sm font-semibold tracking-wide">Loading AnimePahe…</p>
+                        </>
+                      )}
+                      <p className="text-white/20 text-[11px] font-mono uppercase tracking-widest">
+                        Episode {currentEp} · {lang}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 {/* KOTO loading / error overlay — only shown when no URL at all */}
                 {server === "KOTO" && !kotoHlsUrl && !kotoPlayerUrl && (
                   <div className="absolute inset-0 z-10 flex flex-col items-center justify-center" style={{ background: "rgba(0,0,0,0.92)" }}>
@@ -3690,6 +3821,7 @@ export default function WatchAniList() {
                     server === "ANIMEONSEN" ? "text-green-400" :
                     server === "ANINEKO"    ? "text-pink-400" :
                     server === "SHIROKO"    ? "text-sky-400" :
+                    server === "PAHE"       ? "text-rose-400" :
                     "text-white"
                   }>{server}</span>
                   <ChevronDown className={`w-3 h-3 transition-transform ${serverDropOpen ? "rotate-180" : ""}`} />
@@ -3704,6 +3836,7 @@ export default function WatchAniList() {
                       { key: "ANIMEONSEN", label: "ANIMEONSEN", color: "green"  as const, onClick: () => { userPickedRef.current = true; setServer("ANIMEONSEN"); setIframeLoaded(false); if (aoCfReady) setAnimeonsenInitializing(false); } },
                       { key: "ANINEKO",    label: "ANINEKO",    color: "pink"   as const, onClick: () => { userPickedRef.current = true; setServer("ANINEKO"); setIframeLoaded(false); } },
                       { key: "SHIROKO",    label: "SHIROKO",    color: "sky"    as const, onClick: () => { userPickedRef.current = true; setServer("SHIROKO"); setIframeLoaded(false); } },
+                      { key: "PAHE",       label: "AnimePahe",  color: "rose"   as const, onClick: () => { userPickedRef.current = true; setServer("PAHE"); setIframeLoaded(false); } },
                     ]).map(({ key, label, color, onClick }) => {
                       const active = server === key;
                       const health = serverHealth[key as keyof typeof serverHealth];
@@ -3715,6 +3848,7 @@ export default function WatchAniList() {
                         green:  active ? "text-green-400"  : "text-green-400/50",
                         pink:   active ? "text-pink-400"   : "text-pink-400/50",
                         sky:    active ? "text-sky-400"    : "text-sky-400/50",
+                        rose:   active ? "text-rose-400"   : "text-rose-400/50",
                       }[color];
                       const dotClass =
                         health === "ok"       ? "bg-green-400" :

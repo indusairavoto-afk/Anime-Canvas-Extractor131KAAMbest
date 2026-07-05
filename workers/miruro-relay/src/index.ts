@@ -30,6 +30,13 @@ const ALLOWED_HOSTS = [
   "www.miruro.tv",
   "pro.ultracloud.cc",
   "pru.ultracloud.cc",
+  // AnimePahe + kwik.cx — used by the PAHE streaming server
+  "animepahe.ru",
+  "animepahe.com",
+  "animepahe.org",
+  "animepahe.pw",
+  "kwik.cx",
+  "kwik.si",
 ];
 
 // Headers dropped when forwarding responses back to the caller.
