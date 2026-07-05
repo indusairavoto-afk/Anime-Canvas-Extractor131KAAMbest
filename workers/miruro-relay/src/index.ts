@@ -145,12 +145,23 @@ async function handleRelay(request: Request, url: URL): Promise<Response> {
     redirect: "manual",
   });
 
-  // Strip hop-by-hop headers before forwarding the response
+  // Strip hop-by-hop headers before forwarding the response.
+  // set-cookie is handled separately below since Headers.entries() merges
+  // multiple set-cookie values into a single comma-joined string, which
+  // corrupts cookies (Expires contains commas) and drops all but one cookie.
   const responseHeaders = new Headers();
   for (const [key, value] of upstream.headers.entries()) {
-    if (!HOP_BY_HOP.has(key.toLowerCase())) {
+    if (!HOP_BY_HOP.has(key.toLowerCase()) && key.toLowerCase() !== "set-cookie") {
       responseHeaders.set(key, value);
     }
+  }
+  const setCookies =
+    typeof (upstream.headers as Headers & { getSetCookie?: () => string[] }).getSetCookie ===
+    "function"
+      ? (upstream.headers as Headers & { getSetCookie: () => string[] }).getSetCookie()
+      : [];
+  for (const cookie of setCookies) {
+    responseHeaders.append("set-cookie", cookie);
   }
 
   return new Response(upstream.body, {

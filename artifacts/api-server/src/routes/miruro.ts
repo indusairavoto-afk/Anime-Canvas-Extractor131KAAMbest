@@ -208,6 +208,7 @@ router.all("/miruro/pass/*path", async (req, res) => {
         ...(req.headers["content-type"]
           ? { "Content-Type": req.headers["content-type"] as string }
           : {}),
+        ...(req.headers.cookie ? { Cookie: req.headers.cookie as string } : {}),
         Origin: MIRURO_ORIGIN,
         Referer: MIRURO_ORIGIN + "/",
       },
@@ -254,6 +255,18 @@ router.all("/miruro/pass/*path", async (req, res) => {
       ) {
         res.setHeader(key, value);
       }
+    }
+
+    // Forward Set-Cookie headers from miruro so the SPA's session survives
+    // across requests (secure/pipe + jwks 403 without this — the session
+    // cookie miruro sets on first load never reaches later /api/secure/* calls).
+    // Strip the Domain attribute since the cookie now lives on our own origin.
+    const getSetCookie = (upstream.headers as Headers & { getSetCookie?: () => string[] })
+      .getSetCookie;
+    const setCookies = typeof getSetCookie === "function" ? getSetCookie.call(upstream.headers) : [];
+    if (setCookies.length > 0) {
+      const rewritten = setCookies.map((c) => c.replace(/;\s*Domain=[^;]+/i, ""));
+      res.setHeader("Set-Cookie", rewritten);
     }
 
     // Add permissive CORS so the iframe (same Replit origin) can load cross-origin assets
