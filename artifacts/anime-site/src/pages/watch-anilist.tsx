@@ -857,7 +857,12 @@ export default function WatchAniList() {
             raceCache.current.miruro = { iframeUrl: url };
             setServerHealth(h => ({ ...h, MIRURO: "ok" }));
             setActualLang(lang === "DUB" ? "DUB" : "SUB");
-            tryWin("MIRURO");
+            // Delay MIRURO's race win so HLS sources (GOGO, KOTO, ANIZONE) can
+            // win first. MIRURO's health check is instant (URL construction only,
+            // no upstream fetch), so without this delay it always wins even when
+            // a real HLS stream is available. MIRURO only wins if all other
+            // sources fail to respond within ~4 seconds.
+            timers.push(setTimeout(() => tryWin("MIRURO"), 4000));
           } else {
             raceCache.current.miruro = null;
             setServerHealth(h => ({ ...h, MIRURO: "fail" }));
