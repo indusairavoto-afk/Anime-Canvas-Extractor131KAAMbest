@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { apiUrl } from "@/lib/api";
+import { anilistFetch } from "@/lib/api";
 import { motion, AnimatePresence } from "framer-motion";
 import { Home, Search, Calendar, Users, Bookmark, Trophy, ChevronRight, ChevronDown, BookOpen, Mic, Newspaper } from "lucide-react";
 import { useSidebar } from "@/contexts/sidebar-context";
@@ -21,25 +21,20 @@ const NAV_ITEMS = [
 function useAiringCount() {
   const [count, setCount] = useState<number | null>(null);
   useEffect(() => {
-    const controller = new AbortController();
+    let alive = true;
     const now = Math.floor(Date.now() / 1000);
     const dayStart = now - (now % 86400);
     const dayEnd = dayStart + 86400;
-    fetch(apiUrl("/api/anilist"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    anilistFetch({
         query: `{ Page(perPage: 50) { airingSchedules(airingAt_greater: ${dayStart}, airingAt_lesser: ${dayEnd}, notYetAired: false) { id } } }`,
-      }),
-      signal: controller.signal,
-    })
-      .then((r) => r.json())
+      })
       .then((d) => {
-        const n = d?.data?.Page?.airingSchedules?.length ?? 0;
+        if (!alive) return;
+        const n = (d as any)?.data?.Page?.airingSchedules?.length ?? 0;
         setCount(n > 0 ? n : null);
       })
-      .catch((e) => { if (e?.name !== "AbortError") {} });
-    return () => controller.abort();
+      .catch(() => {});
+    return () => { alive = false; };
   }, []);
   return count;
 }

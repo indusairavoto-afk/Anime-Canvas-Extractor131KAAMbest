@@ -1,6 +1,6 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect, memo } from "react";
-import { apiUrl } from "@/lib/api";
+import { anilistFetch } from "@/lib/api";
 import { Link } from "wouter";
 import { Clock, Play, Star, Calendar, Loader2, Radio } from "lucide-react";
 
@@ -220,14 +220,9 @@ export default function Schedule() {
 
   useEffect(() => {
     setLoading(true);
-    fetch(apiUrl("/api/anilist"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query: ANILIST_QUERY }),
-    })
-      .then((r) => r.json())
+    anilistFetch({ query: ANILIST_QUERY })
       .then((json) => {
-        const media = json?.data?.Page?.media ?? [];
+        const media = (json as any)?.data?.Page?.media ?? [];
         const grouped: Record<Day, AiringAnime[]> = {
           MON: [], TUE: [], WED: [], THU: [], FRI: [], SAT: [], SUN: [],
         };

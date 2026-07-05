@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { apiUrl } from "@/lib/api";
+import { anilistFetch } from "@/lib/api";
 import { Search, Bell, X, ArrowRight, LogIn, Home, Flame, Calendar, Trophy, BookOpen, Users, Mic, Bookmark, TrendingUp } from "lucide-react";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -17,11 +17,8 @@ interface AniResult {
 
 async function aniListQuery(q: string, perPage = 12): Promise<AniResult[]> {
   try {
-    const res = await fetch(apiUrl("/api/anilist"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        query: `{
+    const json = await anilistFetch({
+      query: `{
           Page(perPage: ${perPage}) {
             media(search: "${q.replace(/"/g, "")}", type: ANIME, isAdult: false, sort: SEARCH_MATCH) {
               id
@@ -34,10 +31,8 @@ async function aniListQuery(q: string, perPage = 12): Promise<AniResult[]> {
             }
           }
         }`,
-      }),
     });
-    const json = await res.json();
-    return json?.data?.Page?.media ?? [];
+    return (json as any)?.data?.Page?.media ?? [];
   } catch {
     return [];
   }
@@ -45,11 +40,8 @@ async function aniListQuery(q: string, perPage = 12): Promise<AniResult[]> {
 
 async function fetchTrending(perPage = 6): Promise<AniResult[]> {
   try {
-    const res = await fetch(apiUrl("/api/anilist"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        query: `{
+    const json = await anilistFetch({
+      query: `{
           Page(perPage: ${perPage}) {
             media(type: ANIME, isAdult: false, sort: TRENDING_DESC) {
               id
@@ -61,10 +53,8 @@ async function fetchTrending(perPage = 6): Promise<AniResult[]> {
             }
           }
         }`,
-      }),
     });
-    const json = await res.json();
-    return json?.data?.Page?.media ?? [];
+    return (json as any)?.data?.Page?.media ?? [];
   } catch {
     return [];
   }

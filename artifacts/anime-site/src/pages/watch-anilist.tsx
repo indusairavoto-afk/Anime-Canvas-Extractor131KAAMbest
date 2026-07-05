@@ -11,7 +11,7 @@ import {
 import { useWatchlist } from "@/hooks/useWatchlist";
 import { useWatchProgress } from "@/hooks/useWatchProgress";
 import { useContinueWatching } from "@/hooks/useContinueWatching";
-import { apiUrl } from "@/lib/api";
+import { apiUrl, anilistFetch } from "@/lib/api";
 import { EpisodeRatingMeter } from "@/components/EpisodeRatingMeter";
 import { useWatchTogether } from "@/hooks/useWatchTogether";
 import { WatchTogetherPanel } from "@/components/WatchTogetherPanel";
@@ -447,14 +447,9 @@ export default function WatchAniList() {
     setJikanEps([]);
     setNewEpNotice(null);
     prevNextAiringEpRef.current = null;
-    fetch(apiUrl("/api/anilist"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query: WATCH_QUERY, variables: { id: animeId } }),
-    })
-      .then((r) => r.json())
+    anilistFetch({ query: WATCH_QUERY, variables: { id: animeId } })
       .then((json) => {
-        const media: AniMedia | null = json?.data?.Media ?? null;
+        const media: AniMedia | null = (json as any)?.data?.Media ?? null;
         if (media) {
           setAnime(media);
           prevNextAiringEpRef.current = media.nextAiringEpisode?.episode ?? null;
@@ -476,13 +471,8 @@ export default function WatchAniList() {
 
     async function pollForNewEp() {
       try {
-        const r = await fetch(apiUrl("/api/anilist"), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ query: WATCH_QUERY, variables: { id: animeId } }),
-        });
-        const json = await r.json();
-        const media: AniMedia | null = json?.data?.Media ?? null;
+        const json = await anilistFetch({ query: WATCH_QUERY, variables: { id: animeId } });
+        const media: AniMedia | null = (json as any)?.data?.Media ?? null;
         if (!media) return;
 
         const newNextEp = media.nextAiringEpisode?.episode ?? null;

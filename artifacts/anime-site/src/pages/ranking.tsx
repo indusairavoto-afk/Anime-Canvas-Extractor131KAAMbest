@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { apiUrl } from "@/lib/api";
+import { anilistFetch } from "@/lib/api";
 import { Link } from "wouter";
 import { motion } from "framer-motion";
 import { Star, Play, TrendingUp, Trophy, Calendar } from "lucide-react";
@@ -51,13 +51,8 @@ function buildRankingQuery(period: Period) {
 }
 
 async function fetchAniList(query: string): Promise<AniMedia[]> {
-  const res = await fetch(apiUrl("/api/anilist"), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ query }),
-  });
-  const json = await res.json();
-  return json?.data?.Page?.media ?? [];
+  const json = await anilistFetch({ query });
+  return (json as any)?.data?.Page?.media ?? [];
 }
 
 const PERIOD_LABELS: Record<Period, { label: string; sub: string; icon: React.ReactNode }> = {

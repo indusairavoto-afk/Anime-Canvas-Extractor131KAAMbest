@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from "framer-motion";
-import { apiUrl } from "@/lib/api";
+import { apiUrl, anilistFetch } from "@/lib/api";
 import { Link, useParams } from "wouter";
 import { SeriesRatingGauge } from "@/components/SeriesRatingGauge";
 import {
@@ -264,14 +264,9 @@ export default function AnimeDetailAniList() {
     setError(false);
     setShowBannerOverlay(true);
     setIsMuted(true);
-    fetch(apiUrl("/api/anilist"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query: DETAIL_QUERY, variables: { id: anilistId } }),
-    })
-      .then((r) => r.json())
+    anilistFetch({ query: DETAIL_QUERY, variables: { id: anilistId } })
       .then((json) => {
-        if (json?.data?.Media) setAnime(json.data.Media);
+        if ((json as any)?.data?.Media) setAnime((json as any).data.Media);
         else setError(true);
       })
       .catch(() => setError(true))
@@ -307,14 +302,9 @@ export default function AnimeDetailAniList() {
             onClick={() => {
               setError(false);
               setLoading(true);
-              fetch(apiUrl("/api/anilist"), {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ query: DETAIL_QUERY, variables: { id: anilistId } }),
-              })
-                .then((r) => r.json())
+              anilistFetch({ query: DETAIL_QUERY, variables: { id: anilistId } })
                 .then((json) => {
-                  if (json?.data?.Media) setAnime(json.data.Media);
+                  if ((json as any)?.data?.Media) setAnime((json as any).data.Media);
                   else setError(true);
                 })
                 .catch(() => setError(true))

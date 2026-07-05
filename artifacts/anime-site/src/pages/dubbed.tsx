@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { apiUrl } from "@/lib/api";
+import { anilistFetch } from "@/lib/api";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Link } from "wouter";
 import { Search, X, Star, Loader2, Mic, Play } from "lucide-react";
@@ -73,16 +73,11 @@ async function fetchAnime(
   if (search.trim()) variables.search = search.trim();
   if (genre) variables.genre = genre;
 
-  const res = await fetch(apiUrl("/api/anilist"), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ query: QUERY, variables }),
-  });
-  const json = await res.json();
+  const json = await anilistFetch({ query: QUERY, variables });
   return {
-    media: json?.data?.Page?.media ?? [],
-    hasNextPage: json?.data?.Page?.pageInfo?.hasNextPage ?? false,
-    total: json?.data?.Page?.pageInfo?.total ?? 0,
+    media: (json as any)?.data?.Page?.media ?? [],
+    hasNextPage: (json as any)?.data?.Page?.pageInfo?.hasNextPage ?? false,
+    total: (json as any)?.data?.Page?.pageInfo?.total ?? 0,
   };
 }
 

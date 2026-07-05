@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from "framer-motion";
-import { apiUrl } from "@/lib/api";
+import { apiUrl, anilistFetch } from "@/lib/api";
 import { Link } from "wouter";
 import { BookmarkX, Play, Star, CheckCircle2, Clock, BookOpen, Tv, Check, Minus, Plus } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
@@ -52,13 +52,8 @@ function WatchlistCard({ animeId, onRemove }: { animeId: number; onRemove: () =>
     if (!localError) return;
     let alive = true;
     setAnilistLoading(true);
-    fetch(apiUrl("/api/anilist"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query: ANILIST_ANIME_QUERY, variables: { id: animeId } }),
-    })
-      .then((r) => r.json())
-      .then((j) => { if (alive) setAnilistAnime(j?.data?.Media ?? null); })
+    anilistFetch({ query: ANILIST_ANIME_QUERY, variables: { id: animeId } })
+      .then((j) => { if (alive) setAnilistAnime((j as any)?.data?.Media ?? null); })
       .catch(() => {})
       .finally(() => { if (alive) setAnilistLoading(false); });
     return () => { alive = false; };
@@ -226,13 +221,8 @@ function MangaReadCard({
 
   useEffect(() => {
     let alive = true;
-    fetch(apiUrl("/api/anilist"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query: MANGA_QUERY, variables: { id: mangaId } }),
-    })
-      .then((r) => r.json())
-      .then((j) => { if (alive) setManga(j?.data?.Media ?? null); })
+    anilistFetch({ query: MANGA_QUERY, variables: { id: mangaId } })
+      .then((j) => { if (alive) setManga((j as any)?.data?.Media ?? null); })
       .catch(() => {});
     return () => { alive = false; };
   }, [mangaId]);

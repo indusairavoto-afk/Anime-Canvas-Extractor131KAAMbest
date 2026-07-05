@@ -1,5 +1,5 @@
 import React from "react";
-import { apiUrl } from "@/lib/api";
+import { apiUrl, anilistFetch } from "@/lib/api";
 import { motion, AnimatePresence } from "framer-motion";
 import { Link } from "wouter";
 import { Play, Star, Clock, ChevronRight, TrendingUp, ChevronLeft, X, History, CalendarClock, Info, Newspaper, ExternalLink } from "lucide-react";
@@ -228,13 +228,7 @@ const AIRING_QUERY = (airedBefore: number, airedAfter: number) => `{
 async function fetchRecentAiring(): Promise<AiringEpisodeEntry[]> {
   const now = Math.floor(Date.now() / 1000);
   const weekAgo = now - 7 * 24 * 3600;
-  const res = await fetch(apiUrl("/api/anilist"), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ query: AIRING_QUERY(now, weekAgo) }),
-  });
-  if (!res.ok) return [];
-  const json = await res.json().catch(() => null);
+  const json = await anilistFetch({ query: AIRING_QUERY(now, weekAgo) });
   if (!json) return [];
   const schedules: Array<{
     id: number;
@@ -253,7 +247,7 @@ async function fetchRecentAiring(): Promise<AiringEpisodeEntry[]> {
       streamingEpisodes?: { title: string; thumbnail: string; site: string }[];
       studios?: { nodes: { name: string }[] };
     };
-  }> = json?.data?.Page?.airingSchedules ?? [];
+  }> = (json as any)?.data?.Page?.airingSchedules ?? [];
 
   const seen = new Set<string>();
   const entries: AiringEpisodeEntry[] = [];
@@ -319,18 +313,9 @@ function stripHtml(html: string): string {
 }
 
 async function fetchAniList(query: string): Promise<AniMedia[]> {
-  const res = await fetch(apiUrl("/api/anilist"), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ query }),
-  });
-  if (!res.ok) return [];
-  try {
-    const json = await res.json();
-    return json?.data?.Page?.media ?? [];
-  } catch {
-    return [];
-  }
+  const json = await anilistFetch({ query });
+  if (!json) return [];
+  return (json as any)?.data?.Page?.media ?? [];
 }
 
 function HeroSlide({ anime }: { anime: AniMedia }) {

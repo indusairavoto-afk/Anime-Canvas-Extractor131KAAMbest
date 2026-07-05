@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from "framer-motion";
-import { apiUrl } from "@/lib/api";
+import { apiUrl, anilistFetch } from "@/lib/api";
 import { Link, useParams } from "wouter";
 import { ArrowLeft, Star, BookOpen, X, ExternalLink, ChevronLeft, ChevronRight, ChevronDown, Check, Minus, Plus, Loader2, BookMarked } from "lucide-react";
 import { useMangaList, type ReadStatus } from "@/hooks/useMangaList";
@@ -79,13 +79,8 @@ query ($id: Int!) {
 }`;
 
 async function fetchMangaDetail(id: number): Promise<AniManga | null> {
-  const res = await fetch(apiUrl("/api/anilist"), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ query: QUERY, variables: { id } }),
-  });
-  const json = await res.json();
-  return json?.data?.Media ?? null;
+  const json = await anilistFetch({ query: QUERY, variables: { id } });
+  return (json as any)?.data?.Media ?? null;
 }
 
 function stripHtml(html: string) {

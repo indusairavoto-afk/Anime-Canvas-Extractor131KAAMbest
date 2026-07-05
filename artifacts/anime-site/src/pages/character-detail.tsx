@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { apiUrl } from "@/lib/api";
+import { anilistFetch } from "@/lib/api";
 import { useParams, Link } from "wouter";
 import { useState, useEffect } from "react";
 import { ArrowLeft, User, Mic } from "lucide-react";
@@ -94,21 +94,13 @@ export default function CharacterDetail() {
     setError(false);
 
     Promise.all([
-      fetch(apiUrl("/api/anilist"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: CHAR_QUERY, variables: { id: charId } }),
-      }).then((r) => r.json()),
-      fetch(apiUrl("/api/anilist"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: VA_QUERY, variables: { id: charId } }),
-      }).then((r) => r.json()),
+      anilistFetch({ query: CHAR_QUERY, variables: { id: charId } }),
+      anilistFetch({ query: VA_QUERY, variables: { id: charId } }),
     ])
       .then(([charJson, vaJson]) => {
-        const base = charJson?.data?.Character;
+        const base = (charJson as any)?.data?.Character;
         if (!base) { setError(true); return; }
-        const vaEdges: VoiceActor[] = vaJson?.data?.Character?.media?.edges?.[0]?.voiceActors ?? [];
+        const vaEdges: VoiceActor[] = (vaJson as any)?.data?.Character?.media?.edges?.[0]?.voiceActors ?? [];
         setChar({ ...base, voiceActors: vaEdges });
       })
       .catch(() => setError(true))
