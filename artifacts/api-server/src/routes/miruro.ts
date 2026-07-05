@@ -1056,6 +1056,10 @@ router.get("/miruro/native-stream", async (req, res) => {
     return;
   }
 
+  // Never cache — stream URLs are time-limited; a stale 503 cached response
+  // would permanently block the HLS player for the session.
+  res.set("Cache-Control", "no-store");
+
   try {
     const native = await fetchMiruroNativeStream(anilistIdNum, epNum, preferDub ? "dub" : "sub");
     const referer = "https://www.miruro.tv/";

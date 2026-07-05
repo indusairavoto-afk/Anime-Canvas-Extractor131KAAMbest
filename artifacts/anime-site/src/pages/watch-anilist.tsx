@@ -217,6 +217,8 @@ export default function WatchAniList() {
    *  native player controls, subtitles, and intro/outro skip data. */
   const [miruroHlsUrl, setMiruroHlsUrl] = useState<string | null>(null);
   const [miruroSubtitles, setMiruroSubtitles] = useState<{ src: string; label: string; srclang: string; isDefault: boolean }[]>([]);
+  /** True while the native-stream sidecar fetch is in flight — blocks iframe render so HLS wins. */
+  const [miruroNativeLoading, setMiruroNativeLoading] = useState(false);
   /** URL shown inside the player as an in-page fallback iframe when the inline proxy is unavailable */
   const [miruroInPageUrl, setMiruroInPageUrl] = useState<string | null>(null);
   /** Increments on every retry so the iframe key always changes, forcing a full remount
@@ -1748,18 +1750,23 @@ export default function WatchAniList() {
     if (server !== "MIRURO") {
       setMiruroHlsUrl(null);
       setMiruroSubtitles([]);
+      setMiruroNativeLoading(false);
       return;
     }
     let cancelled = false;
     setMiruroHlsUrl(null);
     setMiruroSubtitles([]);
-    fetch(apiUrl(`/api/miruro/native-stream?anilistId=${animeId}&ep=${currentEp}&dub=${lang === "DUB" ? "1" : "0"}`))
+    setMiruroNativeLoading(true);
+    fetch(apiUrl(`/api/miruro/native-stream?anilistId=${animeId}&ep=${currentEp}&dub=${lang === "DUB" ? "1" : "0"}`), { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
       .then((data: { hlsUrl?: string; subtitles?: { src: string; label: string; srclang: string; isDefault: boolean }[] } | null) => {
-        if (cancelled || !data?.hlsUrl) return;
+        if (cancelled) return;
+        setMiruroNativeLoading(false);
+        if (!data?.hlsUrl) return;
         setMiruroHlsUrl(data.hlsUrl);
         setMiruroSubtitles(data.subtitles ?? []);
       })
+      .catch(() => { if (!cancelled) setMiruroNativeLoading(false); })
       .catch(() => { /* sidecar unavailable — iframe/SW path remains the fallback */ });
     return () => { cancelled = true; };
   }, [server, animeId, currentEp, lang]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -2716,8 +2723,9 @@ export default function WatchAniList() {
                   />
                 )}
 
-                {/* MIRURO iframe embed — proxied via Service Worker (browser IP, no CF block) */}
-                {server === "MIRURO" && !miruroHlsUrl && miruroIframeUrl && swReady && (
+                {/* MIRURO iframe embed — proxied via Service Worker (browser IP, no CF block).
+                    Held back while native-stream fetch is in flight so HLS always wins. */}
+                {server === "MIRURO" && !miruroHlsUrl && !miruroNativeLoading && miruroIframeUrl && swReady && (
                   <iframe
                     ref={iframeRef}
                     key={`miruro-${animeId}-${currentEp}`}
