@@ -102,6 +102,9 @@ const BASE_HEADERS = {
   "User-Agent":
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
   "Accept-Language": "en-US,en;q=0.9",
+  "sec-fetch-site": "same-origin",
+  "sec-fetch-mode": "navigate",
+  "sec-fetch-dest": "document",
 };
 
 /**
@@ -176,11 +179,11 @@ async function isRelayReachable(): Promise<boolean> {
     return relayReachableCache.ok;
   }
   try {
-    const check = await relayFetch(`${MIRURO_ORIGIN}/health`, {
-      method: "HEAD",
+    const relayBase = (process.env.MIRURO_RELAY_URL ?? "").replace(/\/$/, "");
+    const check = await fetch(`${relayBase}/healthz`, {
       signal: AbortSignal.timeout(5000),
-    } as RequestInit);
-    const ok = check.status < 400;
+    });
+    const ok = check.status === 200;
     relayReachableCache = { ts: now, ok };
     return ok;
   } catch {
@@ -1008,9 +1011,7 @@ router.get("/miruro/stream", async (req, res) => {
       const miruroUrl = slug
         ? `${MIRURO_ORIGIN}/watch/${anilistId}/${slug}?ep=${epNum}${dubSuffix}`
         : `${MIRURO_ORIGIN}/watch/${anilistId}?ep=${epNum}${dubSuffix}`;
-      const proto = (req.headers["x-forwarded-proto"] as string | undefined) ?? (req.socket && (req.socket as { encrypted?: boolean }).encrypted ? "https" : "http");
-      const host = (req.headers["x-forwarded-host"] as string | undefined) ?? req.headers.host ?? "localhost:8080";
-      legacyIframeUrl = `${proto}://${host}/api/miruro/proxy?url=${encodeURIComponent(miruroUrl)}`;
+      legacyIframeUrl = `/api/miruro/proxy?url=${encodeURIComponent(miruroUrl)}`;
     }
   }
 
