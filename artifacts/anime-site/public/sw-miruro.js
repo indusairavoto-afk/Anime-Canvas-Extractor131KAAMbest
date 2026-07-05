@@ -13,7 +13,7 @@
 const MIRURO_ORIGIN = 'https://www.miruro.bz';
 const MIRURO_HOSTNAMES = new Set(['www.miruro.bz', 'miruro.bz', 'www.miruro.to', 'miruro.to']);
 const SW_PREFIX = '/miruro-sw';
-const VERSION = 'v4';
+const VERSION = 'v5';
 
 /** Response headers that would block the iframe or cause CORS issues */
 const DROP_RESP_HEADERS = new Set([
@@ -68,12 +68,22 @@ async function handleProxy(request, url) {
       try { body = await request.arrayBuffer(); } catch (_) { body = undefined; }
     }
 
+    // API calls (/api/secure/pipe, /api/secure/jwks, /api/episodes, etc.) need
+    // miruro.bz's own session cookie (set on the initial page load) to
+    // succeed — 'omit' silently starved them, causing Miruro's SPA to fall
+    // back to a YouTube PV with "Couldn't find episodes". Page/asset requests
+    // stay on 'omit' since miruro.bz likely serves those with a wildcard
+    // Access-Control-Allow-Origin, which browsers reject outright when
+    // combined with credentials: 'include'.
+    // Cross-origin fetch NEVER sends this app's own cookies to miruro.bz
+    // regardless of this setting, so there is no cross-site leakage risk.
+    const isApiCall = miruroPath.startsWith('/api/');
+
     const upstream = await fetch(miruroUrl, {
       method,
       headers: buildUpstreamHeaders(request),
       body,
-      // credentials: 'omit' avoids sending our app's cookies to miruro.bz
-      credentials: 'omit',
+      credentials: isApiCall ? 'include' : 'omit',
     });
 
     const ct = upstream.headers.get('content-type') || '';
