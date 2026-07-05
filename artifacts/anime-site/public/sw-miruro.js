@@ -257,28 +257,14 @@ async function handleProxy(request, url) {
   }
 }
 
-/**
- * Build request headers for upstream miruro.bz fetch.
- *
- * IMPORTANT: Origin/Referer are only set for API calls (where miruro.bz's CORS
- * policy requires a matching Origin to allow the request). For the main
- * document/asset requests, a real direct navigation (typed URL, bookmark, or
- * external link) never sends Origin and has no same-site Referer — sending
- * 'Referer: https://www.miruro.bz/' on every request makes it look like a
- * self-referencing proxy/scraper, which appears to trigger miruro.bz to
- * server-render a placeholder (PV trailer) instead of the real episode
- * player for some titles. Omitting them for the document/asset path mimics
- * an organic visit and gets the real episode content.
- */
+/** Build request headers for upstream miruro.bz fetch */
 function buildUpstreamHeaders(request, isApiCall) {
   const h = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
     'Accept-Language': 'en-US,en;q=0.9',
+    'Origin': MIRURO_ORIGIN,
+    'Referer': MIRURO_ORIGIN + '/',
   };
-  if (isApiCall) {
-    h['Origin'] = MIRURO_ORIGIN;
-    h['Referer'] = MIRURO_ORIGIN + '/';
-  }
   const accept = request.headers.get('accept');
   if (accept) h['Accept'] = accept;
   const ct = request.headers.get('content-type');
