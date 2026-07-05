@@ -250,6 +250,13 @@ export default function WatchAniList() {
   /** Ref mirror of miruroIframeUrl — lets the postMessage handler guard against
    *  stale events without needing miruroIframeUrl in the listener closure. */
   const miruroIframeUrlRef = useRef<string | null>(null);
+  /** True once the SW-proxied iframe has confirmed real content loaded
+   *  ("miruro-sw-loaded" postMessage) or actual video playback started
+   *  ("miruro-sw-playing"). Used to detect the first-load race condition where
+   *  the browser navigates to /miruro-sw/* before the SW is controlling that
+   *  request — the network layer fails outright (raw browser error page) and
+   *  neither onLoad nor onError fire reliably for that case. */
+  const miruroSwLoadConfirmedRef = useRef(false);
   /**
    * Stable ref to openMiruroDirect — allows the SW-fallback effect (which runs
    * asynchronously on swFailed state change) to call the latest version of the
@@ -1971,10 +1978,56 @@ export default function WatchAniList() {
         sessionStorage.setItem("miruro_sw_blocked", "1");
         setSwFailed(true);
       }
+
+      // Positive proof-of-life: the SW-proxied iframe actually executed real
+      // miruro content (not a raw browser network-error page). Cancels the
+      // load-timeout fallback below.
+      if (
+        (evt.data?.type === "miruro-sw-loaded" || evt.data?.type === "miruro-sw-playing") &&
+        server === "MIRURO"
+      ) {
+        miruroSwLoadConfirmedRef.current = true;
+      }
     };
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
   }, [server]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /**
+   * Load-timeout fallback for the first-load SW race condition.
+   *
+   * When the browser navigates to /miruro-sw/* before the SW is actually
+   * controlling that navigation (a known race on first load), the request
+   * goes straight to the network layer instead of being intercepted — the
+   * browser shows its own generic "webpage might be temporarily down" error
+   * page inside the iframe. Neither onLoad nor onError fire in a way we can
+   * rely on for this case (the browser still considers the error page itself
+   * a successfully "loaded" document), so we can't detect it that way.
+   *
+   * Instead: every time we point the iframe at a fresh /miruro-sw/ URL, arm a
+   * short timer. The injected script (see sw-miruro.js) posts back
+   * "miruro-sw-loaded" the instant real proxied content executes. If that
+   * confirmation never arrives in time, we know the navigation failed at the
+   * network layer and fall back exactly like the onError handler does.
+   */
+  useEffect(() => {
+    if (server !== "MIRURO" || !miruroIframeUrl?.startsWith("/miruro-sw/") || !swReady) return;
+    miruroSwLoadConfirmedRef.current = false;
+    const timeout = setTimeout(() => {
+      if (miruroSwLoadConfirmedRef.current) return;
+      if (miruroIframeUrlRef.current !== miruroIframeUrl) return; // stale timer, url already changed
+      console.warn("[miruro-sw] no load confirmation within timeout — falling back to legacy relay URL");
+      if (miruroLegacyUrl && miruroIframeUrl !== miruroLegacyUrl) {
+        setMiruroIframeUrl(miruroLegacyUrl);
+        setSwReady(true);
+      } else {
+        sessionStorage.setItem("miruro_sw_blocked", "1");
+        setSwFailed(true);
+        setMiruroIframeUrl(null);
+      }
+    }, 6000);
+    return () => clearTimeout(timeout);
+  }, [server, miruroIframeUrl, swReady, miruroLegacyUrl]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* Warn user before leaving / refreshing the watch page */
   useEffect(() => {

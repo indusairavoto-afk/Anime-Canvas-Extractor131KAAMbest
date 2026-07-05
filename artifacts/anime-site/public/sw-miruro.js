@@ -13,7 +13,7 @@
 const MIRURO_ORIGIN = 'https://www.miruro.bz';
 const MIRURO_HOSTNAMES = new Set(['www.miruro.bz', 'miruro.bz', 'www.miruro.to', 'miruro.to']);
 const SW_PREFIX = '/miruro-sw';
-const VERSION = 'v6';
+const VERSION = 'v7';
 
 /** Response headers that would block the iframe or cause CORS issues */
 const DROP_RESP_HEADERS = new Set([
@@ -388,6 +388,23 @@ button[aria-label*="ownload" i],a[aria-label*="ownload" i],
 
   // Fix SPA router: needs to see the real watch path, not /miruro-sw/watch/...
   try{history.replaceState(null,'',${pathJson});}catch(e){}
+
+  // Confirm to the parent that real miruro content (not a network-error page)
+  // actually loaded and executed inside the iframe. The parent uses this as
+  // positive proof-of-life — if it never arrives within its own timeout window,
+  // the parent assumes the SW wasn't controlling this navigation yet (the
+  // known first-load race condition) and falls back to the legacy relay URL.
+  try{window.parent.postMessage({type:'miruro-sw-loaded'},'*');}catch(e){}
+
+  // Confirm actual video playback started — the strongest signal the stream
+  // is genuinely working, not just that the page shell rendered.
+  try{
+    document.addEventListener('playing',function(ev){
+      if(ev.target&&ev.target.tagName==='VIDEO'){
+        try{window.parent.postMessage({type:'miruro-sw-playing'},'*');}catch(e){}
+      }
+    },true);
+  }catch(e){}
 
   // Block miruro's own service worker (it precaches root paths that 404 on our server)
   try{

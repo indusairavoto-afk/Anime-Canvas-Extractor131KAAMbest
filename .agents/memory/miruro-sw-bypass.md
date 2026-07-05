@@ -29,3 +29,7 @@ description: How the Service Worker CF bypass for miruro.bz is wired up end-to-e
 `/api/miruro/stream` now returns `{ swUrl, iframeUrl: swUrl, legacyIframeUrl? }`. `swUrl` is always present (constructed from params, no CF check needed). `legacyIframeUrl` only present when relay is configured and reachable.
 
 **Why:** Replit server IPs are hard-blocked by CF on miruro.bz. SW approach routes through the user's browser IP which is never blocked.
+
+## First-load race: iframe onError/onLoad cannot detect this failure
+When the browser navigates to `/miruro-sw/*` before the SW is actually controlling that exact navigation (activation race on first load), the request bypasses the SW and hits raw network — Chrome renders its own "webpage might be temporarily down" error page inside the iframe. `<iframe onLoad>` still fires (the browser did technically load *a* document — its own error page), and `onError` does not fire for this case at all in Chrome. Both events are unreliable for detecting this specific failure mode.
+**Fix:** positive proof-of-life instead of negative-error detection. The injected script (`buildInjectionScript` in sw-miruro.js) postMessages `miruro-sw-loaded` the instant real proxied content executes, and `miruro-sw-playing` when the video element actually starts playing. The parent arms a ~6s timer whenever it points the iframe at a fresh `/miruro-sw/` URL; if neither confirmation arrives in time, it assumes the race happened and falls back to `miruroLegacyUrl` or `swFailed`, same as the explicit failure paths.
