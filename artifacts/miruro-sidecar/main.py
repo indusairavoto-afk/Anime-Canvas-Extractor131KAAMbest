@@ -167,9 +167,11 @@ async def get_watch(provider: str, anilist_id: int, category: str, slug: str):
     if not target_id:
         raise HTTPException(status_code=404, detail=f"Episode slug '{slug}' not found for provider {provider}")
 
-    enc_id = base64.urlsafe_b64encode(target_id.encode()).decode().rstrip("=")
+    # target_id is already base64-encoded by miruro's pipe — pass it directly.
+    # Do NOT re-encode: double-encoding produces a garbled episodeId that the
+    # pipe rejects with a non-200 response (→ sidecar 502).
     data = await _pipe_request(
         "sources",
-        {"episodeId": enc_id, "provider": provider, "category": category, "anilistId": anilist_id},
+        {"episodeId": target_id, "provider": provider, "category": category, "anilistId": anilist_id},
     )
     return JSONResponse(data)
