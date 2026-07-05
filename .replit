@@ -53,4 +53,4 @@ packages = ["openssl", "postgresql"]
 [userenv]
 
 [userenv.shared]
-MIRURO_RELAY_URL = "https://miruro-relay.indusairavoto.workers.dev"
+MIRURO_RELAY_URL = "https://miruro-relay.indusairavoto.workers.dev/"
