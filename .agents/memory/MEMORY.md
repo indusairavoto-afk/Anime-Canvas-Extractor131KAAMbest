@@ -21,3 +21,4 @@
 - [AnimeonSen Cloudflare IP block](animeonsen-cf-block.md) — api.animeonsen.xyz hard IP-blocks Replit servers; iframe-only approach is correct; user's browser handles CF challenges without login.
 - [Named popup cross-origin document access](named-popup-cross-origin.md) — reusing a named window.open() popup across clicks can hold a cross-origin page from a prior navigation; guard every later popup.document access in try/catch.
 - [Miruro Python sidecar (curl_cffi)](miruro-sidecar-curl-cffi.md) — native m3u8 via curl_cffi TLS impersonation, not Puppeteer; uvicorn must use `--loop asyncio` or AsyncSession silently kills the worker.
+- [Miruro relay secret sync](miruro-relay-secret-sync.md) — MIRURO_RELAY_SECRET (server) and RELAY_SECRET (CF Worker) are separate stores; mismatch causes silent 401→fallback, not an obvious error.
