@@ -13,7 +13,7 @@
 const MIRURO_ORIGIN = 'https://www.miruro.bz';
 const MIRURO_HOSTNAMES = new Set(['www.miruro.bz', 'miruro.bz', 'www.miruro.to', 'miruro.to']);
 const SW_PREFIX = '/miruro-sw';
-const VERSION = 'v5';
+const VERSION = 'v6';
 
 /** Response headers that would block the iframe or cause CORS issues */
 const DROP_RESP_HEADERS = new Set([
@@ -68,23 +68,53 @@ async function handleProxy(request, url) {
       try { body = await request.arrayBuffer(); } catch (_) { body = undefined; }
     }
 
-    // API calls (/api/secure/pipe, /api/secure/jwks, /api/episodes, etc.) need
-    // miruro.bz's own session cookie (set on the initial page load) to
-    // succeed — 'omit' silently starved them, causing Miruro's SPA to fall
-    // back to a YouTube PV with "Couldn't find episodes". Page/asset requests
-    // stay on 'omit' since miruro.bz likely serves those with a wildcard
-    // Access-Control-Allow-Origin, which browsers reject outright when
-    // combined with credentials: 'include'.
-    // Cross-origin fetch NEVER sends this app's own cookies to miruro.bz
-    // regardless of this setting, so there is no cross-site leakage risk.
     const isApiCall = miruroPath.startsWith('/api/');
 
-    const upstream = await fetch(miruroUrl, {
-      method,
-      headers: buildUpstreamHeaders(request),
-      body,
-      credentials: isApiCall ? 'include' : 'omit',
-    });
+    // API calls (/api/secure/pipe, /api/secure/jwks, etc.):
+    // Use credentials:'omit' — the pipe endpoint is purely crypto-authenticated
+    // (encrypted 'e' param from JWKS) and doesn't need a session cookie.
+    // The relay (which the server uses) also sends no cookies and works fine.
+    // 'include' was tried before but fails CORS because miruro.bz requires
+    // Access-Control-Allow-Credentials:true for credentialed cross-origin
+    // requests, which it doesn't send for third-party origins.
+    // 'omit' only needs Access-Control-Allow-Origin:* which public API
+    // endpoints commonly support. If CORS still fails, we notify the parent
+    // directly via clients.matchAll() (not via HTML body which never executes
+    // scripts when returned as a fetch response, only as an iframe navigation).
+    let upstream;
+    if (isApiCall) {
+      try {
+        upstream = await fetch(miruroUrl, {
+          method,
+          headers: buildUpstreamHeaders(request),
+          body,
+          credentials: 'omit',
+        });
+      } catch (apiErr) {
+        // CORS/network failure on API call — notify parent frame directly.
+        // swFailedResponse HTML won't work here because the SPA is doing a
+        // fetch() call (not a navigation), so <script> tags never execute.
+        const apiMsg = apiErr instanceof Error ? apiErr.message : String(apiErr);
+        console.warn('[sw-miruro] API call CORS failure for', miruroPath, ':', apiMsg);
+        self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+          .then(function(clients) {
+            clients.forEach(function(c) {
+              c.postMessage({ type: 'miruro-sw-failed', error: apiMsg });
+            });
+          });
+        return new Response(JSON.stringify({ error: apiMsg, source: 'sw-cors' }), {
+          status: 503,
+          headers: { 'content-type': 'application/json', 'access-control-allow-origin': '*' }
+        });
+      }
+    } else {
+      upstream = await fetch(miruroUrl, {
+        method,
+        headers: buildUpstreamHeaders(request),
+        body,
+        credentials: 'omit',
+      });
+    }
 
     const ct = upstream.headers.get('content-type') || '';
     const newHeaders = buildDownstreamHeaders(upstream.headers);
@@ -204,12 +234,23 @@ async function handleProxy(request, url) {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.warn('[sw-miruro] proxy error for', miruroPath, ':', msg);
-    // TypeError = CORS/network failure = the SW cannot read a cross-origin response
-    // from miruro.bz (the server doesn't return CORS headers for this app's origin).
-    // This is a SW limitation, NOT a CF IP block of the user's browser.  Signal
-    // "miruro-sw-failed" so the parent falls back to the relay/openMiruroDirect path
-    // instead of showing the misleading "Server IP Blocked" overlay.
     if (err instanceof TypeError) {
+      if (isApiCall) {
+        // API call CORS failure — notify parent via clients (not HTML body which
+        // never executes its <script> when returned as a fetch response).
+        self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+          .then(function(clients) {
+            clients.forEach(function(c) {
+              c.postMessage({ type: 'miruro-sw-failed', error: msg });
+            });
+          });
+        return new Response(JSON.stringify({ error: msg, source: 'sw-cors' }), {
+          status: 503,
+          headers: { 'content-type': 'application/json', 'access-control-allow-origin': '*' }
+        });
+      }
+      // Navigation/asset failure — return swFailedResponse HTML whose <script> WILL
+      // execute because this response is served as an iframe navigation, not a fetch.
       return swFailedResponse(msg);
     }
     return cfBlockResponse(msg);

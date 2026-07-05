@@ -109,11 +109,19 @@ const BASE_HEADERS = {
  * On 403 (session expired / IP rotated), invalidates cache and retries once.
  */
 async function miruroFetch(url: string, init: RequestInit = {}): Promise<Response> {
-  // When a relay (e.g. deployed on Render, an IP Cloudflare doesn't block) is
-  // configured, skip CloakBrowser/CF-cookie logic entirely — the relay does a
-  // plain fetch from a non-blocked IP and just works.
+  // When a relay is configured, try it first — it fetches from a non-CF-blocked IP.
+  // If the relay returns 401 (MIRURO_RELAY_SECRET not set / mismatch), fall through
+  // to the CF session solver so requests still work without a correctly-configured relay.
   if (isMiruroRelayConfigured()) {
-    return relayFetch(url, init);
+    try {
+      const resp = await relayFetch(url, init);
+      if (resp.status !== 401) return resp;
+      // Drain the body so the connection isn't leaked, then fall through
+      await resp.body?.cancel().catch(() => {});
+      console.warn("[miruro] Relay returned 401 (MIRURO_RELAY_SECRET not set?) — falling back to CF session solver");
+    } catch (relayErr) {
+      console.warn("[miruro] Relay unreachable, falling back to CF session solver:", relayErr);
+    }
   }
 
   const addSession = async (extraInit: RequestInit): Promise<RequestInit> => {
@@ -148,13 +156,11 @@ const PAGE_HEADERS = {
   Referer: MIRURO_ORIGIN,
 };
 
-// Warm up a CF session in the background at server start so the first
-// user request to Miruro doesn't pay the full browser-launch latency.
-// Skip entirely when a relay is configured — the relay bypasses the CF
-// block via a non-blocked IP, so there's no challenge to solve here.
-if (!isMiruroRelayConfigured()) {
-  warmCfSession();
-}
+// Always warm a CF session in the background at server start.
+// Even when a relay is configured, warm it as a fallback — if the relay
+// returns 401 (MIRURO_RELAY_SECRET not set), miruroFetch() falls through
+// to the CF session and a pre-warmed session avoids the first-request latency.
+warmCfSession();
 
 /**
  * Cached relay reachability check.
