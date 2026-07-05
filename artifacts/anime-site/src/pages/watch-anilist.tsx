@@ -957,7 +957,7 @@ export default function WatchAniList() {
     }, 15000);
 
     return () => { cancelled = true; timers.forEach(clearTimeout); clearTimeout(fallback); };
-  }, [animeId, currentEp, title, anime?.idMal, lang]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [animeId, currentEp, title, anime?.idMal, romajiTitle, lang]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // When GOGO server is selected, fetch the CDN player iframe URL from the gogoanimes.cv page
   // so we can embed only the CDN player (with our control bridge) instead of the full site.
@@ -1724,7 +1724,7 @@ export default function WatchAniList() {
       })
       .finally(() => { if (!cancelled) setMiruroLoading(false); });
     return () => { cancelled = true; };
-  }, [server, animeId, currentEp, lang]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [server, animeId, currentEp, romajiTitle, lang]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * Try to resolve a direct m3u8 stream via the Miruro sidecar. Runs alongside
@@ -1805,7 +1805,7 @@ export default function WatchAniList() {
       .catch((e: Error) => { if (!cancelled) setAninekoError(e.message); })
       .finally(() => { if (!cancelled) setAninekoLoading(false); });
     return () => { cancelled = true; };
-  }, [server, animeId, currentEp]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [server, animeId, currentEp, romajiTitle]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load AnimePahe HLS URL when server is PAHE
   useEffect(() => {
@@ -2085,7 +2085,7 @@ export default function WatchAniList() {
       })
       .finally(() => { if (!cancelled) setAnimeonsenLoading(false); });
     return () => { cancelled = true; };
-  }, [server, animeId, currentEp]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [server, animeId, currentEp, romajiTitle]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // AI episode verification: when a source page title arrives, verify the episode matches
   useEffect(() => {
