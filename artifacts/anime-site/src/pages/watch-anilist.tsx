@@ -2669,6 +2669,20 @@ export default function WatchAniList() {
                     allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
                     title={`${title} Episode ${currentEp}`}
                     onLoad={() => setTimeout(() => setIframeLoaded(true), 200)}
+                    onError={() => {
+                      // Hard browser-level network failure (SW wasn't controlling this
+                      // navigation yet, or the upstream fetch failed outside the SW's own
+                      // try/catch). Fall back to the server-side relay proxy immediately
+                      // instead of leaving a dead frame on screen.
+                      console.warn("[miruro] iframe onError — falling back to legacy relay URL");
+                      if (miruroLegacyUrl && miruroIframeUrl !== miruroLegacyUrl) {
+                        setMiruroIframeUrl(miruroLegacyUrl);
+                      } else {
+                        sessionStorage.setItem("miruro_sw_blocked", "1");
+                        setSwFailed(true);
+                        setMiruroIframeUrl(null);
+                      }
+                    }}
                   />
                 )}
 
