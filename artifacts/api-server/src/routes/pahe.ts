@@ -266,7 +266,7 @@ async function extractM3u8(kwikUrl: string): Promise<string> {
  * Returns { hlsUrl, isDub, source } or { error }.
  * Requires MIRURO_RELAY_URL (CF Worker) to be configured.
  */
-router.get("/api/pahe/stream", async (req, res) => {
+router.get("/pahe/stream", async (req, res) => {
   const { animeId, ep, title, preferDub } = req.query as Record<string, string>;
 
   if (!RELAY_URL) {
@@ -355,7 +355,7 @@ router.get("/api/pahe/stream", async (req, res) => {
  * GET /api/pahe/search?q=&limit=8
  * Manual search — used to let users correct the anime session if auto-search picks wrong one.
  */
-router.get("/api/pahe/search", async (req, res) => {
+router.get("/pahe/search", async (req, res) => {
   const { q, limit = "8" } = req.query as Record<string, string>;
   if (!q) return res.status(400).json({ error: "q is required" });
 
