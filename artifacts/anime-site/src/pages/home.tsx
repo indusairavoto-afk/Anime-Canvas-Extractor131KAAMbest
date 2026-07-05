@@ -233,7 +233,9 @@ async function fetchRecentAiring(): Promise<AiringEpisodeEntry[]> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ query: AIRING_QUERY(now, weekAgo) }),
   });
-  const json = await res.json();
+  if (!res.ok) return [];
+  const json = await res.json().catch(() => null);
+  if (!json) return [];
   const schedules: Array<{
     id: number;
     episode: number;
@@ -322,8 +324,13 @@ async function fetchAniList(query: string): Promise<AniMedia[]> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ query }),
   });
-  const json = await res.json();
-  return json?.data?.Page?.media ?? [];
+  if (!res.ok) return [];
+  try {
+    const json = await res.json();
+    return json?.data?.Page?.media ?? [];
+  } catch {
+    return [];
+  }
 }
 
 function HeroSlide({ anime }: { anime: AniMedia }) {
