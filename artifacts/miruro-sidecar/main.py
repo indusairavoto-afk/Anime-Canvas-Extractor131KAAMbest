@@ -31,7 +31,7 @@ MIRURO_PIPE_URL = f"{MIRURO_SIDECAR_ORIGIN}/api/secure/pipe"
 # requests are forwarded through it rather than going direct.  CF Worker IPs
 # (ASN 13335) are Cloudflare's own edge — miruro.bz's firewall that blocks
 # Replit/DigitalOcean IPs does not apply to them.
-MIRURO_RELAY_URL = os.environ.get("MIRURO_RELAY_URL", "").rstrip("/")
+MIRURO_RELAY_URL = os.environ.get("MIRURO_RELAY_URL", "").strip().rstrip("/")
 MIRURO_RELAY_SECRET = os.environ.get("MIRURO_RELAY_SECRET", "")
 
 # ── Legacy HTTP proxy (fallback) ──────────────────────────────────────────────

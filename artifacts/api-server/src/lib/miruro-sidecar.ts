@@ -120,32 +120,44 @@ export async function fetchMiruroNativeStream(
     ...Object.keys(providers).filter((p) => !PROVIDER_PRIORITY.includes(p)),
   ];
 
-  let chosen: { provider: string; slug: string } | null = null;
+  const candidates: { provider: string; slug: string }[] = [];
   for (const provider of providerNames) {
     const list = providers[provider]?.episodes?.[category];
     if (!Array.isArray(list)) continue;
     const match = list.find((e) => e.number === epNum);
     if (match?.slug) {
-      chosen = { provider, slug: match.slug };
-      break;
+      candidates.push({ provider, slug: match.slug });
     }
   }
 
-  if (!chosen) {
+  if (candidates.length === 0) {
     throw new Error(`Episode ${epNum} (${category}) not found on Miruro for anilistId=${anilistId}`);
   }
 
-  const sources = await sidecarGetJson(`/watch/${chosen.provider}/${anilistId}/${category}/${chosen.slug}`);
-  const streamUrl = extractStreamUrl(sources);
-  if (!streamUrl) {
-    throw new Error(`No playable stream in Miruro sidecar response (provider=${chosen.provider})`);
+  // Miruro's own backend proxies "sources" lookups to the underlying provider
+  // (kiwi/arc/zoro/hop) server-side; a specific provider can be flaky/502
+  // independently of our relay bypass working fine for the base pipe. Try
+  // each provider that has this episode until one returns a playable stream.
+  let lastErr: Error | null = null;
+  for (const { provider, slug } of candidates) {
+    try {
+      const sources = await sidecarGetJson(`/watch/${provider}/${anilistId}/${category}/${slug}`);
+      const streamUrl = extractStreamUrl(sources);
+      if (!streamUrl) {
+        lastErr = new Error(`No playable stream in Miruro sidecar response (provider=${provider})`);
+        continue;
+      }
+      return {
+        streamUrl,
+        subtitles: extractSubtitles(sources),
+        intro: extractTimestamp(sources, "intro"),
+        outro: extractTimestamp(sources, "outro"),
+        provider,
+      };
+    } catch (err) {
+      lastErr = err instanceof Error ? err : new Error(`Sidecar error (provider=${provider})`);
+    }
   }
 
-  return {
-    streamUrl,
-    subtitles: extractSubtitles(sources),
-    intro: extractTimestamp(sources, "intro"),
-    outro: extractTimestamp(sources, "outro"),
-    provider: chosen.provider,
-  };
+  throw lastErr ?? new Error(`No provider returned a stream for anilistId=${anilistId} ep=${epNum}`);
 }
