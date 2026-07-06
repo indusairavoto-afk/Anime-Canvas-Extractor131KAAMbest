@@ -13,7 +13,7 @@
 const MIRURO_ORIGIN = 'https://www.miruro.bz';
 const MIRURO_HOSTNAMES = new Set(['www.miruro.bz', 'miruro.bz', 'www.miruro.to', 'miruro.to']);
 const SW_PREFIX = '/miruro-sw';
-const VERSION = 'v9';
+const VERSION = 'v10';
 
 /**
  * CDN hostnames used by Miruro's video providers (kiwi, etc.).
@@ -300,6 +300,12 @@ async function handleCdnProxy(request, url) {
       'Referer': 'https://kwik.cx/',
       'Accept': request.headers.get('accept') || '*/*',
     };
+    // Forward byte-range headers so seeking and resumable playback work correctly.
+    // HLS.js and Vidstack may issue Range/If-Range requests for segments and keys.
+    const range = request.headers.get('range');
+    if (range) headers['Range'] = range;
+    const ifRange = request.headers.get('if-range');
+    if (ifRange) headers['If-Range'] = ifRange;
     const resp = await fetch(url.toString(), {
       method: request.method,
       headers: headers,
