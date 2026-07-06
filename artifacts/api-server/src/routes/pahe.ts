@@ -8,54 +8,66 @@
  *   4. Fetch kwik.cx embed page → unpack p,a,c,k obfuscated JS → extract M3U8
  *   5. Return { hlsUrl } for native HLS playback
  *
- * All AnimePahe / kwik.cx fetches are routed through the CF Worker relay
- * (MIRURO_RELAY_URL) because Replit's datacenter IPs are blocked by both sites.
- * Without the relay this route returns 503.
+ * animepahe.pw fronts every page with a real Cloudflare Turnstile "Just a
+ * moment..." JS challenge — not a plain IP block. Neither the CF-edge relay
+ * (MIRURO_RELAY_URL) nor curl_cffi TLS impersonation can solve that; only an
+ * actual headless browser running the challenge JS can (see pahe-cf-solver.ts,
+ * same approach as the Miruro CF solver). Once solved, the cf_clearance
+ * cookie is replayed on plain fetch() calls from this same server IP.
+ *
+ * kwik.cx itself is NOT behind Cloudflare and is fetched directly.
  */
 
 import { Router } from "express";
+import { getCfSession, invalidateCfSession, warmCfSession } from "../lib/pahe-cf-solver.js";
 
 const router = Router();
 
-// ── Relay helpers ──────────────────────────────────────────────────────────
-
-const RELAY_URL = (process.env.MIRURO_RELAY_URL ?? "").replace(/\/$/, "");
-const RELAY_SECRET = process.env.MIRURO_RELAY_SECRET ?? "";
-
-/** Forward a request through the CF Worker relay. */
-async function relayFetch(
-  url: string,
-  forwardHeaders: Record<string, string> = {},
-  options: { method?: string; body?: string } = {}
-): Promise<Response> {
-  if (!RELAY_URL) throw new Error("MIRURO_RELAY_URL not configured");
-
-  const reqHeaders: Record<string, string> = {};
-  if (RELAY_SECRET) reqHeaders["x-relay-secret"] = RELAY_SECRET;
-  if (Object.keys(forwardHeaders).length > 0) {
-    reqHeaders["x-relay-headers"] = Buffer.from(
-      JSON.stringify(forwardHeaders)
-    ).toString("base64");
-  }
-  if (options.body) reqHeaders["content-length"] = String(Buffer.byteLength(options.body));
-
-  return fetch(`${RELAY_URL}/relay?url=${encodeURIComponent(url)}`, {
-    method: options.method ?? "GET",
-    headers: reqHeaders,
-    body: options.body ?? undefined,
-  });
-}
+const PAHE_ORIGIN = "https://animepahe.pw";
 
 // ── Shared headers ─────────────────────────────────────────────────────────
 
-const PAHE_BROWSER: Record<string, string> = {
+const PAHE_BASE_HEADERS: Record<string, string> = {
   "User-Agent":
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",
   "Accept-Language": "en-US,en;q=0.9",
   "Cache-Control": "no-cache",
-  Referer: "https://animepahe.ru/",
-  Origin: "https://animepahe.ru",
+  Referer: `${PAHE_ORIGIN}/`,
+  Origin: PAHE_ORIGIN,
 };
+
+/**
+ * Fetch an animepahe.pw URL with a solved CF Turnstile session's cookies
+ * injected. On 403 (session expired / IP rotated), invalidates the cached
+ * session and retries once with a freshly solved one.
+ */
+async function paheFetch(url: string, extraHeaders: Record<string, string> = {}): Promise<Response> {
+  const addSession = async (): Promise<Record<string, string>> => {
+    const session = await getCfSession();
+    if (!session) return { ...PAHE_BASE_HEADERS, ...extraHeaders };
+    return {
+      ...PAHE_BASE_HEADERS,
+      ...extraHeaders,
+      Cookie: session.cookieHeader,
+      "User-Agent": session.userAgent,
+    };
+  };
+
+  const firstHeaders = await addSession();
+  const resp = await fetch(url, { headers: firstHeaders });
+
+  if (resp.status === 403 || resp.status === 429) {
+    await resp.body?.cancel().catch(() => {});
+    invalidateCfSession();
+    const retryHeaders = await addSession(); // triggers a fresh solve
+    return fetch(url, { headers: retryHeaders });
+  }
+  return resp;
+}
+
+// Warm a CF session in the background at server start so the first user
+// request doesn't pay the ~10-20s headless-browser solve cost.
+warmCfSession();
 
 // ── In-memory cache ────────────────────────────────────────────────────────
 
@@ -79,11 +91,8 @@ const EP_TTL = 60 * 60 * 1000; // 1 h
 async function searchPahe(
   query: string
 ): Promise<Array<{ session: string; title: string; type: string }>> {
-  const url = `https://animepahe.ru/api?m=search&q=${encodeURIComponent(query)}`;
-  const resp = await relayFetch(url, {
-    ...PAHE_BROWSER,
-    Accept: "application/json, text/plain, */*",
-  });
+  const url = `${PAHE_ORIGIN}/api?m=search&q=${encodeURIComponent(query)}`;
+  const resp = await paheFetch(url, { Accept: "application/json, text/plain, */*" });
   if (!resp.ok) throw new Error(`AnimePahe search HTTP ${resp.status}`);
   const data = (await resp.json()) as {
     data?: Array<{ session: string; title: string; type: string }>;
@@ -106,11 +115,8 @@ async function getEpisodePage(
   animeSession: string,
   page: number
 ): Promise<PaheEpisodeList> {
-  const url = `https://animepahe.ru/api?m=release&id=${animeSession}&sort=episode_asc&page=${page}`;
-  const resp = await relayFetch(url, {
-    ...PAHE_BROWSER,
-    Accept: "application/json, text/plain, */*",
-  });
+  const url = `${PAHE_ORIGIN}/api?m=release&id=${animeSession}&sort=episode_asc&page=${page}`;
+  const resp = await paheFetch(url, { Accept: "application/json, text/plain, */*" });
   if (!resp.ok) throw new Error(`AnimePahe episodes HTTP ${resp.status}`);
   return resp.json() as Promise<PaheEpisodeList>;
 }
@@ -153,11 +159,8 @@ async function getKwikUrl(
   animeSession: string,
   epSession: string
 ): Promise<string | null> {
-  const url = `https://animepahe.ru/play/${animeSession}/${epSession}`;
-  const resp = await relayFetch(url, {
-    ...PAHE_BROWSER,
-    Accept: "text/html,application/xhtml+xml,*/*",
-  });
+  const url = `${PAHE_ORIGIN}/play/${animeSession}/${epSession}`;
+  const resp = await paheFetch(url, { Accept: "text/html,application/xhtml+xml,*/*" });
   if (!resp.ok) throw new Error(`AnimePahe play page HTTP ${resp.status}`);
   const html = await resp.text();
 
@@ -200,13 +203,15 @@ function unpackPACK(html: string): string {
   return p;
 }
 
-/** Fetch a kwik.cx embed page and return the HLS M3U8 URL. */
+/** Fetch a kwik.cx embed page and return the HLS M3U8 URL. kwik.cx is not behind Cloudflare. */
 async function extractM3u8(kwikUrl: string): Promise<string> {
-  const resp = await relayFetch(kwikUrl, {
-    "User-Agent": PAHE_BROWSER["User-Agent"],
-    Accept: "text/html,application/xhtml+xml,*/*",
-    "Accept-Language": "en-US,en;q=0.9",
-    Referer: "https://animepahe.ru/",
+  const resp = await fetch(kwikUrl, {
+    headers: {
+      "User-Agent": PAHE_BASE_HEADERS["User-Agent"],
+      Accept: "text/html,application/xhtml+xml,*/*",
+      "Accept-Language": "en-US,en;q=0.9",
+      Referer: `${PAHE_ORIGIN}/`,
+    },
   });
   if (!resp.ok) throw new Error(`kwik.cx embed HTTP ${resp.status}`);
   const html = await resp.text();
@@ -233,16 +238,16 @@ async function extractM3u8(kwikUrl: string): Promise<string> {
   if (tokenMatch) {
     const token = tokenMatch[1];
     const postUrl = kwikUrl.replace("/e/", "/f/");
-    const postResp = await relayFetch(
-      postUrl,
-      {
-        "User-Agent": PAHE_BROWSER["User-Agent"],
+    const postResp = await fetch(postUrl, {
+      method: "POST",
+      headers: {
+        "User-Agent": PAHE_BASE_HEADERS["User-Agent"],
         "Content-Type": "application/x-www-form-urlencoded",
         Referer: kwikUrl,
         Origin: "https://kwik.cx",
       },
-      { method: "POST", body: `_token=${encodeURIComponent(token)}` }
-    );
+      body: `_token=${encodeURIComponent(token)}`,
+    });
     const postHtml = postResp.ok ? await postResp.text() : "";
     const m3u8Post =
       postHtml.match(/https?:\/\/[^\s'"<>]+\.m3u8[^\s'"<>]*/)?.[0];
@@ -264,16 +269,10 @@ async function extractM3u8(kwikUrl: string): Promise<string> {
  * GET /api/pahe/stream?animeId=&ep=&title=&preferDub=1
  *
  * Returns { hlsUrl, isDub, source } or { error }.
- * Requires MIRURO_RELAY_URL (CF Worker) to be configured.
  */
 router.get("/pahe/stream", async (req, res) => {
   const { animeId, ep, title, preferDub } = req.query as Record<string, string>;
 
-  if (!RELAY_URL) {
-    return res.status(503).json({
-      error: "CF Worker relay not configured — set MIRURO_RELAY_URL to enable AnimePahe",
-    });
-  }
   if (!animeId || !ep) {
     return res.status(400).json({ error: "animeId and ep are required" });
   }
@@ -359,13 +358,35 @@ router.get("/pahe/search", async (req, res) => {
   const { q, limit = "8" } = req.query as Record<string, string>;
   if (!q) return res.status(400).json({ error: "q is required" });
 
-  if (!RELAY_URL) {
-    return res.status(503).json({ error: "MIRURO_RELAY_URL not configured" });
-  }
-
   try {
     const results = await searchPahe(q);
     return res.json({ results: results.slice(0, parseInt(limit, 10) || 8) });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return res.status(500).json({ error: msg });
+  }
+});
+
+/**
+ * GET /api/pahe/resolve?url=<animepahe play URL>
+ * Directly resolves a specific AnimePahe play page URL (anime+episode session
+ * IDs already known) straight to an HLS URL — skips search/episode-list steps.
+ */
+router.get("/pahe/resolve", async (req, res) => {
+  const { url } = req.query as Record<string, string>;
+  if (!url) return res.status(400).json({ error: "url is required" });
+
+  const m = url.match(/\/play\/([^/]+)\/([^/?#]+)/);
+  if (!m) return res.status(400).json({ error: "Could not parse animeSession/epSession from url" });
+  const [, animeSession, epSession] = m;
+
+  try {
+    const kwikUrl = await getKwikUrl(animeSession, epSession);
+    if (!kwikUrl) {
+      return res.status(404).json({ error: "kwik.cx URL not found on AnimePahe play page" });
+    }
+    const hlsUrl = await extractM3u8(kwikUrl);
+    return res.json({ hlsUrl, source: "AnimePahe/kwik.cx" });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     return res.status(500).json({ error: msg });
