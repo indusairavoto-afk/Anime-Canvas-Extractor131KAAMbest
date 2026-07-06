@@ -1060,32 +1060,32 @@ router.get("/miruro/native-stream", async (req, res) => {
   // would permanently block the HLS player for the session.
   res.set("Cache-Control", "no-store");
 
-  // CDN hostnames that are IP-blocked from Replit's server. The SW handles
-  // these from the user's browser instead — return 503 immediately so the
-  // frontend skips the 3-5s HLS.js retry loop and falls back to the SW iframe.
-  const BLOCKED_CDN_SUFFIXES = [".uwucdn.top", ".owocdn.top"];
+  // CDN hostnames from kwik.cx-backed sources (owocdn/uwucdn).
+  // These require Referer: https://kwik.cx/ — any other referer returns 403.
+  // Node.js/undici TLS fingerprint is blocked by CF bot detection even with the
+  // correct Referer; route through the sidecar (curl_cffi Chrome110 impersonation).
+  const KWIK_CDN_SUFFIXES = [".uwucdn.top", ".owocdn.top"];
 
   try {
     const native = await fetchMiruroNativeStream(anilistIdNum, epNum, preferDub ? "dub" : "sub");
 
-    // Check if the resolved stream URL is on a server-side-blocked CDN.
+    // Pick the correct proxy and referer based on the CDN hostname.
     let streamHostname = "";
     try { streamHostname = new URL(native.streamUrl).hostname; } catch { /* ignore */ }
-    const isCdnBlocked = BLOCKED_CDN_SUFFIXES.some(
+    const isKwikCdn = KWIK_CDN_SUFFIXES.some(
       (sfx) => streamHostname === sfx.slice(1) || streamHostname.endsWith(sfx)
     );
-    if (isCdnBlocked) {
-      res.status(503).json({
-        error: `Stream CDN (${streamHostname}) is IP-blocked from this server; browser SW will handle it via the iframe path`,
-        cdnBlocked: true,
-      });
-      return;
-    }
 
-    const referer = "https://www.miruro.bz/";
-    const hlsUrl = `/api/anizone/hls?u=${Buffer.from(native.streamUrl).toString("base64url")}&ref=${Buffer.from(referer).toString("base64url")}`;
+    // kwik CDNs: route through sidecar cdn-proxy (Chrome TLS impersonation + kwik.cx referer)
+    // Other CDNs: route through anizone/hls (standard node fetch with miruro referer)
+    const referer = isKwikCdn ? "https://kwik.cx/" : "https://www.miruro.bz/";
+    const proxyBase = isKwikCdn ? "/api/miruro/cdn-proxy" : "/api/anizone/hls";
+    const makeProxyUrl = (u: string) =>
+      `${proxyBase}?u=${Buffer.from(u).toString("base64url")}&ref=${Buffer.from(referer).toString("base64url")}`;
+
+    const hlsUrl = makeProxyUrl(native.streamUrl);
     const subtitles = native.subtitles.map((s) => ({
-      src: `/api/anizone/hls?u=${Buffer.from(s.url).toString("base64url")}&ref=${Buffer.from(referer).toString("base64url")}`,
+      src: makeProxyUrl(s.url),
       label: s.label,
       srclang: s.lang,
       isDefault: s.isDefault,
@@ -1094,6 +1094,128 @@ router.get("/miruro/native-stream", async (req, res) => {
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Miruro sidecar error";
     res.status(503).json({ error: msg });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/miruro/cdn-proxy?u=<base64url-cdn-url>&ref=<base64url-referer>
+//
+// Proxies HLS resources from kwik.cx-backed CDNs (owocdn.top / uwucdn.top)
+// by routing fetches through the Python sidecar, which uses curl_cffi
+// Chrome110 TLS impersonation to bypass Cloudflare bot detection.
+// Node.js/undici is blocked by CF's TLS fingerprint check even with the
+// correct Referer header — the sidecar's impersonation is required.
+//
+// For m3u8 responses: rewrites all segment/key URIs to go through this
+// same proxy so HLS.js never makes direct CDN requests.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const KWIK_CDN_SUFFIXES_PROXY = [".uwucdn.top", ".owocdn.top"];
+const SIDECAR_BASE = process.env.MIRURO_SIDECAR_URL ?? "http://127.0.0.1:8090";
+
+function isCdnAllowed(hostname: string): boolean {
+  return KWIK_CDN_SUFFIXES_PROXY.some(
+    (sfx) => hostname === sfx.slice(1) || hostname.endsWith(sfx)
+  );
+}
+
+function makeCdnProxyUrl(url: string, referer: string): string {
+  return `/api/miruro/cdn-proxy?u=${Buffer.from(url).toString("base64url")}&ref=${Buffer.from(referer).toString("base64url")}`;
+}
+
+function rewriteKwikM3u8(body: string, baseUrl: string, referer: string): string {
+  const base = new URL(baseUrl);
+
+  function toProxy(uri: string): string {
+    const absolute = /^https?:\/\//i.test(uri)
+      ? uri
+      : new URL(uri, base).toString();
+    return makeCdnProxyUrl(absolute, referer);
+  }
+
+  return body
+    .split("\n")
+    .map((line) => {
+      const t = line.trim();
+      if (!t) return line;
+      if (t.startsWith("#")) {
+        // Rewrite URI="..." in tag lines (e.g. #EXT-X-KEY URI, #EXT-X-MAP URI)
+        return line.replace(/URI="([^"]+)"/g, (_, uri) => `URI="${toProxy(uri)}"`);
+      }
+      return toProxy(t);
+    })
+    .join("\n");
+}
+
+router.get("/miruro/cdn-proxy", async (req, res) => {
+  const uEncoded = (req.query.u as string | undefined)?.trim();
+  if (!uEncoded) return res.status(400).send("u param required");
+
+  let cdnUrl: string;
+  try {
+    cdnUrl = Buffer.from(uEncoded, "base64url").toString("utf8");
+    new URL(cdnUrl); // validate
+  } catch {
+    return res.status(400).send("invalid u param");
+  }
+
+  // Security gate: only proxy known kwik CDN hostnames to prevent SSRF
+  const hostname = new URL(cdnUrl).hostname;
+  if (!isCdnAllowed(hostname)) {
+    return res.status(403).json({ error: `CDN host '${hostname}' not in allowlist` });
+  }
+
+  let referer = "https://kwik.cx/";
+  const refEncoded = (req.query.ref as string | undefined)?.trim();
+  if (refEncoded) {
+    try {
+      const decoded = Buffer.from(refEncoded, "base64url").toString("utf8");
+      new URL(decoded); // validate
+      referer = decoded;
+    } catch { /* keep default */ }
+  }
+
+  try {
+    // Route through sidecar for Chrome110 TLS impersonation
+    const sidecarFetchUrl = `${SIDECAR_BASE}/cdn-fetch?url=${encodeURIComponent(cdnUrl)}&referer=${encodeURIComponent(referer)}`;
+    const upstream = await fetch(sidecarFetchUrl, { signal: AbortSignal.timeout(20_000) });
+
+    if (!upstream.ok) {
+      const detail = await upstream.text().catch(() => "");
+      return res.status(upstream.status).json({ error: `CDN fetch failed: ${upstream.status}`, detail });
+    }
+
+    const contentType = upstream.headers.get("content-type") ?? "";
+
+    if (
+      cdnUrl.includes(".m3u8") ||
+      contentType.includes("mpegurl") ||
+      contentType.includes("x-mpegURL")
+    ) {
+      const text = await upstream.text();
+      // Detect CF challenge pages returned as HTTP 200
+      if (
+        contentType.includes("text/html") ||
+        text.trimStart().startsWith("<!DOCTYPE") ||
+        text.trimStart().startsWith("<html")
+      ) {
+        return res.status(503).json({ error: "CDN returned CF challenge instead of m3u8" });
+      }
+      const rewritten = rewriteKwikM3u8(text, cdnUrl, referer);
+      res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Cache-Control", "no-cache");
+      return res.send(rewritten);
+    }
+
+    res.setHeader("Content-Type", contentType || "video/mp2t");
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Cache-Control", "no-cache");
+    const buf = await upstream.arrayBuffer();
+    return res.send(Buffer.from(buf));
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "cdn proxy error";
+    return res.status(502).json({ error: msg });
   }
 });
 

@@ -19,7 +19,7 @@ import os
 import httpx
 from curl_cffi.requests import AsyncSession
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response as FastAPIResponse
 
 app = FastAPI(title="Miruro Sidecar")
 
@@ -118,6 +118,44 @@ def _inject_source_slugs(data: dict, anilist_id: int) -> dict:
                 prefix = orig_id.split(":")[0] if ":" in orig_id else orig_id
                 ep["slug"] = f"{prefix}-{ep['number']}"
     return data
+
+
+@app.get("/cdn-fetch")
+async def cdn_fetch(
+    url: str = Query(..., description="CDN URL to fetch"),
+    referer: str = Query("https://kwik.cx/", description="Referer header value"),
+):
+    """
+    Fetch a CDN resource using curl_cffi Chrome TLS impersonation.
+    Used for owocdn.top / uwucdn.top streams that require kwik.cx Referer
+    and block Node.js/undici by TLS fingerprint.
+    """
+    cdn_headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36",
+        "Referer": referer,
+        "Accept": "*/*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "identity",
+    }
+    async with AsyncSession(impersonate="chrome110", proxies=PROXIES, timeout=20) as client:
+        res = await client.get(url, headers=cdn_headers)
+
+    if res.status_code not in (200, 206):
+        raise HTTPException(
+            status_code=res.status_code,
+            detail=f"CDN returned HTTP {res.status_code}",
+        )
+
+    content_type = res.headers.get("content-type", "application/octet-stream")
+    return FastAPIResponse(
+        content=res.content,
+        status_code=res.status_code,
+        media_type=content_type,
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Cache-Control": "no-cache",
+        },
+    )
 
 
 @app.get("/health")
