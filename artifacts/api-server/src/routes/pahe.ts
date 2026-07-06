@@ -19,7 +19,7 @@
  */
 
 import { Router } from "express";
-import { getCfSession, invalidateCfSession, warmCfSession } from "../lib/pahe-cf-solver.js";
+import { getCfSession, invalidateCfSession, warmCfSession, setManualSession } from "../lib/pahe-cf-solver.js";
 
 const router = Router();
 
@@ -365,6 +365,53 @@ router.get("/pahe/search", async (req, res) => {
     const msg = err instanceof Error ? err.message : String(err);
     return res.status(500).json({ error: msg });
   }
+});
+
+/**
+ * POST /api/pahe/set-cookie
+ * Body: { cookie: string, userAgent?: string }
+ *
+ * animepahe.pw's Cloudflare Private Access Token challenge can only be
+ * solved by a genuine browser on real hardware — a headless/scripted
+ * browser can never pass it. This endpoint lets a human paste in cookies
+ * copied from their own real browser session so the server can reuse them
+ * for a while (~2h) to fetch AnimePahe pages.
+ *
+ * How to get the cookie value:
+ *   1. Open https://animepahe.pw in a normal browser and let the security
+ *      check finish (you'll land on the real site).
+ *   2. Open DevTools (F12) → Network tab → reload the page → click the
+ *      first request (animepahe.pw) → find "Cookie" under Request Headers.
+ *   3. Copy the ENTIRE cookie header value and paste it as `cookie` below.
+ *      (Also fine to copy from Application → Cookies and join as
+ *      "name1=value1; name2=value2; ...".)
+ */
+router.post("/pahe/set-cookie", (req, res) => {
+  const { cookie, userAgent } = req.body as { cookie?: string; userAgent?: string };
+  if (!cookie || typeof cookie !== "string" || cookie.trim().length < 10) {
+    return res.status(400).json({ error: "cookie (string) is required" });
+  }
+  if (!cookie.includes("cf_clearance")) {
+    return res.status(400).json({
+      error:
+        "cookie header does not contain 'cf_clearance' — make sure you copied the full Cookie header from a request to animepahe.pw after the security check passed",
+    });
+  }
+  setManualSession(cookie, userAgent);
+  return res.json({ ok: true, message: "Cookie installed. Valid for ~2 hours." });
+});
+
+/**
+ * GET /api/pahe/cookie-status
+ * Quick check of whether a usable CF session is currently cached.
+ */
+router.get("/pahe/cookie-status", async (_req, res) => {
+  const session = await getCfSession();
+  if (!session) return res.json({ hasSession: false });
+  return res.json({
+    hasSession: true,
+    expiresInSeconds: Math.max(0, Math.round((session.expiresAt - Date.now()) / 1000)),
+  });
 });
 
 /**

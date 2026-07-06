@@ -232,6 +232,28 @@ export function invalidateCfSession(): void {
   console.info("[pahe-cf] Session invalidated");
 }
 
+/**
+ * Manually install a CF session from cookies copied out of a real browser
+ * (animepahe.pw's Private Access Token challenge can only be solved by a
+ * genuine device, not headless Chromium — see animepahe-pat-block memory).
+ * TTL is generous (2h) since a human-solved cf_clearance tends to last
+ * longer than what a scripted solve would get, but it will still need
+ * periodic refreshing.
+ */
+const MANUAL_SESSION_TTL_MS = 2 * 60 * 60 * 1000;
+
+export function setManualSession(cookieHeader: string, userAgent?: string): void {
+  const session: CfSession = {
+    cookieHeader: cookieHeader.trim(),
+    userAgent: userAgent?.trim() || "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",
+    expiresAt: Date.now() + MANUAL_SESSION_TTL_MS,
+  };
+  currentSession = session;
+  cooldownUntil = 0;
+  saveDiskSession(session);
+  console.info("[pahe-cf] Manual CF session installed ✓ (expires in 2h)");
+}
+
 export function warmCfSession(): void {
   if (currentSession && Date.now() < currentSession.expiresAt) return;
   if (Date.now() < cooldownUntil) return;
