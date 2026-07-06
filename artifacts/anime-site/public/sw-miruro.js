@@ -13,7 +13,7 @@
 const MIRURO_ORIGIN = 'https://www.miruro.bz';
 const MIRURO_HOSTNAMES = new Set(['www.miruro.bz', 'miruro.bz', 'www.miruro.to', 'miruro.to']);
 const SW_PREFIX = '/miruro-sw';
-const VERSION = 'v8';
+const VERSION = 'v9';
 
 /**
  * CDN hostnames used by Miruro's video providers (kiwi, etc.).
@@ -292,9 +292,12 @@ async function handleProxy(request, url) {
  */
 async function handleCdnProxy(request, url) {
   try {
+    // owocdn.top / uwucdn.top are sourced via kwik.cx embeds.
+    // The CDN validates Referer and returns 403 for any other origin.
+    // Origin is a forbidden header (browser sets it automatically) so we omit it.
     const headers = {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-      'Referer': MIRURO_ORIGIN + '/',
+      'Referer': 'https://kwik.cx/',
       'Accept': request.headers.get('accept') || '*/*',
     };
     const resp = await fetch(url.toString(), {
