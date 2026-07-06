@@ -13,7 +13,16 @@
 const MIRURO_ORIGIN = 'https://www.miruro.bz';
 const MIRURO_HOSTNAMES = new Set(['www.miruro.bz', 'miruro.bz', 'www.miruro.to', 'miruro.to']);
 const SW_PREFIX = '/miruro-sw';
-const VERSION = 'v7';
+const VERSION = 'v8';
+
+/**
+ * CDN hostnames used by Miruro's video providers (kiwi, etc.).
+ * These CDNs block Replit's server IP (so the server-side proxy fails), but
+ * they allow user-browser IPs.  The SW intercepts fetches to these hostnames,
+ * forwards them with the correct Referer/Origin context, and adds
+ * Access-Control-Allow-Origin: * so the in-page HLS player can read the data.
+ */
+const CDN_SUFFIXES = ['.uwucdn.top', '.owocdn.top'];
 
 /** Response headers that would block the iframe or cause CORS issues */
 const DROP_RESP_HEADERS = new Set([
@@ -49,6 +58,17 @@ self.addEventListener('fetch', (event) => {
   if (MIRURO_HOSTNAMES.has(url.hostname)) {
     const proxyUrl = new URL(SW_PREFIX + url.pathname + url.search, self.location.origin);
     event.respondWith(handleProxy(new Request(proxyUrl, { method: event.request.method, headers: event.request.headers }), proxyUrl));
+    return;
+  }
+
+  // Tertiary: intercept Miruro CDN requests (uwucdn.top, owocdn.top, etc.).
+  // These CDNs block Replit's server IP so the server-side /api/anizone/hls
+  // proxy fails.  However, the user's browser IP is NOT blocked.  We intercept
+  // here so we can (a) use the browser's IP for the actual fetch and (b) inject
+  // Access-Control-Allow-Origin: * so the HLS player can read the response.
+  const isMiruroCdn = CDN_SUFFIXES.some(function(sfx) { return url.hostname.endsWith(sfx); });
+  if (isMiruroCdn) {
+    event.respondWith(handleCdnProxy(event.request, url));
   }
 });
 
@@ -254,6 +274,62 @@ async function handleProxy(request, url) {
       return swFailedResponse(msg);
     }
     return cfBlockResponse(msg);
+  }
+}
+
+/**
+ * CDN proxy handler for uwucdn.top / owocdn.top.
+ *
+ * Miruro's kiwi provider uses these CDNs.  Replit's server IP is CF-blocked so
+ * our server-side /api/anizone/hls proxy fails with a CF challenge page.
+ * The user's browser IP is NOT blocked, so we fetch directly here (SW runs in
+ * the user's browser).  We then inject ACAO: * so the in-page HLS player can
+ * read the response regardless of our page's origin.
+ *
+ * We forward Referer and Accept from the original request.  We cannot set
+ * Origin (forbidden header) so the browser sends its own origin, but CDNs
+ * that block by IP (not origin) will still respond with real content.
+ */
+async function handleCdnProxy(request, url) {
+  try {
+    const headers = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+      'Referer': MIRURO_ORIGIN + '/',
+      'Accept': request.headers.get('accept') || '*/*',
+    };
+    const resp = await fetch(url.toString(), {
+      method: request.method,
+      headers: headers,
+      credentials: 'omit',
+    });
+
+    // If the CDN returned an HTML page (CF challenge / error), fail loudly so
+    // HLS.js gets an error response rather than trying to parse HTML as m3u8.
+    // CF challenge pages come back as HTTP 200 text/html — check regardless of
+    // status code, because any HTML from a CDN video endpoint is wrong.
+    const ct = resp.headers.get('content-type') || '';
+    if (ct.includes('text/html')) {
+      return new Response(JSON.stringify({ error: 'CDN blocked (HTML response)', status: resp.status }), {
+        status: 503,
+        headers: { 'content-type': 'application/json', 'access-control-allow-origin': '*' },
+      });
+    }
+
+    // Copy upstream headers, override ACAO so the page can read the response.
+    const newHeaders = new Headers();
+    for (const [k, v] of resp.headers.entries()) {
+      if (k.toLowerCase() !== 'access-control-allow-origin') newHeaders.set(k, v);
+    }
+    newHeaders.set('access-control-allow-origin', '*');
+    newHeaders.set('access-control-allow-headers', '*');
+
+    return new Response(resp.body, { status: resp.status, headers: newHeaders });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return new Response(JSON.stringify({ error: msg }), {
+      status: 503,
+      headers: { 'content-type': 'application/json', 'access-control-allow-origin': '*' },
+    });
   }
 }
 

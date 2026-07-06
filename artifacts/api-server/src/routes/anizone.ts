@@ -273,6 +273,18 @@ router.get("/anizone/hls", async (req, res) => {
       contentType.includes("x-mpegURL")
     ) {
       const text = await upstream.text();
+      // Detect Cloudflare challenge / error pages served as HTTP 200.
+      // These arrive when the server IP is CF-blocked and the CDN returns an
+      // HTML challenge or error page instead of m3u8 content.  Serving this as
+      // a playlist would give HLS.js thousands of garbage "segment" URLs; return
+      // 503 instead so onFatalError fires quickly and the SW iframe takes over.
+      if (
+        contentType.includes("text/html") ||
+        text.trimStart().startsWith("<!DOCTYPE") ||
+        text.trimStart().startsWith("<html")
+      ) {
+        return res.status(503).json({ error: "CDN IP-blocked (CF challenge received instead of m3u8)" });
+      }
       const rewritten = rewriteM3u8(text, cdnUrl);
 
       res.setHeader("Content-Type", "application/vnd.apple.mpegurl");

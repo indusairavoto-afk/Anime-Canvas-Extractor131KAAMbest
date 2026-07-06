@@ -1062,7 +1062,7 @@ router.get("/miruro/native-stream", async (req, res) => {
 
   try {
     const native = await fetchMiruroNativeStream(anilistIdNum, epNum, preferDub ? "dub" : "sub");
-    const referer = "https://www.miruro.tv/";
+    const referer = "https://www.miruro.bz/";
     const hlsUrl = `/api/anizone/hls?u=${Buffer.from(native.streamUrl).toString("base64url")}&ref=${Buffer.from(referer).toString("base64url")}`;
     const subtitles = native.subtitles.map((s) => ({
       src: `/api/anizone/hls?u=${Buffer.from(s.url).toString("base64url")}&ref=${Buffer.from(referer).toString("base64url")}`,
