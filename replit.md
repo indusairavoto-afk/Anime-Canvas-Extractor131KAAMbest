@@ -71,6 +71,12 @@ Builds the frontend and API, then runs the compiled API server which serves the 
 node artifacts/api-server/dist/index.mjs
 ```
 
+## Current setup status
+
+- `MIRURO_RELAY_URL` — set (points at `https://miruro-relay.indusairavoto.workers.dev/`)
+- `MIRURO_RELAY_SECRET` — set (matches the Cloudflare Worker's `RELAY_SECRET`)
+- Database schema — pushed to Replit PostgreSQL via `pnpm --filter @workspace/db run push`
+
 ## User preferences
 
 - Keep the existing monorepo structure (artifacts/ for apps, lib/ for shared packages)
