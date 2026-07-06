@@ -23,3 +23,4 @@
 - [Miruro Python sidecar (curl_cffi)](miruro-sidecar-curl-cffi.md) — native m3u8 via curl_cffi TLS impersonation, not Puppeteer; uvicorn must use `--loop asyncio` or AsyncSession silently kills the worker.
 - [Miruro relay secret sync](miruro-relay-secret-sync.md) — MIRURO_RELAY_SECRET (server) and RELAY_SECRET (CF Worker) are separate stores; mismatch causes silent 401→fallback, not an obvious error.
 - [Miruro sidecar origin + sources outage](miruro-sidecar-origin-and-sources-outage.md) — sidecar must target miruro.bz (not .tv default); "sources" pipe calls can 502 across ALL providers as a real upstream outage, distinct from CF IP-block.
+- [Miruro blocked-CDN fast fallback](miruro-cdn-blocked-fast-fallback.md) — uwucdn/owocdn IP-blocked from server; server returns 503+cdnBlocked, frontend skips retries, SW handles from browser. Update BLOCKED_CDN_SUFFIXES + CDN_SUFFIXES in lockstep.

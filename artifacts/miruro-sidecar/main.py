@@ -23,7 +23,7 @@ from fastapi.responses import JSONResponse
 
 app = FastAPI(title="Miruro Sidecar")
 
-MIRURO_SIDECAR_ORIGIN = os.environ.get("MIRURO_SIDECAR_ORIGIN", "https://www.miruro.tv")
+MIRURO_SIDECAR_ORIGIN = os.environ.get("MIRURO_SIDECAR_ORIGIN", "https://www.miruro.bz")
 MIRURO_PIPE_URL = f"{MIRURO_SIDECAR_ORIGIN}/api/secure/pipe"
 
 # ── Cloudflare Worker relay (preferred bypass) ────────────────────────────────

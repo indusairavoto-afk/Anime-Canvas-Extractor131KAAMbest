@@ -1752,13 +1752,20 @@ export default function WatchAniList() {
     const tryFetch = (attempt: number) => {
       if (cancelled) return;
       fetch(apiUrl(`/api/miruro/native-stream?anilistId=${animeId}&ep=${currentEp}&dub=${lang === "DUB" ? "1" : "0"}`), { cache: "no-store" })
-        .then((r) => (r.ok ? r.json() : null))
-        .then((data: { hlsUrl?: string; subtitles?: { src: string; label: string; srclang: string; isDefault: boolean }[] } | null) => {
+        .then(async (r) => {
+          // Always parse JSON so we can inspect cdnBlocked on non-OK responses
+          const data = await r.json().catch(() => null);
+          return { ok: r.ok, data };
+        })
+        .then(({ ok, data }: { ok: boolean; data: { hlsUrl?: string; subtitles?: { src: string; label: string; srclang: string; isDefault: boolean }[]; cdnBlocked?: boolean } | null }) => {
           if (cancelled) return;
           if (data?.hlsUrl) {
             setMiruroNativeLoading(false);
             setMiruroHlsUrl(data.hlsUrl);
             setMiruroSubtitles(data.subtitles ?? []);
+          } else if (!ok && data?.cdnBlocked) {
+            // CDN is server-IP-blocked — SW iframe will handle it; don't retry
+            setMiruroNativeLoading(false);
           } else if (attempt < 2) {
             // Retry up to 2 times — sidecar may still be warming up
             retryTimers.push(setTimeout(() => tryFetch(attempt + 1), 3000));

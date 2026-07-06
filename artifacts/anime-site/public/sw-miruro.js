@@ -66,7 +66,7 @@ self.addEventListener('fetch', (event) => {
   // proxy fails.  However, the user's browser IP is NOT blocked.  We intercept
   // here so we can (a) use the browser's IP for the actual fetch and (b) inject
   // Access-Control-Allow-Origin: * so the HLS player can read the response.
-  const isMiruroCdn = CDN_SUFFIXES.some(function(sfx) { return url.hostname.endsWith(sfx); });
+  const isMiruroCdn = CDN_SUFFIXES.some(function(sfx) { return url.hostname === sfx.slice(1) || url.hostname.endsWith(sfx); });
   if (isMiruroCdn) {
     event.respondWith(handleCdnProxy(event.request, url));
   }

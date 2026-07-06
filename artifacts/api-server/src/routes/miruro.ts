@@ -1060,8 +1060,28 @@ router.get("/miruro/native-stream", async (req, res) => {
   // would permanently block the HLS player for the session.
   res.set("Cache-Control", "no-store");
 
+  // CDN hostnames that are IP-blocked from Replit's server. The SW handles
+  // these from the user's browser instead — return 503 immediately so the
+  // frontend skips the 3-5s HLS.js retry loop and falls back to the SW iframe.
+  const BLOCKED_CDN_SUFFIXES = [".uwucdn.top", ".owocdn.top"];
+
   try {
     const native = await fetchMiruroNativeStream(anilistIdNum, epNum, preferDub ? "dub" : "sub");
+
+    // Check if the resolved stream URL is on a server-side-blocked CDN.
+    let streamHostname = "";
+    try { streamHostname = new URL(native.streamUrl).hostname; } catch { /* ignore */ }
+    const isCdnBlocked = BLOCKED_CDN_SUFFIXES.some(
+      (sfx) => streamHostname === sfx.slice(1) || streamHostname.endsWith(sfx)
+    );
+    if (isCdnBlocked) {
+      res.status(503).json({
+        error: `Stream CDN (${streamHostname}) is IP-blocked from this server; browser SW will handle it via the iframe path`,
+        cdnBlocked: true,
+      });
+      return;
+    }
+
     const referer = "https://www.miruro.bz/";
     const hlsUrl = `/api/anizone/hls?u=${Buffer.from(native.streamUrl).toString("base64url")}&ref=${Buffer.from(referer).toString("base64url")}`;
     const subtitles = native.subtitles.map((s) => ({
