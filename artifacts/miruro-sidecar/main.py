@@ -71,21 +71,31 @@ async def _pipe_request(path: str, query: dict) -> dict:
     payload = {"path": path, "method": "GET", "query": query, "body": None, "version": "0.1.0"}
     encoded_req = _encode_pipe_request(payload)
 
+    res = None
     if MIRURO_RELAY_URL:
-        # Route through Cloudflare Worker — CF edge IPs are not blocked by miruro
+        # Try Cloudflare Worker relay first — CF edge IPs bypass Replit IP block.
+        # If miruro.bz is now also blocking CF IPs (returns non-200 from the relay),
+        # fall through to curl_cffi TLS impersonation as a fallback.
         worker_url = f"{MIRURO_RELAY_URL}/pipe"
         req_headers: dict = {}
         if MIRURO_RELAY_SECRET:
             req_headers["x-relay-secret"] = MIRURO_RELAY_SECRET
-        async with httpx.AsyncClient(timeout=15) as client:
-            res = await client.get(
-                worker_url,
-                params={"e": encoded_req, "origin": MIRURO_SIDECAR_ORIGIN},
-                headers=req_headers,
-            )
-    else:
-        # Direct curl_cffi with TLS impersonation (works when not IP-blocked,
-        # or when MIRURO_PROXY_URL points to a residential proxy)
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                relay_res = await client.get(
+                    worker_url,
+                    params={"e": encoded_req, "origin": MIRURO_SIDECAR_ORIGIN},
+                    headers=req_headers,
+                )
+            if relay_res.status_code == 200:
+                res = relay_res
+            # else fall through to curl_cffi
+        except Exception:
+            pass  # relay unreachable — fall through to curl_cffi
+
+    if res is None:
+        # Direct curl_cffi with TLS impersonation — works even when Replit IPs
+        # are CF-blocked because curl_cffi mimics Chrome's TLS fingerprint.
         async with AsyncSession(impersonate="chrome110", proxies=PROXIES, timeout=15) as client:
             res = await client.get(f"{MIRURO_PIPE_URL}?e={encoded_req}", headers=HEADERS)
 
