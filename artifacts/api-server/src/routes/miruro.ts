@@ -1208,11 +1208,29 @@ router.get("/miruro/cdn-proxy", async (req, res) => {
       return res.send(rewritten);
     }
 
-    res.setHeader("Content-Type", contentType || "video/mp2t");
+    // CDN disguises .jpg extensions as video/image to bypass filters — ignore
+    // the upstream content-type and always serve binary segments as video/mp2t
+    // so HLS.js doesn't reject them due to MIME mismatch.
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Cache-Control", "no-cache");
-    const buf = await upstream.arrayBuffer();
-    return res.send(Buffer.from(buf));
+    let buf = Buffer.from(await upstream.arrayBuffer());
+
+    // AES-128 keys must be exactly 16 bytes. The CDN sometimes appends a
+    // trailing newline (0x0a) making it 17 bytes. Web Crypto API rejects
+    // non-16-byte AES-128 keys with a DOMException → HLS.js fatal error.
+    // Small responses (≤32 bytes) are always AES keys, never video segments —
+    // trim trailing whitespace/null bytes so the key is exactly 16 bytes.
+    if (buf.length > 16 && buf.length <= 32) {
+      let end = buf.length;
+      while (end > 0 && (buf[end - 1] === 0x00 || buf[end - 1] === 0x0a || buf[end - 1] === 0x0d)) {
+        end--;
+      }
+      if (end < buf.length) buf = buf.subarray(0, end);
+    }
+
+    const isKey = buf.length <= 32;
+    res.setHeader("Content-Type", isKey ? "application/octet-stream" : "video/mp2t");
+    return res.send(buf);
   } catch (err) {
     const msg = err instanceof Error ? err.message : "cdn proxy error";
     return res.status(502).json({ error: msg });

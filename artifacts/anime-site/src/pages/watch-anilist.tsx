@@ -2740,7 +2740,19 @@ export default function WatchAniList() {
                     preferDub={lang === "DUB"}
                     title={getEpTitle(currentEp) !== `Episode ${currentEp}` ? `${title} — Ep ${currentEp}: ${getEpTitle(currentEp)}` : `${title} — Episode ${currentEp}`}
                     progressKey={`al_${animeId}_${currentEp}`}
-                    onFatalError={() => setMiruroHlsUrl(null)}
+                    onFatalError={() => {
+                      setMiruroHlsUrl(null);
+                      // Skip the SW iframe step — go straight to the legacy relay URL
+                      // (or mark SW failed so the fallback effect handles it).
+                      // This prevents the "SW iframe error page" flash that happens
+                      // when HLS fails and the SW hasn't intercepted the navigation yet.
+                      if (miruroLegacyUrl) {
+                        setMiruroIframeUrl(miruroLegacyUrl);
+                        setSwReady(true);
+                      } else {
+                        setSwFailed(true);
+                      }
+                    }}
                     syncCommand={wtSyncCmd}
                     onPlayStateChange={(playing, time) => playing ? wt.sendPlay(time) : wt.sendPause(time)}
                     onSeek={(t) => wt.sendSeek(t)}
