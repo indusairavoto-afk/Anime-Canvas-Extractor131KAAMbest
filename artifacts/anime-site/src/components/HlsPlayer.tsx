@@ -302,9 +302,12 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
 
       hls.on(Hls.Events.ERROR, (_, data) => {
         if (data.fatal) {
+          console.error('[HLS] Fatal error:', data.type, data.details, (data as {mimeType?: string}).mimeType, (data as {sourceBufferName?: string}).sourceBufferName);
           setError(data.details ?? "Stream error");
           setLoading(false);
           onFatalError?.();
+        } else {
+          console.warn('[HLS] Non-fatal error:', data.type, data.details);
         }
       });
     } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
