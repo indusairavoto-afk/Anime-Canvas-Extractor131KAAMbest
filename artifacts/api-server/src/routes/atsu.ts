@@ -80,6 +80,116 @@ function pickBestMatch(results: AtsuSearchDoc[], title: string): AtsuSearchDoc |
   return results[0];
 }
 
+const HIDE_BOTTOM_UI = `<style id="na-atsu-hide">
+html,body{margin:0!important;padding:0!important}
+</style>
+<script>
+(function() {
+  function norm(s) { return (s || '').trim().toLowerCase(); }
+
+  function findTabBar() {
+    var candidates = document.querySelectorAll('button, a, div, span, li');
+    for (var i = 0; i < candidates.length; i++) {
+      var el = candidates[i];
+      if (el.children.length > 2) continue;
+      if (norm(el.textContent) !== 'comments') continue;
+      var p = el.parentElement;
+      for (var depth = 0; p && depth < 6; depth++, p = p.parentElement) {
+        var pt = norm(p.textContent);
+        if (pt.indexOf('chapters') !== -1 && pt.indexOf('reading') !== -1 && pt.length < 200) {
+          return p;
+        }
+      }
+    }
+    return null;
+  }
+
+  function hideBottomUi() {
+    var tabBar = findTabBar();
+    if (!tabBar || tabBar.getAttribute('data-na-hidden') === '1') return !!tabBar;
+    tabBar.setAttribute('data-na-hidden', '1');
+    tabBar.style.setProperty('display', 'none', 'important');
+
+    // Hide the "Manga Info / Next Chapter" row that sits just above the tabs,
+    // if present, since it duplicates our own reader toolbar navigation.
+    var prevRow = tabBar.previousElementSibling;
+    if (prevRow) {
+      var pt = norm(prevRow.textContent);
+      if (pt.indexOf('manga info') !== -1 || pt.indexOf('next chapter') !== -1) {
+        prevRow.style.setProperty('display', 'none', 'important');
+      }
+    }
+
+    // Hide everything that follows the tab bar at every ancestor level up to
+    // <body>, since the comments panel/bookmark row live as later siblings
+    // somewhere in that chain rather than all inside the tab bar itself.
+    var node = tabBar;
+    while (node && node !== document.body) {
+      var sib = node.nextElementSibling;
+      while (sib) {
+        sib.style.setProperty('display', 'none', 'important');
+        sib = sib.nextElementSibling;
+      }
+      node = node.parentElement;
+    }
+    return true;
+  }
+
+  hideBottomUi();
+  var obs = new MutationObserver(hideBottomUi);
+  obs.observe(document.documentElement, { childList: true, subtree: true });
+  var tries = 0;
+  var iv = setInterval(function() {
+    tries++;
+    if (hideBottomUi() || tries > 60) clearInterval(iv);
+  }, 500);
+})();
+</script>`;
+
+router.get("/atsu/proxy", async (req, res) => {
+  const mangaId = String(req.query.mangaId ?? "").trim();
+  const chapterId = String(req.query.chapterId ?? "").trim();
+
+  if (!mangaId || !chapterId) {
+    res.status(400).send("mangaId and chapterId are required");
+    return;
+  }
+
+  const target = `https://atsu.moe/read/${encodeURIComponent(mangaId)}/${encodeURIComponent(chapterId)}`;
+
+  try {
+    const upstream = await fetch(target, {
+      headers: {
+        ...BROWSER_HEADERS,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      },
+    });
+
+    if (!upstream.ok) {
+      res.status(502).send("Failed to load reader from atsu.moe");
+      return;
+    }
+
+    let html = await upstream.text();
+
+    const baseTag = `<base href="https://atsu.moe/" />`;
+    const injected = `${baseTag}${HIDE_BOTTOM_UI}`;
+
+    if (html.includes("<head>")) {
+      html = html.replace("<head>", `<head>${injected}`);
+    } else {
+      html = html.replace(/<head[^>]*>/, (m) => `${m}${injected}`);
+    }
+
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("Cache-Control", "private, no-store");
+    res.send(html);
+  } catch (err) {
+    console.error("[atsu] proxy error:", err);
+    res.status(502).send("Failed to load reader from atsu.moe");
+  }
+});
+
 router.get("/atsu/find", async (req, res) => {
   const title = String(req.query.title ?? "").trim();
   if (!title) {

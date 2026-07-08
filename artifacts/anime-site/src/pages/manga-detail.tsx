@@ -536,6 +536,9 @@ function ReaderModal({
     ? `Ch. ${selectedChapter.number}${selectedChapter.title ? ` — ${selectedChapter.title}` : ""}`
     : "Select chapter";
   const iframeSrc = mangaId && selectedChapter
+    ? apiUrl(`/api/atsu/proxy?mangaId=${encodeURIComponent(mangaId)}&chapterId=${encodeURIComponent(selectedChapter.id)}`)
+    : null;
+  const externalSrc = mangaId && selectedChapter
     ? `https://atsu.moe/read/${mangaId}/${selectedChapter.id}`
     : null;
 
@@ -616,9 +619,9 @@ function ReaderModal({
           </button>
         </div>
 
-        {iframeSrc && (
+        {externalSrc && (
           <a
-            href={iframeSrc}
+            href={externalSrc}
             target="_blank"
             rel="noopener noreferrer"
             className="p-1.5 text-white/25 hover:text-white/70 transition-colors"
