@@ -975,62 +975,98 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
             </button>
           </div>
 
-          {/* Slide-in panel */}
+          {/* Netflix 3D episode panel */}
+          <style>{`
+            @keyframes ep-card-in {
+              from { opacity: 0; transform: perspective(500px) rotateY(18deg) translateX(24px); }
+              to   { opacity: 1; transform: perspective(500px) rotateY(0deg)  translateX(0);   }
+            }
+            .ep-card-anim { animation: ep-card-in 0.38s cubic-bezier(0.34,1.56,0.64,1) both; }
+            .ep-card-hover {
+              transition: transform 0.22s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.22s ease;
+            }
+            .ep-card-hover:hover {
+              transform: perspective(700px) rotateY(-3deg) translateX(-5px) scale(1.015);
+              box-shadow: 4px 6px 20px rgba(0,0,0,0.13);
+              z-index: 2;
+            }
+          `}</style>
+
           <div
             ref={episodePickerRef}
-            className="absolute right-0 top-0 bottom-0 w-72 z-40 pointer-events-auto flex flex-col overflow-hidden"
+            className="absolute right-0 top-0 bottom-0 w-[300px] z-40 flex flex-col overflow-hidden"
             style={{
               background: "rgba(255,255,255,0.97)",
-              backdropFilter: "blur(20px)",
-              transform: showEpisodePicker ? "translateX(0)" : "translateX(100%)",
-              transition: "transform 0.32s cubic-bezier(0.4, 0, 0.2, 1)",
-              boxShadow: "-8px 0 40px rgba(0,0,0,0.45)",
+              backdropFilter: "blur(24px)",
+              boxShadow: showEpisodePicker ? "-16px 0 64px rgba(0,0,0,0.55), -2px 0 12px rgba(0,0,0,0.25)" : "none",
+              transformOrigin: "right center",
+              transform: showEpisodePicker
+                ? "perspective(1400px) rotateY(0deg) translateX(0) scale(1)"
+                : "perspective(1400px) rotateY(32deg) translateX(100%) scale(0.9)",
+              opacity: showEpisodePicker ? 1 : 0,
+              transition: showEpisodePicker
+                ? "transform 0.52s cubic-bezier(0.34,1.56,0.64,1), opacity 0.32s ease, box-shadow 0.52s ease"
+                : "transform 0.36s cubic-bezier(0.4,0,0.2,1), opacity 0.22s ease, box-shadow 0.22s ease",
+              pointerEvents: showEpisodePicker ? "auto" : "none",
             }}
           >
             {/* Panel header */}
-            <div className="flex items-center justify-between px-4 py-3.5 border-b border-gray-100 shrink-0">
+            <div
+              className="flex items-center justify-between px-4 py-3.5 shrink-0"
+              style={{ borderBottom: "1px solid rgba(0,0,0,0.07)" }}
+            >
               <div>
                 <p className="text-[9px] font-mono text-gray-400 uppercase tracking-widest">Episodes</p>
-                <p className="text-[11px] text-gray-500 tabular-nums">{episodes.length} episodes</p>
+                <p className="text-[12px] text-gray-800 font-semibold tabular-nums">{episodes.length} episodes</p>
               </div>
               <button
                 onClick={() => setShowEpisodePicker(false)}
-                className="p-1 text-gray-400 hover:text-gray-700 transition-colors rounded"
+                className="p-1.5 text-gray-400 hover:text-gray-700 transition-colors rounded-full hover:bg-gray-100"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             {/* Episode list */}
-            <div ref={episodeListRef} className="flex-1 overflow-y-auto">
-              {episodes.map((ep) => (
+            <div ref={episodeListRef} className="flex-1 overflow-y-auto py-1">
+              {episodes.map((ep, idx) => (
                 <button
                   key={ep.number}
                   data-ep={ep.number}
                   onClick={() => { onEpisodeSelect?.(ep.number); setShowEpisodePicker(false); }}
-                  className={`w-full flex items-start gap-3 px-3 py-2.5 text-left transition-colors hover:bg-gray-50 border-b border-gray-50 ${currentEpisode === ep.number ? "bg-gray-100" : ""}`}
+                  className={`ep-card-hover ep-card-anim w-full flex items-center gap-3 px-3 py-2 text-left relative ${currentEpisode === ep.number ? "bg-gray-100/80" : ""}`}
+                  style={{ animationDelay: `${Math.min(idx * 0.045, 0.35)}s` }}
                 >
+                  {/* Active indicator bar */}
+                  {currentEpisode === ep.number && (
+                    <span className="absolute left-0 top-2 bottom-2 w-[3px] rounded-r-full bg-gray-800" />
+                  )}
+
                   {/* Thumbnail */}
-                  <div className="relative w-[88px] shrink-0 aspect-video rounded overflow-hidden bg-gray-100">
+                  <div
+                    className="relative shrink-0 rounded-md overflow-hidden bg-gray-100"
+                    style={{ width: 92, height: 52 }}
+                  >
                     {ep.thumbnail ? (
                       <img src={ep.thumbnail} alt="" className="w-full h-full object-cover" loading="lazy" />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center">
+                      <div className="w-full h-full flex items-center justify-center bg-gray-100">
                         <Play className="w-4 h-4 text-gray-300 fill-gray-300" />
                       </div>
                     )}
                     {currentEpisode === ep.number && (
-                      <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
-                        <div className="w-6 h-6 rounded-full bg-white shadow flex items-center justify-center">
-                          <Play className="w-3 h-3 text-gray-900 fill-gray-900 ml-0.5" />
+                      <div className="absolute inset-0 bg-black/35 flex items-center justify-center">
+                        <div className="w-7 h-7 rounded-full bg-white shadow-lg flex items-center justify-center">
+                          <Play className="w-3.5 h-3.5 text-gray-900 fill-gray-900 ml-0.5" />
                         </div>
                       </div>
                     )}
                   </div>
+
                   {/* Info */}
-                  <div className="flex-1 min-w-0 pt-0.5">
+                  <div className="flex-1 min-w-0">
                     <p className="text-[9px] font-mono text-gray-400 mb-0.5 tabular-nums">EP {ep.number}</p>
-                    <p className={`text-[12px] leading-tight font-medium truncate ${currentEpisode === ep.number ? "text-gray-900" : "text-gray-700"}`}>
+                    <p className={`text-[12px] leading-snug font-medium truncate ${currentEpisode === ep.number ? "text-gray-900" : "text-gray-700"}`}>
                       {ep.title}
                     </p>
                   </div>
