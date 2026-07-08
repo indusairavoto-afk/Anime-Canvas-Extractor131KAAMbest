@@ -26,7 +26,7 @@ The "Start application" workflow runs all three servers in parallel:
 ```
 pnpm install --frozen-lockfile && \
 (cd artifacts/miruro-sidecar && pip install -q -r requirements.txt && \
-  uvicorn main:app --host 127.0.0.1 --port 8090 --loop asyncio > /tmp/miruro-sidecar.log 2>&1 &) && \
+  /home/runner/workspace/.pythonlibs/bin/uvicorn main:app --host 127.0.0.1 --port 8090 --loop asyncio > /tmp/miruro-sidecar.log 2>&1 &) && \
 (PORT=8080 bash -c 'cd artifacts/api-server && pnpm run dev' & \
  PORT=5000 pnpm --filter @workspace/anime-site run dev)
 ```
