@@ -2521,6 +2521,17 @@ export default function WatchAniList() {
     return `Episode ${n}`;
   };
 
+  // Episode picker data for HlsPlayer fullscreen UI (must be after getEpTitle)
+  const epPickerList = useMemo(
+    () => episodeNumbers.map((n) => ({ number: n, title: getEpTitle(n) })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [episodeNumbers.length, jikanEps, streamEps],
+  );
+  const handleEpPick = useCallback(
+    (ep: number) => navigate(`/watch/al/${animeId}/${ep}`),
+    [navigate, animeId],
+  );
+
   const getEpAired = (n: number): string | null => {
     const jep = jikanMap.get(n);
     if (!jep?.aired) return null;
@@ -2716,6 +2727,9 @@ export default function WatchAniList() {
                     onSeek={(t) => wt.sendSeek(t)}
                     onBuffering={wt.sendBuffering}
                     onTimeUpdate={(t) => { playerTimeRef.current = t; }}
+                    episodes={epPickerList}
+                    currentEpisode={currentEp}
+                    onEpisodeSelect={handleEpPick}
                   />
                 )}
 
@@ -2758,6 +2772,9 @@ export default function WatchAniList() {
                     onSeek={(t) => wt.sendSeek(t)}
                     onBuffering={wt.sendBuffering}
                     onTimeUpdate={(t) => { playerTimeRef.current = t; }}
+                    episodes={epPickerList}
+                    currentEpisode={currentEp}
+                    onEpisodeSelect={handleEpPick}
                   />
                 )}
 
@@ -2839,6 +2856,9 @@ export default function WatchAniList() {
                     onSeek={(t) => wt.sendSeek(t)}
                     onBuffering={wt.sendBuffering}
                     onTimeUpdate={(t) => { playerTimeRef.current = t; }}
+                    episodes={epPickerList}
+                    currentEpisode={currentEp}
+                    onEpisodeSelect={handleEpPick}
                   />
                 )}
 
@@ -2870,6 +2890,9 @@ export default function WatchAniList() {
                     onSeek={(t) => wt.sendSeek(t)}
                     onBuffering={wt.sendBuffering}
                     onTimeUpdate={(t) => { playerTimeRef.current = t; }}
+                    episodes={epPickerList}
+                    currentEpisode={currentEp}
+                    onEpisodeSelect={handleEpPick}
                   />
                 )}
 
@@ -2906,6 +2929,9 @@ export default function WatchAniList() {
                     onSeek={(t) => wt.sendSeek(t)}
                     onBuffering={wt.sendBuffering}
                     onTimeUpdate={(t) => { playerTimeRef.current = t; }}
+                    episodes={epPickerList}
+                    currentEpisode={currentEp}
+                    onEpisodeSelect={handleEpPick}
                   />
                 )}
 
@@ -3337,6 +3363,9 @@ export default function WatchAniList() {
                     onSeek={(t) => wt.sendSeek(t)}
                     onBuffering={wt.sendBuffering}
                     onTimeUpdate={(t) => { playerTimeRef.current = t; }}
+                    episodes={epPickerList}
+                    currentEpisode={currentEp}
+                    onEpisodeSelect={handleEpPick}
                   />
                 )}
 

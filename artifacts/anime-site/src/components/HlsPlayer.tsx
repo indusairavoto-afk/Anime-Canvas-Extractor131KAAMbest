@@ -5,7 +5,7 @@ import {
   Play, Pause, Volume2, VolumeX, Maximize, Minimize,
   SkipForward, SkipBack, Settings, Captions, Loader2,
   AlertTriangle, RotateCcw, Languages, Download, Mic,
-  Camera, Gauge, PictureInPicture2, Repeat,
+  Camera, Gauge, PictureInPicture2, Repeat, List, ChevronDown,
 } from "lucide-react";
 
 const HOLD_THRESHOLD_MS = 350;
@@ -48,6 +48,11 @@ export type HlsSyncCommand = {
   nonce: string;
 };
 
+interface EpisodePickerItem {
+  number: number;
+  title: string;
+}
+
 interface Props {
   hlsUrl: string;
   subtitles?: SubTrack[];
@@ -61,6 +66,9 @@ interface Props {
   onSeek?: (time: number) => void;
   onBuffering?: (isBuffering: boolean) => void;
   syncCommand?: HlsSyncCommand | null;
+  episodes?: EpisodePickerItem[];
+  currentEpisode?: number;
+  onEpisodeSelect?: (ep: number) => void;
 }
 
 interface SavedProgress {
@@ -104,7 +112,7 @@ export function getEpisodeProgressPct(progressKey: string): number | null {
   return pct;
 }
 
-export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, preferDub = false, onEnded, onFatalError, onPlayStateChange, onTimeUpdate: onTimeUpdateProp, onSeek, onBuffering, syncCommand }: Props) {
+export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, preferDub = false, onEnded, onFatalError, onPlayStateChange, onTimeUpdate: onTimeUpdateProp, onSeek, onBuffering, syncCommand, episodes, currentEpisode, onEpisodeSelect }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -154,6 +162,8 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
   const [showSpeed, setShowSpeed] = useState(false);
   const [looping, setLooping] = useState(false);
   const [pipActive, setPipActive] = useState(false);
+  const [showEpisodePicker, setShowEpisodePicker] = useState(false);
+  const episodePickerRef = useRef<HTMLDivElement>(null);
 
   // Hover scrub-preview thumbnail
   const seekBarRef = useRef<HTMLDivElement>(null);
@@ -164,6 +174,25 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
   const [previewTime, setPreviewTime] = useState<number | null>(null);
   const [previewX, setPreviewX] = useState(0);
   const [previewReady, setPreviewReady] = useState(false);
+
+  // Close episode picker when clicking outside
+  useEffect(() => {
+    if (!showEpisodePicker) return;
+    const handler = (e: MouseEvent) => {
+      if (episodePickerRef.current && !episodePickerRef.current.contains(e.target as Node)) {
+        setShowEpisodePicker(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showEpisodePicker]);
+
+  // Auto-scroll episode picker to current episode when opened
+  useEffect(() => {
+    if (!showEpisodePicker || currentEpisode == null) return;
+    const el = episodePickerRef.current?.querySelector(`[data-ep="${currentEpisode}"]`);
+    el?.scrollIntoView({ block: "center" });
+  }, [showEpisodePicker, currentEpisode]);
 
   // Cleanup any hold/flash/error timers on unmount so stale callbacks never
   // mutate state after the component is gone.
@@ -923,11 +952,45 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
         style={{ opacity: showControls || !playing ? 1 : 0, transition: "opacity 0.25s ease" }}
       >
         {/* Title bar */}
-        {title && (
+        {(title || (fullscreen && episodes && episodes.length > 0)) && (
           <div className="absolute top-0 left-0 right-0 px-4 pt-4 pb-8 pointer-events-none"
             style={{ background: "linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, transparent 100%)" }}
           >
-            <p className="text-white text-sm font-semibold truncate drop-shadow">{title}</p>
+            <div className="flex items-start justify-between gap-3">
+              {title && <p className="text-white text-sm font-semibold truncate drop-shadow">{title}</p>}
+              {/* Episode picker — only shown in fullscreen */}
+              {fullscreen && episodes && episodes.length > 0 && (
+                <div ref={episodePickerRef} className="relative shrink-0 pointer-events-auto">
+                  <button
+                    onClick={() => setShowEpisodePicker((v) => !v)}
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-black/50 border border-white/15 backdrop-blur-sm text-white/80 hover:text-white hover:bg-black/70 transition-colors text-[11px] font-mono"
+                    title="Episode list"
+                  >
+                    <List className="w-3.5 h-3.5 shrink-0" />
+                    <span>EP {currentEpisode ?? "—"}</span>
+                    <ChevronDown className={`w-3 h-3 transition-transform ${showEpisodePicker ? "rotate-180" : ""}`} />
+                  </button>
+                  {showEpisodePicker && (
+                    <div className="absolute top-full right-0 mt-1.5 w-64 max-h-72 overflow-y-auto bg-zinc-900/95 backdrop-blur border border-white/10 rounded-lg shadow-2xl z-50">
+                      <p className="sticky top-0 px-3 py-2 text-[9px] font-mono text-white/30 uppercase tracking-widest border-b border-white/5 bg-zinc-900/95">
+                        Episodes
+                      </p>
+                      {episodes.map((ep) => (
+                        <button
+                          key={ep.number}
+                          data-ep={ep.number}
+                          onClick={() => { onEpisodeSelect?.(ep.number); setShowEpisodePicker(false); }}
+                          className={`w-full text-left px-3 py-2 text-[11px] font-mono transition-colors hover:bg-white/10 flex items-center gap-2 ${currentEpisode === ep.number ? "text-blue-400 bg-blue-400/10" : "text-white/60"}`}
+                        >
+                          <span className="w-7 shrink-0 text-right opacity-50 tabular-nums">{ep.number}</span>
+                          <span className="truncate">{ep.title}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
