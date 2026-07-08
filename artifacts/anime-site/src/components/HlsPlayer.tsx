@@ -1124,12 +1124,12 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
             transition: "opacity 0.35s ease",
           }}
         >
-          <div className="px-8 pb-28 max-w-[420px]">
+          <div className={animeLogo ? "px-4 pb-28 max-w-[420px]" : "px-8 pb-28 max-w-[420px]"}>
             {animeLogo ? (
               <img
                 src={animeLogo}
                 alt=""
-                className="h-20 sm:h-24 md:h-28 max-w-[380px] w-auto object-contain object-left mb-3"
+                className="h-20 sm:h-24 md:h-28 max-w-[380px] w-auto object-contain object-left mb-3 -ml-2"
                 style={{ filter: "drop-shadow(0 4px 24px rgba(0,0,0,0.85))" }}
               />
             ) : animeCover && (
