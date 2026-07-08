@@ -12,20 +12,17 @@ services:
   # task the same way the Replit dev workflow does it. No separate relay or
   # sidecar services — Render's IPs generally aren't Cloudflare-blocked the
   # way Replit's are, so the sidecar can talk to Miruro directly here.
+  #
+  # Uses a Docker runtime (see ./Dockerfile) instead of Render's native node
+  # runtime because the native node image has no Python interpreter — it
+  # cannot run the sidecar at all, which is why "one service" silently never
+  # played video until this switch.
   - type: web
     name: nexa-anime
-    runtime: node
+    runtime: docker
+    dockerfilePath: ./Dockerfile
     region: oregon
     plan: free
-    buildCommand: >-
-      npx --yes pnpm@10 install --frozen-lockfile &&
-      npx --yes pnpm@10 --filter @workspace/anime-site run build &&
-      npx --yes pnpm@10 --filter @workspace/api-server run build &&
-      pip3 install --user -r artifacts/miruro-sidecar/requirements.txt
-    startCommand: >-
-      npx --yes pnpm@10 --filter @workspace/db run push-force &&
-      (cd artifacts/miruro-sidecar && python3 -m uvicorn main:app --host 127.0.0.1 --port 8090 --loop asyncio &) &&
-      node artifacts/api-server/dist/index.mjs
     healthCheckPath: /api/healthz
     envVars:
       - key: NODE_ENV
