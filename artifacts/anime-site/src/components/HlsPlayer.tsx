@@ -216,8 +216,32 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
       hlsRef.current = null;
     }
 
+    // Chrome rejects mp4a.40.1 (AAC Main Profile) in MediaSource.addSourceBuffer().
+    // HLS.js 1.6+ uses ManagedMediaSource by default (Chrome 107+), which has its own
+    // prototype — patch both, and force preferManagedMediaSource:false so the codec
+    // compat-name remapping in HLS.js targets the patched MediaSource path.
+    let _origASB: typeof MediaSource.prototype.addSourceBuffer | null = null;
+    let _origMASB: typeof MediaSource.prototype.addSourceBuffer | null = null;
+    const _asbPatcher = function (this: MediaSource, mimeType: string): SourceBuffer {
+      // Miruro CDN audio is labelled mp4a.40.1 (AAC Main) but Chrome's MSE refuses
+      // to create a SourceBuffer for that codec identifier; remap to mp4a.40.2 (AAC-LC).
+      // The actual audio bitstream is compatible — this is a metadata-only fix.
+      return _origASB!.call(this, mimeType.replace("mp4a.40.1", "mp4a.40.2"));
+    };
+    if (Hls.isSupported() && typeof MediaSource !== "undefined") {
+      _origASB = MediaSource.prototype.addSourceBuffer;
+      MediaSource.prototype.addSourceBuffer = _asbPatcher;
+    }
+    if (typeof (window as Window & {ManagedMediaSource?: {prototype: MediaSource}}).ManagedMediaSource !== "undefined") {
+      const mms = (window as Window & {ManagedMediaSource: {prototype: MediaSource}}).ManagedMediaSource;
+      _origMASB = mms.prototype.addSourceBuffer;
+      _origASB = _origASB ?? _origMASB;
+      mms.prototype.addSourceBuffer = _asbPatcher;
+    }
+
     if (Hls.isSupported()) {
-      const hls = new Hls({ enableWorker: false, startLevel: -1, maxBufferLength: 30 });
+
+      const hls = new Hls({ enableWorker: false, startLevel: -1, maxBufferLength: 30, preferManagedMediaSource: false });
       hlsRef.current = hls;
       hls.loadSource(hlsUrl);
       hls.attachMedia(video);
@@ -332,6 +356,16 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
     return () => {
       mounted = false;
       flushProgress();
+      // Restore original addSourceBuffer if we patched it
+      if (_origASB !== null && typeof MediaSource !== "undefined") {
+        MediaSource.prototype.addSourceBuffer = _origASB;
+        _origASB = null;
+      }
+      if (_origMASB !== null) {
+        const mms = (window as Window & {ManagedMediaSource?: {prototype: MediaSource}}).ManagedMediaSource;
+        if (mms) mms.prototype.addSourceBuffer = _origMASB;
+        _origMASB = null;
+      }
       // Pause first to cancel any in-flight play() promise before destroying
       try { video.pause(); } catch (_) {}
       hlsRef.current?.destroy();
