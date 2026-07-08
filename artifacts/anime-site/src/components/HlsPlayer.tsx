@@ -72,6 +72,7 @@ interface Props {
   currentEpisode?: number;
   onEpisodeSelect?: (ep: number) => void;
   animeCover?: string;
+  animeLogo?: string;
   epMeta?: string;
   epDescription?: string;
 }
@@ -117,7 +118,7 @@ export function getEpisodeProgressPct(progressKey: string): number | null {
   return pct;
 }
 
-export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, preferDub = false, onEnded, onFatalError, onPlayStateChange, onTimeUpdate: onTimeUpdateProp, onSeek, onBuffering, syncCommand, episodes, currentEpisode, onEpisodeSelect, animeCover, epMeta, epDescription }: Props) {
+export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, preferDub = false, onEnded, onFatalError, onPlayStateChange, onTimeUpdate: onTimeUpdateProp, onSeek, onBuffering, syncCommand, episodes, currentEpisode, onEpisodeSelect, animeCover, animeLogo, epMeta, epDescription }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -1114,7 +1115,7 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
       )}
 
       {/* Pause info overlay — bottom-left, shown when paused */}
-      {!playing && (animeCover || epMeta || title || epDescription) && (
+      {!playing && (animeCover || animeLogo || epMeta || title || epDescription) && (
         <div
           className="absolute inset-0 z-20 pointer-events-none flex items-end"
           style={{
@@ -1123,8 +1124,15 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
             transition: "opacity 0.35s ease",
           }}
         >
-          <div className="px-8 pb-28 max-w-[300px]">
-            {animeCover && (
+          <div className="px-8 pb-28 max-w-[420px]">
+            {animeLogo ? (
+              <img
+                src={animeLogo}
+                alt=""
+                className="h-20 sm:h-24 md:h-28 max-w-[380px] w-auto object-contain object-left mb-3"
+                style={{ filter: "drop-shadow(0 4px 24px rgba(0,0,0,0.85))" }}
+              />
+            ) : animeCover && (
               <img
                 src={animeCover}
                 alt=""

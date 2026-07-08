@@ -36,6 +36,7 @@ import shirokoRouter from "./shiroko";
 import newsRouter from "./news";
 import animecornerRouter from "./animecorner";
 import paheRouter from "./pahe";
+import logoRouter from "./logo";
 
 const router: IRouter = Router();
 
@@ -76,5 +77,6 @@ router.use(shirokoRouter);
 router.use(newsRouter);
 router.use(animecornerRouter);
 router.use(paheRouter);
+router.use(logoRouter);
 
 export default router;

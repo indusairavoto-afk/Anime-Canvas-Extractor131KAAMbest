@@ -2478,6 +2478,19 @@ export default function WatchAniList() {
       .catch(() => {});
   }, [animeId, currentEp]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  useEffect(() => {
+    setLogoUrl(null);
+    if (!anime?.id) return;
+    let cancelled = false;
+    const controller = new AbortController();
+    fetch(apiUrl(`/api/logo/${anime.id}`), { signal: controller.signal })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => { if (!cancelled && data?.logoUrl) setLogoUrl(data.logoUrl); })
+      .catch(() => {});
+    return () => { cancelled = true; controller.abort(); };
+  }, [anime?.id]);
+
   const native = anime?.title.native ?? "";
   const cover = anime?.coverImage.extraLarge || anime?.coverImage.large || "";
   const banner = anime?.bannerImage || cover;
@@ -2739,6 +2752,7 @@ export default function WatchAniList() {
                     currentEpisode={currentEp}
                     onEpisodeSelect={handleEpPick}
                     animeCover={cover}
+                    animeLogo={logoUrl ?? undefined}
                     epMeta={epMeta}
                     epDescription={epDescription}
                   />
@@ -2787,6 +2801,7 @@ export default function WatchAniList() {
                     currentEpisode={currentEp}
                     onEpisodeSelect={handleEpPick}
                     animeCover={cover}
+                    animeLogo={logoUrl ?? undefined}
                     epMeta={epMeta}
                     epDescription={epDescription}
                   />
@@ -2874,6 +2889,7 @@ export default function WatchAniList() {
                     currentEpisode={currentEp}
                     onEpisodeSelect={handleEpPick}
                     animeCover={cover}
+                    animeLogo={logoUrl ?? undefined}
                     epMeta={epMeta}
                     epDescription={epDescription}
                   />
@@ -2911,6 +2927,7 @@ export default function WatchAniList() {
                     currentEpisode={currentEp}
                     onEpisodeSelect={handleEpPick}
                     animeCover={cover}
+                    animeLogo={logoUrl ?? undefined}
                     epMeta={epMeta}
                     epDescription={epDescription}
                   />
@@ -2953,6 +2970,7 @@ export default function WatchAniList() {
                     currentEpisode={currentEp}
                     onEpisodeSelect={handleEpPick}
                     animeCover={cover}
+                    animeLogo={logoUrl ?? undefined}
                     epMeta={epMeta}
                     epDescription={epDescription}
                   />
@@ -3390,6 +3408,7 @@ export default function WatchAniList() {
                     currentEpisode={currentEp}
                     onEpisodeSelect={handleEpPick}
                     animeCover={cover}
+                    animeLogo={logoUrl ?? undefined}
                     epMeta={epMeta}
                     epDescription={epDescription}
                   />
