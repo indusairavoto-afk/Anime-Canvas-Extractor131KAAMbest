@@ -46,16 +46,6 @@ services:
       # relay's non-blocked IP instead of trying to solve Cloudflare locally.
       - key: MIRURO_RELAY_URL
         sync: false
-      # Set this to the miruro-sidecar service's public URL after it has
-      # deployed once (e.g. https://miruro-sidecar-xxxx.onrender.com).
-      # Without this, native Miruro playback always fails on Render because
-      # it defaults to http://127.0.0.1:8090, which doesn't exist there.
-      - key: MIRURO_SIDECAR_URL
-        sync: false
-      - key: MIRURO_RELAY_SECRET
-        sync: false
-      - key: FANART_API_KEY
-        sync: false
 
   # Standalone forward-proxy for Miruro. Cloudflare hard-blocks Replit's dev
   # IPs but not most Render IPs, so this tiny service (no app logic, just a
@@ -75,23 +65,3 @@ services:
       - key: PROXY_URL
         sync: false
     healthCheckPath: /healthz
-
-  # Python sidecar that talks directly to Miruro's backend using curl_cffi's
-  # TLS fingerprint impersonation (see artifacts/miruro-sidecar/main.py).
-  # The main app's MIRURO_SIDECAR_URL must be set to this service's public
-  # Render URL, or native Miruro playback silently falls back and fails
-  # (it defaults to http://127.0.0.1:8090, which only exists on Replit).
-  - type: web
-    name: miruro-sidecar
-    runtime: python
-    region: oregon
-    plan: free
-    rootDir: artifacts/miruro-sidecar
-    buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT --loop asyncio
-    envVars:
-      - key: MIRURO_RELAY_URL
-        sync: false
-      - key: MIRURO_RELAY_SECRET
-        sync: false
-    healthCheckPath: /health
