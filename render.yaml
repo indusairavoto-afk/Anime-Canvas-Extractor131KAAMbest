@@ -19,10 +19,15 @@ services:
   # played video until this switch.
   - type: web
     name: nexa-anime
-    runtime: docker
-    dockerfilePath: ./Dockerfile
+    runtime: node
     region: oregon
     plan: free
+    buildCommand: >-
+      npx --yes pnpm@10 install --frozen-lockfile &&
+      npx --yes pnpm@10 --filter @workspace/anime-site run build &&
+      npx --yes pnpm@10 --filter @workspace/api-server run build &&
+      python3 -m pip install --user -q -r artifacts/miruro-sidecar/requirements.txt
+    startCommand: bash start.sh
     healthCheckPath: /api/healthz
     envVars:
       - key: NODE_ENV
