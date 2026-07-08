@@ -27,6 +27,9 @@ RUN pnpm install --frozen-lockfile \
 
 ENV NODE_ENV=production
 
+COPY start.sh /app/start.sh
+RUN chmod +x /app/start.sh
+
 EXPOSE 8080
 
-CMD ["sh", "-c", "pnpm --filter @workspace/db run push-force && (cd artifacts/miruro-sidecar && python3 -m uvicorn main:app --host 127.0.0.1 --port 8090 --loop asyncio &) && node artifacts/api-server/dist/index.mjs"]
+CMD ["/app/start.sh"]
