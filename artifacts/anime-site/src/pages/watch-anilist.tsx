@@ -2481,6 +2481,14 @@ export default function WatchAniList() {
   const native = anime?.title.native ?? "";
   const cover = anime?.coverImage.extraLarge || anime?.coverImage.large || "";
   const banner = anime?.bannerImage || cover;
+  const epMeta = [
+    anime?.season
+      ? `${anime.season.charAt(0) + anime.season.slice(1).toLowerCase()} ${anime.seasonYear ?? ""}`.trim()
+      : anime?.seasonYear ? String(anime.seasonYear) : null,
+    `Episode ${currentEp}`,
+    anime?.duration ? `${anime.duration}m` : null,
+  ].filter(Boolean).join(" · ");
+  const epDescription = anime?.description?.replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim() || "";
   const studio = anime?.studios?.nodes[0]?.name ?? "";
   const status = STATUS_MAP[anime?.status ?? ""] ?? anime?.status ?? "";
 
@@ -2730,6 +2738,9 @@ export default function WatchAniList() {
                     episodes={epPickerList}
                     currentEpisode={currentEp}
                     onEpisodeSelect={handleEpPick}
+                    animeCover={cover}
+                    epMeta={epMeta}
+                    epDescription={epDescription}
                   />
                 )}
 
@@ -2775,6 +2786,9 @@ export default function WatchAniList() {
                     episodes={epPickerList}
                     currentEpisode={currentEp}
                     onEpisodeSelect={handleEpPick}
+                    animeCover={cover}
+                    epMeta={epMeta}
+                    epDescription={epDescription}
                   />
                 )}
 
@@ -2859,6 +2873,9 @@ export default function WatchAniList() {
                     episodes={epPickerList}
                     currentEpisode={currentEp}
                     onEpisodeSelect={handleEpPick}
+                    animeCover={cover}
+                    epMeta={epMeta}
+                    epDescription={epDescription}
                   />
                 )}
 
@@ -2893,6 +2910,9 @@ export default function WatchAniList() {
                     episodes={epPickerList}
                     currentEpisode={currentEp}
                     onEpisodeSelect={handleEpPick}
+                    animeCover={cover}
+                    epMeta={epMeta}
+                    epDescription={epDescription}
                   />
                 )}
 
@@ -2932,6 +2952,9 @@ export default function WatchAniList() {
                     episodes={epPickerList}
                     currentEpisode={currentEp}
                     onEpisodeSelect={handleEpPick}
+                    animeCover={cover}
+                    epMeta={epMeta}
+                    epDescription={epDescription}
                   />
                 )}
 
@@ -3366,6 +3389,9 @@ export default function WatchAniList() {
                     episodes={epPickerList}
                     currentEpisode={currentEp}
                     onEpisodeSelect={handleEpPick}
+                    animeCover={cover}
+                    epMeta={epMeta}
+                    epDescription={epDescription}
                   />
                 )}
 

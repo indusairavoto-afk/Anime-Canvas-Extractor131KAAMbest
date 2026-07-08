@@ -5,7 +5,7 @@ import {
   Play, Pause, Volume2, VolumeX, Maximize, Minimize,
   SkipForward, SkipBack, Settings, Captions, Loader2,
   AlertTriangle, RotateCcw, Languages, Download, Mic,
-  Camera, Gauge, PictureInPicture2, Repeat, List, ChevronDown, X,
+  Camera, Gauge, PictureInPicture2, Repeat, List, ChevronDown, X, Search,
 } from "lucide-react";
 
 const HOLD_THRESHOLD_MS = 350;
@@ -52,6 +52,7 @@ interface EpisodePickerItem {
   number: number;
   title: string;
   thumbnail?: string;
+  description?: string;
 }
 
 interface Props {
@@ -70,6 +71,9 @@ interface Props {
   episodes?: EpisodePickerItem[];
   currentEpisode?: number;
   onEpisodeSelect?: (ep: number) => void;
+  animeCover?: string;
+  epMeta?: string;
+  epDescription?: string;
 }
 
 interface SavedProgress {
@@ -113,7 +117,7 @@ export function getEpisodeProgressPct(progressKey: string): number | null {
   return pct;
 }
 
-export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, preferDub = false, onEnded, onFatalError, onPlayStateChange, onTimeUpdate: onTimeUpdateProp, onSeek, onBuffering, syncCommand, episodes, currentEpisode, onEpisodeSelect }: Props) {
+export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, preferDub = false, onEnded, onFatalError, onPlayStateChange, onTimeUpdate: onTimeUpdateProp, onSeek, onBuffering, syncCommand, episodes, currentEpisode, onEpisodeSelect, animeCover, epMeta, epDescription }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -164,6 +168,7 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
   const [looping, setLooping] = useState(false);
   const [pipActive, setPipActive] = useState(false);
   const [showEpisodePicker, setShowEpisodePicker] = useState(false);
+  const [epQuery, setEpQuery] = useState("");
   const episodePickerRef = useRef<HTMLDivElement>(null);
   const episodeTriggerRef = useRef<HTMLButtonElement>(null);
   const episodeListRef = useRef<HTMLDivElement>(null);
@@ -958,10 +963,10 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
         </div>
       )}
 
-      {/* Netflix-style episode panel — slides in from right (fullscreen only) */}
+      {/* Dark episode panel — floats from top-right (fullscreen only) */}
       {fullscreen && episodes && episodes.length > 0 && (
         <>
-          {/* Trigger button — above everything */}
+          {/* Trigger button */}
           <div className="absolute top-3 right-3 z-50 pointer-events-auto">
             <button
               ref={episodeTriggerRef}
@@ -975,106 +980,169 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
             </button>
           </div>
 
-          {/* Netflix 3D episode panel */}
           <style>{`
             @keyframes ep-card-in {
-              from { opacity: 0; transform: perspective(500px) rotateY(18deg) translateX(24px); }
+              from { opacity: 0; transform: perspective(500px) rotateY(16deg) translateX(20px); }
               to   { opacity: 1; transform: perspective(500px) rotateY(0deg)  translateX(0);   }
             }
-            .ep-card-anim { animation: ep-card-in 0.38s cubic-bezier(0.34,1.56,0.64,1) both; }
-            .ep-card-hover {
-              transition: transform 0.22s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.22s ease;
-            }
-            .ep-card-hover:hover {
-              transform: perspective(700px) rotateY(-3deg) translateX(-5px) scale(1.015);
-              box-shadow: 4px 6px 20px rgba(0,0,0,0.13);
-              z-index: 2;
-            }
+            .ep-card-anim { animation: ep-card-in 0.36s cubic-bezier(0.34,1.56,0.64,1) both; }
+            .ep-card-hover { transition: background 0.16s ease, transform 0.2s cubic-bezier(0.34,1.56,0.64,1); }
+            .ep-card-hover:hover { background: rgba(255,255,255,0.07) !important; transform: perspective(800px) rotateY(-2deg) translateX(-3px) scale(1.01); }
+            .ep-search::placeholder { color: rgba(255,255,255,0.25); }
           `}</style>
 
+          {/* Floating dark panel */}
           <div
             ref={episodePickerRef}
-            className="absolute right-0 top-0 bottom-0 w-[300px] z-40 flex flex-col overflow-hidden"
+            className="absolute right-3 top-14 w-[290px] z-40 flex flex-col rounded-xl overflow-hidden"
             style={{
-              background: "rgba(255,255,255,0.97)",
-              backdropFilter: "blur(24px)",
-              boxShadow: showEpisodePicker ? "-16px 0 64px rgba(0,0,0,0.55), -2px 0 12px rgba(0,0,0,0.25)" : "none",
-              transformOrigin: "right center",
+              background: "rgba(8,8,18,0.92)",
+              backdropFilter: "blur(28px)",
+              WebkitBackdropFilter: "blur(28px)",
+              border: "1px solid rgba(255,255,255,0.08)",
+              maxHeight: "calc(100% - 84px)",
+              boxShadow: showEpisodePicker ? "0 24px 80px rgba(0,0,0,0.72), 0 4px 24px rgba(0,0,0,0.5)" : "none",
+              transformOrigin: "top right",
               transform: showEpisodePicker
-                ? "perspective(1400px) rotateY(0deg) translateX(0) scale(1)"
-                : "perspective(1400px) rotateY(32deg) translateX(100%) scale(0.9)",
+                ? "perspective(1200px) rotateY(0deg) rotateX(0deg) scale(1) translateY(0)"
+                : "perspective(1200px) rotateY(28deg) rotateX(-8deg) scale(0.88) translateY(-12px)",
               opacity: showEpisodePicker ? 1 : 0,
               transition: showEpisodePicker
-                ? "transform 0.52s cubic-bezier(0.34,1.56,0.64,1), opacity 0.32s ease, box-shadow 0.52s ease"
-                : "transform 0.36s cubic-bezier(0.4,0,0.2,1), opacity 0.22s ease, box-shadow 0.22s ease",
+                ? "transform 0.48s cubic-bezier(0.34,1.56,0.64,1), opacity 0.28s ease, box-shadow 0.48s ease"
+                : "transform 0.28s cubic-bezier(0.4,0,0.2,1), opacity 0.18s ease, box-shadow 0.18s ease",
               pointerEvents: showEpisodePicker ? "auto" : "none",
             }}
           >
-            {/* Panel header */}
-            <div
-              className="flex items-center justify-between px-4 py-3.5 shrink-0"
-              style={{ borderBottom: "1px solid rgba(0,0,0,0.07)" }}
-            >
-              <div>
-                <p className="text-[9px] font-mono text-gray-400 uppercase tracking-widest">Episodes</p>
-                <p className="text-[12px] text-gray-800 font-semibold tabular-nums">{episodes.length} episodes</p>
+            {/* Header + search */}
+            <div className="px-3 pt-3 pb-2.5 shrink-0" style={{ borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
+              <div className="flex items-center gap-2 mb-2.5">
+                <p className="text-[10px] font-mono text-white/40 uppercase tracking-widest flex-1">Episodes</p>
+                <span className="text-[9px] font-mono text-white/25 tabular-nums">{episodes.length}</span>
+                <button
+                  onClick={() => setShowEpisodePicker(false)}
+                  className="p-0.5 text-white/30 hover:text-white/70 transition-colors rounded"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
               </div>
-              <button
-                onClick={() => setShowEpisodePicker(false)}
-                className="p-1.5 text-gray-400 hover:text-gray-700 transition-colors rounded-full hover:bg-gray-100"
-              >
-                <X className="w-4 h-4" />
-              </button>
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-white/30 pointer-events-none" />
+                <input
+                  type="text"
+                  placeholder="Search episodes…"
+                  value={epQuery}
+                  onChange={(e) => setEpQuery(e.target.value)}
+                  className="ep-search w-full rounded-md pl-7 pr-3 py-1.5 text-[11px] text-white/80 outline-none transition-all"
+                  style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.08)" }}
+                  onFocus={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.11)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.22)"; }}
+                  onBlur={(e)  => { e.currentTarget.style.background = "rgba(255,255,255,0.07)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)"; }}
+                />
+              </div>
             </div>
 
             {/* Episode list */}
-            <div ref={episodeListRef} className="flex-1 overflow-y-auto py-1">
-              {episodes.map((ep, idx) => (
-                <button
-                  key={ep.number}
-                  data-ep={ep.number}
-                  onClick={() => { onEpisodeSelect?.(ep.number); setShowEpisodePicker(false); }}
-                  className={`ep-card-hover ep-card-anim w-full flex items-center gap-3 px-3 py-2 text-left relative ${currentEpisode === ep.number ? "bg-gray-100/80" : ""}`}
-                  style={{ animationDelay: `${Math.min(idx * 0.045, 0.35)}s` }}
-                >
-                  {/* Active indicator bar */}
-                  {currentEpisode === ep.number && (
-                    <span className="absolute left-0 top-2 bottom-2 w-[3px] rounded-r-full bg-gray-800" />
-                  )}
-
-                  {/* Thumbnail */}
-                  <div
-                    className="relative shrink-0 rounded-md overflow-hidden bg-gray-100"
-                    style={{ width: 92, height: 52 }}
-                  >
-                    {ep.thumbnail ? (
-                      <img src={ep.thumbnail} alt="" className="w-full h-full object-cover" loading="lazy" />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center bg-gray-100">
-                        <Play className="w-4 h-4 text-gray-300 fill-gray-300" />
-                      </div>
-                    )}
-                    {currentEpisode === ep.number && (
-                      <div className="absolute inset-0 bg-black/35 flex items-center justify-center">
-                        <div className="w-7 h-7 rounded-full bg-white shadow-lg flex items-center justify-center">
-                          <Play className="w-3.5 h-3.5 text-gray-900 fill-gray-900 ml-0.5" />
+            <div ref={episodeListRef} className="flex-1 overflow-y-auto">
+              {episodes
+                .filter((ep) => {
+                  const q = epQuery.trim().toLowerCase();
+                  if (!q) return true;
+                  return String(ep.number).includes(q) || ep.title.toLowerCase().includes(q);
+                })
+                .map((ep, idx) => {
+                  const isCurrent = currentEpisode === ep.number;
+                  return (
+                    <button
+                      key={ep.number}
+                      data-ep={ep.number}
+                      onClick={() => { onEpisodeSelect?.(ep.number); setShowEpisodePicker(false); }}
+                      className="ep-card-hover ep-card-anim w-full text-left"
+                      style={{
+                        animationDelay: `${Math.min(idx * 0.04, 0.3)}s`,
+                        background: isCurrent ? "rgba(255,255,255,0.06)" : "transparent",
+                      }}
+                    >
+                      {isCurrent ? (
+                        /* Featured card — currently watching */
+                        <div className="px-3 py-3">
+                          <div className="relative w-full rounded-lg overflow-hidden mb-2.5" style={{ aspectRatio: "16/9" }}>
+                            {ep.thumbnail ? (
+                              <img src={ep.thumbnail} alt="" className="w-full h-full object-cover" loading="lazy" />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center bg-white/5">
+                                <Play className="w-6 h-6 text-white/20 fill-white/20" />
+                              </div>
+                            )}
+                            <div className="absolute top-2 left-2 px-2 py-0.5 rounded bg-red-600">
+                              <span className="text-[8px] font-bold text-white uppercase tracking-widest">Watching</span>
+                            </div>
+                            <div className="absolute inset-0 flex items-end justify-end p-2">
+                              <div className="w-8 h-8 rounded-full bg-white/90 shadow flex items-center justify-center">
+                                <Play className="w-3.5 h-3.5 text-gray-900 fill-gray-900 ml-0.5" />
+                              </div>
+                            </div>
+                          </div>
+                          <p className="text-[9px] font-mono text-white/35 mb-0.5 tabular-nums">EP {ep.number}</p>
+                          <p className="text-[13px] font-semibold text-white leading-snug mb-1 truncate">{ep.title}</p>
+                          {ep.description && (
+                            <p className="text-[10px] text-white/45 leading-relaxed line-clamp-2">{ep.description}</p>
+                          )}
                         </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Info */}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[9px] font-mono text-gray-400 mb-0.5 tabular-nums">EP {ep.number}</p>
-                    <p className={`text-[12px] leading-snug font-medium truncate ${currentEpisode === ep.number ? "text-gray-900" : "text-gray-700"}`}>
-                      {ep.title}
-                    </p>
-                  </div>
-                </button>
-              ))}
+                      ) : (
+                        /* Compact row */
+                        <div className="flex items-center gap-2.5 px-3 py-2" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+                          <div className="relative shrink-0 rounded overflow-hidden" style={{ width: 78, height: 44 }}>
+                            {ep.thumbnail ? (
+                              <img src={ep.thumbnail} alt="" className="w-full h-full object-cover" loading="lazy" />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center bg-white/5">
+                                <Play className="w-3.5 h-3.5 text-white/20 fill-white/20" />
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[9px] font-mono text-white/30 mb-0.5 tabular-nums">EP {ep.number}</p>
+                            <p className="text-[11px] text-white/70 leading-snug truncate">{ep.title}</p>
+                          </div>
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
             </div>
           </div>
         </>
+      )}
+
+      {/* Pause info overlay — bottom-left, shown when paused */}
+      {!playing && (animeCover || epMeta || title || epDescription) && (
+        <div
+          className="absolute inset-0 z-20 pointer-events-none flex items-end"
+          style={{
+            background: "linear-gradient(135deg, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.15) 50%, transparent 100%)",
+            opacity: 1,
+            transition: "opacity 0.35s ease",
+          }}
+        >
+          <div className="px-8 pb-28 max-w-[300px]">
+            {animeCover && (
+              <img
+                src={animeCover}
+                alt=""
+                className="h-14 w-auto object-contain mb-3 rounded"
+                style={{ filter: "drop-shadow(0 4px 20px rgba(0,0,0,0.85))" }}
+              />
+            )}
+            {epMeta && (
+              <p className="text-white/50 text-[11px] mb-1.5 tracking-wide font-mono">{epMeta}</p>
+            )}
+            {title && (
+              <p className="text-white font-bold text-sm mb-2 leading-snug" style={{ textShadow: "0 2px 8px rgba(0,0,0,0.8)" }}>{title}</p>
+            )}
+            {epDescription && (
+              <p className="text-white/55 text-[11px] leading-relaxed line-clamp-2">{epDescription}</p>
+            )}
+          </div>
+        </div>
       )}
 
       {/* Controls overlay */}
