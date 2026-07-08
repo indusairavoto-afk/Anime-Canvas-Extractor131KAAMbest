@@ -602,12 +602,6 @@ function ReaderModal({
   const iframeSrc = source === "atsu" && mangaId && selectedChapter
     ? apiUrl(`/api/atsu/proxy?mangaId=${encodeURIComponent(mangaId)}&chapterId=${encodeURIComponent(selectedChapter.id)}`)
     : null;
-  const externalSrc = mangaId && selectedChapter
-    ? (source === "weebcentral"
-        ? `https://weebcentral.com/chapters/${selectedChapter.id}`
-        : `https://atsu.moe/read/${mangaId}/${selectedChapter.id}`)
-    : null;
-  const sourceLabel = source === "weebcentral" ? "weebcentral.com" : "atsu.moe";
 
   return (
     <motion.div
@@ -688,18 +682,6 @@ function ReaderModal({
           </button>
         </div>
 
-        {externalSrc && (
-          <a
-            href={externalSrc}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="p-1.5 text-white/25 hover:text-white/70 transition-colors"
-            title={`Open on ${sourceLabel}`}
-          >
-            <ExternalLink className="w-4 h-4" />
-          </a>
-        )}
-
         <button
           onClick={onClose}
           className="p-1.5 text-white/25 hover:text-white/70 transition-colors"
@@ -710,7 +692,7 @@ function ReaderModal({
       </div>
 
       {/* Content */}
-      <div className="flex-1 relative bg-[#111]">
+      <div className="flex-1 min-h-0 relative bg-[#111]">
         {findStatus === "searching" && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
             <Loader2 className="w-6 h-6 text-white/30 animate-spin" />
