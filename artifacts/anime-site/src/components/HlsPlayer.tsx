@@ -3,13 +3,14 @@ import { apiUrl } from "@/lib/api";
 import Hls, { type Level } from "hls.js";
 import {
   Play, Pause, Volume2, VolumeX, Maximize, Minimize,
-  SkipForward, SkipBack, Settings, Subtitles, Loader2,
+  SkipForward, SkipBack, Settings, Captions, Loader2,
   AlertTriangle, RotateCcw, Languages, Download, Mic,
-  Camera, Gauge,
+  Camera, Gauge, PictureInPicture2, Repeat,
 } from "lucide-react";
 
 const HOLD_THRESHOLD_MS = 350;
 const HOLD_SPEED = 2;
+const SPEED_OPTIONS = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
 
 const TRANSLATE_LANGS = [
   { code: "es", name: "Spanish" },
@@ -149,6 +150,20 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
   const screenshotErrorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const holdActivated = useRef(false);
   const wasPlayingBeforeHold = useRef(false);
+  const [playbackSpeed, setPlaybackSpeed] = useState(1);
+  const [showSpeed, setShowSpeed] = useState(false);
+  const [looping, setLooping] = useState(false);
+  const [pipActive, setPipActive] = useState(false);
+
+  // Hover scrub-preview thumbnail
+  const seekBarRef = useRef<HTMLDivElement>(null);
+  const previewVideoRef = useRef<HTMLVideoElement>(null);
+  const previewCanvasRef = useRef<HTMLCanvasElement>(null);
+  const previewHlsRef = useRef<Hls | null>(null);
+  const previewSeekDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [previewTime, setPreviewTime] = useState<number | null>(null);
+  const [previewX, setPreviewX] = useState(0);
+  const [previewReady, setPreviewReady] = useState(false);
 
   // Cleanup any hold/flash/error timers on unmount so stale callbacks never
   // mutate state after the component is gone.
@@ -395,6 +410,82 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
     };
   }, [hlsUrl]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Hover scrub-preview: a second, muted, lowest-quality HLS decode used only
+  // to draw a frame into a canvas when hovering the seek bar. Kept independent
+  // from the main playback pipeline so seeking it never disturbs the viewer.
+  useEffect(() => {
+    const pv = previewVideoRef.current;
+    if (!pv || !hlsUrl) return;
+    let mounted = true;
+
+    if (previewHlsRef.current) {
+      previewHlsRef.current.destroy();
+      previewHlsRef.current = null;
+    }
+    setPreviewReady(false);
+
+    if (Hls.isSupported()) {
+      const phls = new Hls({ enableWorker: false, startLevel: 0, capLevelToPlayerSize: false, maxBufferLength: 5 });
+      previewHlsRef.current = phls;
+      phls.loadSource(hlsUrl);
+      phls.attachMedia(pv);
+      phls.on(Hls.Events.MANIFEST_PARSED, () => {
+        if (mounted) setPreviewReady(true);
+      });
+      phls.on(Hls.Events.ERROR, () => { /* preview is best-effort; ignore failures */ });
+    } else if (pv.canPlayType("application/vnd.apple.mpegurl")) {
+      pv.src = hlsUrl;
+      pv.addEventListener("loadedmetadata", () => { if (mounted) setPreviewReady(true); }, { once: true });
+    }
+
+    return () => {
+      mounted = false;
+      previewHlsRef.current?.destroy();
+      previewHlsRef.current = null;
+    };
+  }, [hlsUrl]);
+
+  const handleSeekHover = useCallback((e: React.MouseEvent<HTMLDivElement> | React.PointerEvent<HTMLDivElement>) => {
+    const bar = seekBarRef.current;
+    if (!bar || duration <= 0) return;
+    const rect = bar.getBoundingClientRect();
+    const pct = Math.max(0, Math.min((e.clientX - rect.left) / rect.width, 1));
+    const time = pct * duration;
+    setPreviewX(pct * 100);
+    setPreviewTime(time);
+
+    if (previewSeekDebounce.current) clearTimeout(previewSeekDebounce.current);
+    previewSeekDebounce.current = setTimeout(() => {
+      const pv = previewVideoRef.current;
+      if (!pv || !previewReady) return;
+      try { pv.currentTime = time; } catch { /* ignore seek errors on unready media */ }
+    }, 80);
+  }, [duration, previewReady]);
+
+  const drawPreviewFrame = useCallback(() => {
+    const pv = previewVideoRef.current;
+    const canvas = previewCanvasRef.current;
+    if (!pv || !canvas || !pv.videoWidth) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    canvas.width = 160;
+    canvas.height = Math.round((pv.videoHeight / pv.videoWidth) * 160);
+    try {
+      ctx.drawImage(pv, 0, 0, canvas.width, canvas.height);
+    } catch { /* cross-origin frame — preview stays on last good draw */ }
+  }, []);
+
+  useEffect(() => {
+    const pv = previewVideoRef.current;
+    if (!pv) return;
+    pv.addEventListener("seeked", drawPreviewFrame);
+    return () => pv.removeEventListener("seeked", drawPreviewFrame);
+  }, [drawPreviewFrame]);
+
+  useEffect(() => {
+    return () => { if (previewSeekDebounce.current) clearTimeout(previewSeekDebounce.current); };
+  }, []);
+
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
@@ -574,6 +665,48 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
     resetHideTimer();
   };
 
+  const cycleSpeed = (rate: number) => {
+    const video = videoRef.current;
+    setPlaybackSpeed(rate);
+    setShowSpeed(false);
+    // Don't stomp an active 2x hold-speed override — it applies once the hold ends.
+    if (video && !holdActivated.current) video.playbackRate = rate;
+  };
+
+  const toggleLoop = () => {
+    const video = videoRef.current;
+    setLooping((v) => {
+      const next = !v;
+      if (video) video.loop = next;
+      return next;
+    });
+  };
+
+  const togglePip = async () => {
+    const video = videoRef.current;
+    if (!video) return;
+    try {
+      if (document.pictureInPictureElement) {
+        await document.exitPictureInPicture();
+      } else if (document.pictureInPictureEnabled) {
+        await video.requestPictureInPicture();
+      }
+    } catch { /* PiP unsupported or blocked — no-op */ }
+  };
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const onEnterPip = () => setPipActive(true);
+    const onLeavePip = () => setPipActive(false);
+    video.addEventListener("enterpictureinpicture", onEnterPip);
+    video.addEventListener("leavepictureinpicture", onLeavePip);
+    return () => {
+      video.removeEventListener("enterpictureinpicture", onEnterPip);
+      video.removeEventListener("leavepictureinpicture", onLeavePip);
+    };
+  }, []);
+
   const flashScreenshotError = () => {
     setScreenshotError(true);
     if (screenshotErrorTimer.current) clearTimeout(screenshotErrorTimer.current);
@@ -616,7 +749,7 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
       holdActivated.current = false;
       setHolding(false);
       if (video) {
-        video.playbackRate = 1;
+        video.playbackRate = playbackSpeed;
         // These are purely local speed-hold transitions, not real user intent —
         // suppress them from Watch Together sync broadcast.
         suppressWtBroadcastRef.current = true;
@@ -803,9 +936,33 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
           className="pointer-events-auto"
           style={{ background: "linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.4) 60%, transparent 100%)" }}
         >
-          {/* Seek bar */}
-          <div className="px-4 pt-3 pb-1 group relative">
-            <div className="relative h-1 group-hover:h-1.5 transition-all duration-150 rounded-full bg-white/20">
+          {/* Seek bar + settings gear */}
+          <div className="flex items-center gap-2 px-4 pt-3 pb-1">
+            <div
+              ref={seekBarRef}
+              className="relative flex-1 h-1 hover:h-1.5 transition-all duration-150 rounded-full bg-white/20 group"
+              onMouseMove={handleSeekHover}
+              onMouseLeave={() => setPreviewTime(null)}
+            >
+              {/* Hover scrub-preview thumbnail */}
+              {previewTime !== null && (
+                <div
+                  className="absolute bottom-full mb-3 -translate-x-1/2 pointer-events-none z-10"
+                  style={{ left: `${Math.min(Math.max(previewX, 8), 92)}%` }}
+                >
+                  <div className="w-40 rounded-lg overflow-hidden border border-white/15 bg-zinc-900 shadow-xl">
+                    <div className="relative w-full aspect-video bg-black">
+                      <canvas ref={previewCanvasRef} className="w-full h-full object-cover" />
+                      <span className="absolute bottom-1 right-1.5 text-[10px] font-mono text-white bg-black/70 px-1 rounded">
+                        {fmtTime(previewTime)}
+                      </span>
+                    </div>
+                    {title && (
+                      <p className="px-2 py-1 text-[10px] font-mono text-white/70 truncate">{title}</p>
+                    )}
+                  </div>
+                </div>
+              )}
               {/* Buffered */}
               <div
                 className="absolute inset-y-0 left-0 rounded-full bg-white/25"
@@ -831,19 +988,49 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
                 style={{ left: `calc(${progress}% - 6px)` }}
               />
             </div>
+
+            {/* Quality gear — sits at the end of the seek bar row */}
+            {levels.length > 0 && (
+              <div className="relative shrink-0">
+                <button
+                  onClick={() => { setShowSettings((v) => !v); setShowSubs(false); }}
+                  className="p-1.5 text-white/60 hover:text-white transition-colors"
+                  title="Quality"
+                >
+                  <Settings className="w-4 h-4" />
+                </button>
+                {showSettings && (
+                  <div className="absolute bottom-full right-0 mb-2 min-w-[130px] bg-zinc-900 border border-white/10 rounded overflow-hidden shadow-xl z-50">
+                    <p className="px-3 py-1.5 text-[9px] font-mono text-white/30 uppercase tracking-widest border-b border-white/5">Quality</p>
+                    <button
+                      onClick={() => setQuality(-1)}
+                      className={`w-full text-left px-3 py-2 text-[11px] font-mono transition-colors hover:bg-white/10 ${currentLevel === -1 ? "text-blue-400" : "text-white/60"}`}
+                    >
+                      Auto
+                    </button>
+                    {[...levels].reverse().map((l, ri) => {
+                      const idx = levels.length - 1 - ri;
+                      return (
+                        <button
+                          key={idx}
+                          onClick={() => setQuality(idx)}
+                          className={`w-full text-left px-3 py-2 text-[11px] font-mono transition-colors hover:bg-white/10 ${currentLevel === idx ? "text-blue-400" : "text-white/60"}`}
+                        >
+                          {qualityLabel(l)}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
-          {/* Controls row */}
-          <div className="flex items-center gap-1 px-3 pb-3">
-            {/* Skip back */}
-            <button
-              onClick={() => skip(-10)}
-              className="p-1.5 text-white/70 hover:text-white transition-colors"
-              title="Back 10s (←)"
-            >
-              <SkipBack className="w-4 h-4" />
-            </button>
+          {/* Hidden preview video — decodes lowest quality only, muted, never visible */}
+          <video ref={previewVideoRef} className="hidden" muted playsInline preload="none" />
 
+          {/* Controls row — left cluster: transport + volume; right cluster: PiP/loop/speed/CC/audio/fullscreen */}
+          <div className="flex items-center gap-1 px-3 pb-3">
             {/* Play / Pause */}
             <button
               onClick={togglePlay}
@@ -853,6 +1040,15 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
               {playing
                 ? <Pause className="w-5 h-5 fill-current" />
                 : <Play className="w-5 h-5 fill-current ml-0.5" />}
+            </button>
+
+            {/* Skip back */}
+            <button
+              onClick={() => skip(-10)}
+              className="p-1.5 text-white/70 hover:text-white transition-colors"
+              title="Back 10s (←)"
+            >
+              <SkipBack className="w-4 h-4" />
             </button>
 
             {/* Skip forward */}
@@ -879,7 +1075,7 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
                   step={0.05}
                   value={muted ? 0 : volume}
                   onChange={(e) => handleVolume(Number(e.target.value))}
-                  className="w-16 h-1 accent-blue-400 cursor-pointer"
+                  className="w-16 h-1 accent-white cursor-pointer"
                 />
               </div>
             </div>
@@ -891,6 +1087,50 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
             </span>
 
             <div className="flex-1" />
+
+            {/* Picture-in-picture */}
+            <button
+              onClick={togglePip}
+              className={`p-1.5 transition-colors ${pipActive ? "text-white" : "text-white/60 hover:text-white"}`}
+              title="Picture in picture"
+            >
+              <PictureInPicture2 className="w-4 h-4" />
+            </button>
+
+            {/* Loop */}
+            <button
+              onClick={toggleLoop}
+              className={`p-1.5 transition-colors ${looping ? "text-white" : "text-white/60 hover:text-white"}`}
+              title="Loop episode"
+            >
+              <Repeat className="w-4 h-4" />
+            </button>
+
+            {/* Speed */}
+            <div className="relative">
+              <button
+                onClick={() => { setShowSpeed((v) => !v); setShowSubs(false); setShowSettings(false); }}
+                className="flex items-center gap-1 px-1.5 py-1.5 text-white/60 hover:text-white transition-colors"
+                title="Playback speed"
+              >
+                <Gauge className="w-4 h-4" />
+                <span className="text-[10px] font-mono">{playbackSpeed}x</span>
+              </button>
+              {showSpeed && (
+                <div className="absolute bottom-full right-0 mb-2 min-w-[90px] bg-zinc-900 border border-white/10 rounded overflow-hidden shadow-xl z-50">
+                  <p className="px-3 py-1.5 text-[9px] font-mono text-white/30 uppercase tracking-widest border-b border-white/5">Speed</p>
+                  {SPEED_OPTIONS.map((rate) => (
+                    <button
+                      key={rate}
+                      onClick={() => cycleSpeed(rate)}
+                      className={`w-full text-left px-3 py-2 text-[11px] font-mono transition-colors hover:bg-white/10 ${playbackSpeed === rate ? "text-blue-400" : "text-white/60"}`}
+                    >
+                      {rate}x
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
 
             {/* Audio track badge — only shown when stream has multiple tracks */}
             {audioTracks.length > 1 && (
@@ -940,7 +1180,7 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
                 >
                   {translating
                     ? <Loader2 className="w-4 h-4 animate-spin text-purple-400" />
-                    : <Subtitles className="w-4 h-4" />}
+                    : <Captions className="w-4 h-4" />}
                 </button>
                 {showSubs && (
                   <div className="absolute bottom-full right-0 mb-2 min-w-[170px] max-h-80 overflow-y-auto bg-zinc-900 border border-white/10 rounded shadow-xl z-50">
@@ -1009,42 +1249,6 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
                         </div>
                       )}
                     </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Quality */}
-            {levels.length > 0 && (
-              <div className="relative">
-                <button
-                  onClick={() => { setShowSettings((v) => !v); setShowSubs(false); }}
-                  className="p-1.5 text-white/50 hover:text-white transition-colors"
-                  title="Quality"
-                >
-                  <Settings className="w-4 h-4" />
-                </button>
-                {showSettings && (
-                  <div className="absolute bottom-full right-0 mb-2 min-w-[130px] bg-zinc-900 border border-white/10 rounded overflow-hidden shadow-xl z-50">
-                    <p className="px-3 py-1.5 text-[9px] font-mono text-white/30 uppercase tracking-widest border-b border-white/5">Quality</p>
-                    <button
-                      onClick={() => setQuality(-1)}
-                      className={`w-full text-left px-3 py-2 text-[11px] font-mono transition-colors hover:bg-white/10 ${currentLevel === -1 ? "text-blue-400" : "text-white/60"}`}
-                    >
-                      Auto
-                    </button>
-                    {[...levels].reverse().map((l, ri) => {
-                      const idx = levels.length - 1 - ri;
-                      return (
-                        <button
-                          key={idx}
-                          onClick={() => setQuality(idx)}
-                          className={`w-full text-left px-3 py-2 text-[11px] font-mono transition-colors hover:bg-white/10 ${currentLevel === idx ? "text-blue-400" : "text-white/60"}`}
-                        >
-                          {qualityLabel(l)}
-                        </button>
-                      );
-                    })}
                   </div>
                 )}
               </div>
