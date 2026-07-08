@@ -29,3 +29,4 @@
 - [Miruro AAC Main codec fix](miruro-aac-main-fix.md) — Miruro CDN labels audio as mp4a.40.1 (AAC Main); Chrome MSE refuses addSourceBuffer for this codec; patch both MediaSource.prototype.addSourceBuffer AND ManagedMediaSource.prototype.addSourceBuffer + set preferManagedMediaSource:false in Hls config.
 - [WeebCentral native manga reader](weebcentral-manga-reader.md) — manga reader tries WeebCentral scrape first (own image UI, no third-party chrome), falls back to atsu.moe iframe only if not found.
 - [atsu.moe reader bottom UI proxy](atsu-reader-bottom-ui-proxy.md) — cross-origin atsu.moe iframe chrome (Comments/Chapters/Reading tabs, bookmark, comments) hidden via same-origin proxy + text-heuristic hide script, not direct DOM access.
+- [Miruro relay request shape](miruro-relay-request-shape.md) — relay can 403 a bare homepage fetch (CF WAF) while real API/watch endpoints succeed fine; test relay health with actual app endpoints, not the homepage.
