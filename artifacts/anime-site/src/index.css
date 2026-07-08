@@ -252,6 +252,16 @@
   100% { opacity: 0; transform: translateX(-50%) translateY(-4px); }
 }
 
+@keyframes hlsFlashFade {
+  from { opacity: 0.9; }
+  to   { opacity: 0; }
+}
+
+@keyframes hlsLoaderPulse {
+  0%, 100% { opacity: 0.4; }
+  50%      { opacity: 1; }
+}
+
 /* ── Minimal scrollbar ── */
 * {
   scrollbar-width: thin;

@@ -1,6 +1,9 @@
 import { useRef, useState, useCallback, useEffect } from "react";
-import { Play, Pause, Volume2, VolumeX, Maximize, Minimize, SkipBack, SkipForward, Settings } from "lucide-react";
+import { Play, Pause, Volume2, VolumeX, Maximize, Minimize, SkipBack, SkipForward, Settings, Camera, Gauge } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+
+const HOLD_THRESHOLD_MS = 350;
+const HOLD_SPEED = 2;
 
 interface VideoPlayerProps {
   src: string;
@@ -43,6 +46,23 @@ export function VideoPlayer({ src, poster, title, onEnded, episodeLabel }: Video
   const [error, setError] = useState(false);
   const [showVolume, setShowVolume] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
+  const [holding, setHolding] = useState(false);
+  const [flash, setFlash] = useState(false);
+  const [screenshotError, setScreenshotError] = useState(false);
+  const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const screenshotErrorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const holdActivated = useRef(false);
+  const wasPlayingBeforeHold = useRef(false);
+
+  // Cleanup hold/flash/error timers on unmount
+  useEffect(() => {
+    return () => {
+      if (holdTimer.current) clearTimeout(holdTimer.current);
+      if (flashTimer.current) clearTimeout(flashTimer.current);
+      if (screenshotErrorTimer.current) clearTimeout(screenshotErrorTimer.current);
+    };
+  }, []);
 
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
@@ -106,6 +126,71 @@ export function VideoPlayer({ src, poster, title, onEnded, episodeLabel }: Video
     } else {
       document.exitFullscreen?.();
     }
+  }, []);
+
+  const flashScreenshotError = useCallback(() => {
+    setScreenshotError(true);
+    if (screenshotErrorTimer.current) clearTimeout(screenshotErrorTimer.current);
+    screenshotErrorTimer.current = setTimeout(() => setScreenshotError(false), 2500);
+  }, []);
+
+  const takeScreenshot = useCallback(() => {
+    const v = videoRef.current;
+    if (!v || !v.videoWidth) return;
+    const canvas = document.createElement("canvas");
+    canvas.width = v.videoWidth;
+    canvas.height = v.videoHeight;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    try {
+      ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob((blob) => {
+        if (!blob) { flashScreenshotError(); return; }
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${(title || "screenshot").replace(/[^\w\-]+/g, "_")}_${formatTime(v.currentTime).replace(/:/g, "-")}.png`;
+        a.click();
+        URL.revokeObjectURL(url);
+      }, "image/png");
+    } catch {
+      // Cross-origin CDN sources taint the canvas — toBlob throws SecurityError.
+      flashScreenshotError();
+      return;
+    }
+    setFlash(true);
+    if (flashTimer.current) clearTimeout(flashTimer.current);
+    flashTimer.current = setTimeout(() => setFlash(false), 180);
+  }, [title, flashScreenshotError]);
+
+  const endHold = useCallback(() => {
+    if (holdTimer.current) { clearTimeout(holdTimer.current); holdTimer.current = null; }
+    const v = videoRef.current;
+    if (holdActivated.current) {
+      holdActivated.current = false;
+      setHolding(false);
+      if (v) {
+        v.playbackRate = 1;
+        if (!wasPlayingBeforeHold.current) v.pause();
+      }
+      return true; // was a hold gesture, swallow the click
+    }
+    return false;
+  }, []);
+
+  const startHold = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    const v = videoRef.current;
+    wasPlayingBeforeHold.current = !!v && !v.paused;
+    if (holdTimer.current) clearTimeout(holdTimer.current);
+    holdTimer.current = setTimeout(() => {
+      const vid = videoRef.current;
+      if (!vid) return;
+      holdActivated.current = true;
+      setHolding(true);
+      if (vid.paused) vid.play().catch(() => {});
+      vid.playbackRate = HOLD_SPEED;
+    }, HOLD_THRESHOLD_MS);
   }, []);
 
   useEffect(() => {
@@ -178,12 +263,65 @@ export function VideoPlayer({ src, poster, title, onEnded, episodeLabel }: Video
         preload="metadata"
       />
 
-      {/* Spinner when loading */}
+      {/* Screenshot flash */}
+      <AnimatePresence>
+        {flash && (
+          <motion.div
+            initial={{ opacity: 0.9 }}
+            animate={{ opacity: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.18 }}
+            className="absolute inset-0 bg-white pointer-events-none z-10"
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Premium white loader */}
       {loading && !error && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <div className="w-10 h-10 rounded-full border-2 border-white/20 border-t-white animate-spin" />
+          <motion.div
+            animate={{ opacity: [0.4, 1, 0.4] }}
+            transition={{ duration: 1.4, repeat: Infinity, ease: "easeInOut" }}
+            className="relative w-12 h-12"
+          >
+            <div className="absolute inset-0 rounded-full border-[2.5px] border-white/10" />
+            <div className="absolute inset-0 rounded-full border-[2.5px] border-transparent border-t-white animate-spin" />
+          </motion.div>
         </div>
       )}
+
+      {/* Screenshot unavailable toast — cross-origin sources can taint the canvas */}
+      <AnimatePresence>
+        {screenshotError && (
+          <motion.div
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.15 }}
+            className="absolute top-14 left-1/2 -translate-x-1/2 z-10 pointer-events-none"
+          >
+            <div className="flex items-center gap-2 bg-black/80 border border-white/15 backdrop-blur-sm px-3 py-1.5 rounded-full">
+              <span className="text-white/80 text-[11px] font-mono">Screenshot unavailable for this source</span>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* 2x hold-to-fast-forward indicator */}
+      <AnimatePresence>
+        {holding && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.15 }}
+            className="absolute top-4 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-black/70 backdrop-blur-md border border-white/15 pointer-events-none z-10"
+          >
+            <Gauge className="w-3.5 h-3.5 text-white" />
+            <span className="text-white text-[11px] font-mono tracking-wider">{HOLD_SPEED}x</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Error state */}
       {error && (
@@ -197,8 +335,14 @@ export function VideoPlayer({ src, poster, title, onEnded, episodeLabel }: Video
         </div>
       )}
 
-      {/* Tap-to-play/pause on mobile */}
-      <div className="absolute inset-0" onClick={toggle} />
+      {/* Tap-to-play/pause + hold-to-2x on mobile & desktop */}
+      <div
+        className="absolute inset-0"
+        onPointerDown={startHold}
+        onPointerUp={(e) => { if (!endHold()) toggle(); }}
+        onPointerLeave={() => endHold()}
+        onPointerCancel={() => endHold()}
+      />
 
       {/* Center play icon on pause */}
       <AnimatePresence>
@@ -225,53 +369,53 @@ export function VideoPlayer({ src, poster, title, onEnded, episodeLabel }: Video
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="absolute inset-0 flex flex-col justify-end"
-            style={{ background: "linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.4) 35%, transparent 60%)" }}
+            className="absolute inset-0 flex flex-col justify-end backdrop-blur-[1px]"
+            style={{ background: "linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.45) 35%, transparent 62%)" }}
           >
             {/* Title */}
             {(title || episodeLabel) && (
-              <div className="absolute top-0 left-0 right-0 px-4 pt-4 pb-8 pointer-events-none"
-                style={{ background: "linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, transparent 100%)" }}>
+              <div className="absolute top-0 left-0 right-0 px-5 pt-5 pb-10 pointer-events-none"
+                style={{ background: "linear-gradient(to bottom, rgba(0,0,0,0.75) 0%, transparent 100%)" }}>
                 {episodeLabel && (
-                  <p className="text-white/50 text-[10px] font-mono uppercase tracking-[0.2em] mb-0.5">{episodeLabel}</p>
+                  <p className="text-white/45 text-[10px] font-mono uppercase tracking-[0.25em] mb-1">{episodeLabel}</p>
                 )}
-                {title && <p className="text-white text-sm font-medium truncate">{title}</p>}
+                {title && <p className="text-white text-sm font-medium tracking-wide truncate">{title}</p>}
               </div>
             )}
 
-            <div className="px-4 pb-3" onClick={(e) => e.stopPropagation()}>
+            <div className="px-4 sm:px-5 pb-3.5" onClick={(e) => e.stopPropagation()}>
               {/* Progress bar */}
               <div
                 ref={progressRef}
-                className="relative h-1 bg-white/20 cursor-pointer mb-3 group/bar"
+                className="relative h-[3px] hover:h-1.5 transition-[height] bg-white/15 cursor-pointer mb-3.5 group/bar rounded-full"
                 style={{ touchAction: "none" }}
                 onClick={seekTo}
                 onMouseDown={() => setSeeking(true)}
                 onMouseUp={() => setSeeking(false)}
               >
-                <div className="absolute inset-y-0 left-0 bg-white/30 pointer-events-none" style={{ width: `${buffered}%` }} />
-                <div className="absolute inset-y-0 left-0 bg-white pointer-events-none" style={{ width: `${progress}%` }} />
+                <div className="absolute inset-y-0 left-0 bg-white/25 pointer-events-none rounded-full" style={{ width: `${buffered}%` }} />
+                <div className="absolute inset-y-0 left-0 bg-white pointer-events-none rounded-full shadow-[0_0_8px_rgba(255,255,255,0.5)]" style={{ width: `${progress}%` }} />
                 <div
-                  className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-white shadow-lg opacity-0 group-hover/bar:opacity-100 transition-opacity pointer-events-none"
+                  className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-white shadow-[0_0_6px_rgba(255,255,255,0.7)] opacity-0 group-hover/bar:opacity-100 transition-opacity pointer-events-none"
                   style={{ left: `${progress}%`, transform: `translateX(-50%) translateY(-50%)` }}
                 />
               </div>
 
               {/* Buttons row */}
-              <div className="flex items-center gap-2 sm:gap-3">
-                <button onClick={toggle} className="text-white hover:text-white/70 transition-colors p-1" title={playing ? "Pause" : "Play"}>
+              <div className="flex items-center gap-1.5 sm:gap-2.5">
+                <button onClick={toggle} className="text-white/90 hover:text-white transition-colors p-1.5 hover:scale-105 active:scale-95" title={playing ? "Pause" : "Play"}>
                   {playing ? <Pause className="w-5 h-5 fill-white" /> : <Play className="w-5 h-5 fill-white" />}
                 </button>
-                <button onClick={() => skip(-10)} className="text-white/60 hover:text-white transition-colors p-1" title="Rewind 10s">
+                <button onClick={() => skip(-10)} className="text-white/55 hover:text-white transition-colors p-1.5 hover:scale-105 active:scale-95" title="Rewind 10s">
                   <SkipBack className="w-4 h-4" />
                 </button>
-                <button onClick={() => skip(10)} className="text-white/60 hover:text-white transition-colors p-1" title="Forward 10s">
+                <button onClick={() => skip(10)} className="text-white/55 hover:text-white transition-colors p-1.5 hover:scale-105 active:scale-95" title="Forward 10s">
                   <SkipForward className="w-4 h-4" />
                 </button>
 
                 {/* Volume */}
                 <div className="relative flex items-center gap-1" onMouseEnter={() => setShowVolume(true)} onMouseLeave={() => setShowVolume(false)}>
-                  <button onClick={toggleMute} className="text-white/60 hover:text-white transition-colors p-1" title={muted ? "Unmute" : "Mute"}>
+                  <button onClick={toggleMute} className="text-white/55 hover:text-white transition-colors p-1.5 hover:scale-105 active:scale-95" title={muted ? "Unmute" : "Mute"}>
                     {muted || volume === 0 ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
                   </button>
                   <AnimatePresence>
@@ -291,15 +435,18 @@ export function VideoPlayer({ src, poster, title, onEnded, episodeLabel }: Video
                   </AnimatePresence>
                 </div>
 
-                <span className="text-white/40 text-[10px] font-mono tabular-nums">
-                  {formatTime(currentTime)}<span className="text-white/20 mx-0.5">/</span>{formatTime(duration)}
+                <span className="text-white/35 text-[10px] font-mono tabular-nums tracking-wide">
+                  {formatTime(currentTime)}<span className="text-white/15 mx-0.5">/</span>{formatTime(duration)}
                 </span>
 
-                <div className="ml-auto flex items-center gap-1">
-                  <button className="text-white/40 hover:text-white transition-colors p-1 hidden sm:block" title="Settings">
+                <div className="ml-auto flex items-center gap-0.5 sm:gap-1">
+                  <button onClick={takeScreenshot} className="text-white/55 hover:text-white transition-colors p-1.5 hover:scale-105 active:scale-95" title="Screenshot">
+                    <Camera className="w-4 h-4" />
+                  </button>
+                  <button className="text-white/40 hover:text-white transition-colors p-1.5 hidden sm:block hover:scale-105 active:scale-95" title="Settings">
                     <Settings className="w-3.5 h-3.5" />
                   </button>
-                  <button onClick={toggleFullscreen} className="text-white/60 hover:text-white transition-colors p-1" title={fullscreen ? "Exit fullscreen" : "Fullscreen"}>
+                  <button onClick={toggleFullscreen} className="text-white/55 hover:text-white transition-colors p-1.5 hover:scale-105 active:scale-95" title={fullscreen ? "Exit fullscreen" : "Fullscreen"}>
                     {fullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
                   </button>
                 </div>

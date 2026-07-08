@@ -5,7 +5,11 @@ import {
   Play, Pause, Volume2, VolumeX, Maximize, Minimize,
   SkipForward, SkipBack, Settings, Subtitles, Loader2,
   AlertTriangle, RotateCcw, Languages, Download, Mic,
+  Camera, Gauge,
 } from "lucide-react";
+
+const HOLD_THRESHOLD_MS = 350;
+const HOLD_SPEED = 2;
 
 const TRANSLATE_LANGS = [
   { code: "es", name: "Spanish" },
@@ -137,6 +141,24 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
   const translatedCacheRef = useRef<Map<string, string>>(new Map());
   const translatedTextCacheRef = useRef<Map<string, string>>(new Map());
   const blobUrlsRef = useRef<string[]>([]);
+  const [holding, setHolding] = useState(false);
+  const [flash, setFlash] = useState(false);
+  const [screenshotError, setScreenshotError] = useState(false);
+  const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const screenshotErrorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const holdActivated = useRef(false);
+  const wasPlayingBeforeHold = useRef(false);
+
+  // Cleanup any hold/flash/error timers on unmount so stale callbacks never
+  // mutate state after the component is gone.
+  useEffect(() => {
+    return () => {
+      if (holdTimer.current) clearTimeout(holdTimer.current);
+      if (flashTimer.current) clearTimeout(flashTimer.current);
+      if (screenshotErrorTimer.current) clearTimeout(screenshotErrorTimer.current);
+    };
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -552,6 +574,82 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
     resetHideTimer();
   };
 
+  const flashScreenshotError = () => {
+    setScreenshotError(true);
+    if (screenshotErrorTimer.current) clearTimeout(screenshotErrorTimer.current);
+    screenshotErrorTimer.current = setTimeout(() => setScreenshotError(false), 2500);
+  };
+
+  const takeScreenshot = () => {
+    const video = videoRef.current;
+    if (!video || !video.videoWidth) return;
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    try {
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob((blob) => {
+        if (!blob) { flashScreenshotError(); return; }
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${(title || "screenshot").replace(/[^\w\-]+/g, "_")}_${fmtTime(video.currentTime).replace(/:/g, "-")}.png`;
+        a.click();
+        URL.revokeObjectURL(url);
+      }, "image/png");
+    } catch {
+      // Cross-origin CDN frames taint the canvas — toBlob/toDataURL throws SecurityError.
+      flashScreenshotError();
+      return;
+    }
+    setFlash(true);
+    if (flashTimer.current) clearTimeout(flashTimer.current);
+    flashTimer.current = setTimeout(() => setFlash(false), 180);
+  };
+
+  const endHold = () => {
+    if (holdTimer.current) { clearTimeout(holdTimer.current); holdTimer.current = null; }
+    const video = videoRef.current;
+    if (holdActivated.current) {
+      holdActivated.current = false;
+      setHolding(false);
+      if (video) {
+        video.playbackRate = 1;
+        // These are purely local speed-hold transitions, not real user intent —
+        // suppress them from Watch Together sync broadcast.
+        suppressWtBroadcastRef.current = true;
+        if (!wasPlayingBeforeHold.current) video.pause();
+        setTimeout(() => { suppressWtBroadcastRef.current = false; }, 150);
+      }
+      return true; // was a hold gesture, swallow the following click
+    }
+    return false;
+  };
+
+  const startHold = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    const video = videoRef.current;
+    wasPlayingBeforeHold.current = !!video && !video.paused;
+    if (holdTimer.current) clearTimeout(holdTimer.current);
+    holdTimer.current = setTimeout(() => {
+      const v = videoRef.current;
+      if (!v) return;
+      holdActivated.current = true;
+      setHolding(true);
+      if (v.paused) {
+        // Local speed-hold gesture only — don't let the resulting play event
+        // broadcast as a real Watch Together state change.
+        suppressWtBroadcastRef.current = true;
+        v.play().catch(() => {}).finally(() => {
+          setTimeout(() => { suppressWtBroadcastRef.current = false; }, 150);
+        });
+      }
+      v.playbackRate = HOLD_SPEED;
+    }, HOLD_THRESHOLD_MS);
+  };
+
   const setQuality = (level: number) => {
     if (hlsRef.current) {
       hlsRef.current.currentLevel = level;
@@ -586,10 +684,38 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
         )}
       </video>
 
-      {/* Buffering / Loading spinner */}
+      {/* Screenshot flash */}
+      {flash && (
+        <div className="absolute inset-0 bg-white pointer-events-none z-40" style={{ animation: "hlsFlashFade 0.18s ease forwards" }} />
+      )}
+
+      {/* Premium white loader */}
       {loading && !error && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
-          <Loader2 className="w-10 h-10 text-white/70 animate-spin" />
+          <div className="relative w-12 h-12" style={{ animation: "hlsLoaderPulse 1.4s ease-in-out infinite" }}>
+            <div className="absolute inset-0 rounded-full border-[2.5px] border-white/10" />
+            <div className="absolute inset-0 rounded-full border-[2.5px] border-transparent border-t-white animate-spin" />
+          </div>
+        </div>
+      )}
+
+      {/* 2x hold-to-fast-forward indicator */}
+      {holding && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-black/70 backdrop-blur-md border border-white/15 pointer-events-none z-20">
+          <Gauge className="w-3.5 h-3.5 text-white" />
+          <span className="text-white text-[11px] font-mono tracking-wider">{HOLD_SPEED}x</span>
+        </div>
+      )}
+
+      {/* Screenshot unavailable toast — cross-origin CDN frames can taint the canvas */}
+      {screenshotError && (
+        <div
+          className="absolute top-14 left-1/2 -translate-x-1/2 z-40 pointer-events-none"
+          style={{ animation: "fadeInOut 2.5s ease forwards" }}
+        >
+          <div className="flex items-center gap-2 bg-black/80 border border-white/15 backdrop-blur-sm px-3 py-1.5 rounded-full">
+            <span className="text-white/80 text-[11px] font-mono">Screenshot unavailable for this source</span>
+          </div>
         </div>
       )}
 
@@ -687,7 +813,7 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
               />
               {/* Played */}
               <div
-                className="absolute inset-y-0 left-0 rounded-full bg-blue-400"
+                className="absolute inset-y-0 left-0 rounded-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.5)]"
                 style={{ width: `${progress}%` }}
               />
               <input
@@ -701,7 +827,7 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
               />
               {/* Thumb */}
               <div
-                className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-blue-400 opacity-0 group-hover:opacity-100 transition-opacity shadow"
+                className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-white shadow-[0_0_6px_rgba(255,255,255,0.7)] opacity-0 group-hover:opacity-100 transition-opacity"
                 style={{ left: `calc(${progress}% - 6px)` }}
               />
             </div>
@@ -924,6 +1050,15 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
               </div>
             )}
 
+            {/* Screenshot */}
+            <button
+              onClick={takeScreenshot}
+              className="p-1.5 text-white/70 hover:text-white transition-colors"
+              title="Screenshot"
+            >
+              <Camera className="w-4 h-4" />
+            </button>
+
             {/* Fullscreen */}
             <button
               onClick={toggleFullscreen}
@@ -936,14 +1071,19 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
         </div>
       </div>
 
-      {/* Click anywhere on video to play/pause (not on controls) */}
+      {/* Click anywhere on video to play/pause + hold-to-2x (not on controls) */}
       <div
         className="absolute inset-0 z-5 cursor-pointer"
-        onClick={(e) => {
+        onPointerDown={(e) => {
           if ((e.target as HTMLElement).closest("button, input")) return;
-          togglePlay();
-          resetHideTimer();
+          startHold(e);
         }}
+        onPointerUp={(e) => {
+          if ((e.target as HTMLElement).closest("button, input")) return;
+          if (!endHold()) { togglePlay(); resetHideTimer(); }
+        }}
+        onPointerLeave={() => endHold()}
+        onPointerCancel={() => endHold()}
       />
     </div>
   );
