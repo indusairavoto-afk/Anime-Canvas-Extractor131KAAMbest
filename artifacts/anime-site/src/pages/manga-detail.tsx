@@ -461,8 +461,16 @@ function NovelReaderModal({
 }
 
 /* ─────────────────────────────────────────────
-   Manga / manhwa reader modal — powered by atsu.moe
+   Manga / manhwa reader modal — powered by WeebCentral
+   (native image reader), falls back to atsu.moe iframe
    ───────────────────────────────────────────── */
+
+interface WcChapter {
+  id: string;
+  number: number;
+  title: string | null;
+  index: number;
+}
 
 function ReaderModal({
   title,
@@ -472,38 +480,94 @@ function ReaderModal({
   title: string;
   onClose: () => void;
 }) {
+  const [source, setSource] = useState<"weebcentral" | "atsu" | null>(null);
   const [mangaId, setMangaId] = useState<string | null>(null);
   const [findStatus, setFindStatus] = useState<"searching" | "found" | "not_found" | "error">("searching");
-  const [chapters, setChapters] = useState<AtsuChapter[]>([]);
-  const [selectedChapter, setSelectedChapter] = useState<AtsuChapter | null>(null);
+  const [chapters, setChapters] = useState<(WcChapter | AtsuChapter)[]>([]);
+  const [selectedChapter, setSelectedChapter] = useState<(WcChapter | AtsuChapter) | null>(null);
   const [chapterMenuOpen, setChapterMenuOpen] = useState(false);
+  const [pages, setPages] = useState<string[]>([]);
+  const [pagesLoading, setPagesLoading] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     setFindStatus("searching");
+    setSource(null);
     setMangaId(null);
     setChapters([]);
     setSelectedChapter(null);
+    setPages([]);
 
-    fetch(apiUrl(`/api/atsu/find?title=${encodeURIComponent(title)}`))
+    fetch(apiUrl(`/api/weebcentral/find?title=${encodeURIComponent(title)}`))
       .then(r => r.json())
-      .then((data: { found: boolean; error?: boolean; mangaId?: string; chapters?: AtsuChapter[] }) => {
+      .then((data: { found: boolean; error?: boolean; seriesId?: string; chapters?: WcChapter[] }) => {
         if (cancelled) return;
-        if (data.found && data.mangaId) {
-          setMangaId(data.mangaId);
-          const chs = data.chapters ?? [];
-          setChapters(chs);
-          if (chs.length) setSelectedChapter(chs[0]);
+        if (data.found && data.seriesId && data.chapters?.length) {
+          setSource("weebcentral");
+          setMangaId(data.seriesId);
+          setChapters(data.chapters);
+          setSelectedChapter(data.chapters[0]);
           setFindStatus("found");
-        } else if (data.error) {
-          setFindStatus("error");
-        } else {
-          setFindStatus("not_found");
+          return;
         }
+        // Fall back to atsu.moe
+        fetch(apiUrl(`/api/atsu/find?title=${encodeURIComponent(title)}`))
+          .then(r => r.json())
+          .then((atsuData: { found: boolean; error?: boolean; mangaId?: string; chapters?: AtsuChapter[] }) => {
+            if (cancelled) return;
+            if (atsuData.found && atsuData.mangaId) {
+              setSource("atsu");
+              setMangaId(atsuData.mangaId);
+              const chs = atsuData.chapters ?? [];
+              setChapters(chs);
+              if (chs.length) setSelectedChapter(chs[0]);
+              setFindStatus("found");
+            } else if (atsuData.error) {
+              setFindStatus("error");
+            } else {
+              setFindStatus("not_found");
+            }
+          })
+          .catch(() => { if (!cancelled) setFindStatus("error"); });
       })
-      .catch(() => { if (!cancelled) setFindStatus("error"); });
+      .catch(() => {
+        if (cancelled) return;
+        // WeebCentral request itself failed — still try atsu.moe
+        fetch(apiUrl(`/api/atsu/find?title=${encodeURIComponent(title)}`))
+          .then(r => r.json())
+          .then((atsuData: { found: boolean; error?: boolean; mangaId?: string; chapters?: AtsuChapter[] }) => {
+            if (cancelled) return;
+            if (atsuData.found && atsuData.mangaId) {
+              setSource("atsu");
+              setMangaId(atsuData.mangaId);
+              const chs = atsuData.chapters ?? [];
+              setChapters(chs);
+              if (chs.length) setSelectedChapter(chs[0]);
+              setFindStatus("found");
+            } else {
+              setFindStatus("error");
+            }
+          })
+          .catch(() => { if (!cancelled) setFindStatus("error"); });
+      });
     return () => { cancelled = true; };
   }, [title]);
+
+  useEffect(() => {
+    if (source !== "weebcentral" || !selectedChapter) return;
+    let cancelled = false;
+    setPagesLoading(true);
+    setPages([]);
+    fetch(apiUrl(`/api/weebcentral/pages?chapterId=${encodeURIComponent(selectedChapter.id)}`))
+      .then(r => r.json())
+      .then((data: { pages?: string[] }) => {
+        if (cancelled) return;
+        setPages(data.pages ?? []);
+      })
+      .catch(() => { if (!cancelled) setPages([]); })
+      .finally(() => { if (!cancelled) setPagesLoading(false); });
+    return () => { cancelled = true; };
+  }, [source, selectedChapter]);
 
   const goNextChapter = useCallback(() => {
     if (!selectedChapter) return;
@@ -533,14 +597,17 @@ function ReaderModal({
 
   const currentIdx = selectedChapter ? chapters.findIndex(c => c.id === selectedChapter.id) : -1;
   const chapterLabel = selectedChapter
-    ? `Ch. ${selectedChapter.number}${selectedChapter.title ? ` — ${selectedChapter.title}` : ""}`
+    ? `Ch. ${selectedChapter.number}${selectedChapter.title && source === "atsu" ? ` — ${selectedChapter.title}` : ""}`
     : "Select chapter";
-  const iframeSrc = mangaId && selectedChapter
+  const iframeSrc = source === "atsu" && mangaId && selectedChapter
     ? apiUrl(`/api/atsu/proxy?mangaId=${encodeURIComponent(mangaId)}&chapterId=${encodeURIComponent(selectedChapter.id)}`)
     : null;
   const externalSrc = mangaId && selectedChapter
-    ? `https://atsu.moe/read/${mangaId}/${selectedChapter.id}`
+    ? (source === "weebcentral"
+        ? `https://weebcentral.com/chapters/${selectedChapter.id}`
+        : `https://atsu.moe/read/${mangaId}/${selectedChapter.id}`)
     : null;
+  const sourceLabel = source === "weebcentral" ? "weebcentral.com" : "atsu.moe";
 
   return (
     <motion.div
@@ -601,8 +668,10 @@ function ReaderModal({
                           : "text-white/45 hover:bg-white/[0.05] hover:text-white/80"
                       }`}
                     >
-                      <span className="truncate">Ch. {ch.number}{ch.title ? ` — ${ch.title}` : ""}</span>
-                      <span className="text-white/20 shrink-0">{ch.pageCount}p</span>
+                      <span className="truncate">Ch. {ch.number}{source === "atsu" && ch.title ? ` — ${ch.title}` : ""}</span>
+                      {"pageCount" in ch && (
+                        <span className="text-white/20 shrink-0">{ch.pageCount}p</span>
+                      )}
                     </button>
                   ))}
                 </motion.div>
@@ -625,7 +694,7 @@ function ReaderModal({
             target="_blank"
             rel="noopener noreferrer"
             className="p-1.5 text-white/25 hover:text-white/70 transition-colors"
-            title="Open on atsu.moe"
+            title={`Open on ${sourceLabel}`}
           >
             <ExternalLink className="w-4 h-4" />
           </a>
@@ -655,7 +724,7 @@ function ReaderModal({
             <p className="text-white/40 font-serif text-lg text-center">{title}</p>
             {findStatus === "error" ? (
               <>
-                <p className="text-[11px] font-mono text-white/20 uppercase tracking-widest">Could not reach atsu.moe</p>
+                <p className="text-[11px] font-mono text-white/20 uppercase tracking-widest">Could not reach source</p>
                 <a
                   href={`https://atsu.moe/search?q=${encodeURIComponent(title)}`}
                   target="_blank"
@@ -668,7 +737,7 @@ function ReaderModal({
               </>
             ) : (
               <>
-                <p className="text-[11px] font-mono text-white/20 uppercase tracking-widest">Not found on atsu.moe</p>
+                <p className="text-[11px] font-mono text-white/20 uppercase tracking-widest">Not found</p>
                 <a
                   href={`https://atsu.moe/search?q=${encodeURIComponent(title)}`}
                   target="_blank"
@@ -683,7 +752,47 @@ function ReaderModal({
           </div>
         )}
 
-        {findStatus === "found" && iframeSrc && (
+        {findStatus === "found" && source === "weebcentral" && (
+          <div className="w-full h-full overflow-y-auto">
+            {pagesLoading && pages.length === 0 && (
+              <div className="flex flex-col items-center justify-center gap-3 py-24">
+                <Loader2 className="w-6 h-6 text-white/30 animate-spin" />
+                <p className="text-[11px] font-mono text-white/25 uppercase tracking-widest">Loading pages…</p>
+              </div>
+            )}
+            {!pagesLoading && pages.length === 0 && (
+              <div className="flex flex-col items-center justify-center gap-3 py-24">
+                <BookOpen className="w-8 h-8 text-white/10" />
+                <p className="text-[11px] font-mono text-white/25 uppercase tracking-widest">No pages found for this chapter</p>
+              </div>
+            )}
+            <div className="flex flex-col items-center mx-auto max-w-3xl">
+              {pages.map((src, i) => (
+                <img
+                  key={`${selectedChapter?.id}-${i}`}
+                  src={src}
+                  alt={`Page ${i + 1}`}
+                  loading={i < 3 ? "eager" : "lazy"}
+                  className="w-full h-auto select-none"
+                  draggable={false}
+                />
+              ))}
+              {pages.length > 0 && !pagesLoading && (
+                <div className="w-full flex items-center justify-center gap-4 py-8">
+                  <button
+                    onClick={goNextChapter}
+                    disabled={currentIdx === -1 || currentIdx >= chapters.length - 1}
+                    className="px-4 py-2 border border-white/10 text-[11px] font-mono uppercase tracking-widest text-white/40 hover:border-white/30 hover:text-white/80 transition-colors disabled:opacity-20 disabled:cursor-not-allowed"
+                  >
+                    Next chapter →
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {findStatus === "found" && source === "atsu" && iframeSrc && (
           <iframe
             key={iframeSrc}
             src={iframeSrc}
