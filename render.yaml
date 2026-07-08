@@ -6,9 +6,12 @@ databases:
     region: oregon
 
 services:
-  # Single web service: Express API + serves the built React frontend as static files.
-  # app.ts already serves artifacts/anime-site/dist when it exists, so no VITE_API_URL
-  # is needed — all /api calls are same-origin.
+  # Single web service: Express API + built React frontend (app.ts serves
+  # artifacts/anime-site/dist, so all /api calls are same-origin) + the
+  # Python Miruro sidecar (curl_cffi), started in-process as a background
+  # task the same way the Replit dev workflow does it. No separate relay or
+  # sidecar services — Render's IPs generally aren't Cloudflare-blocked the
+  # way Replit's are, so the sidecar can talk to Miruro directly here.
   - type: web
     name: nexa-anime
     runtime: node
@@ -17,9 +20,11 @@ services:
     buildCommand: >-
       npx --yes pnpm@10 install --frozen-lockfile &&
       npx --yes pnpm@10 --filter @workspace/anime-site run build &&
-      npx --yes pnpm@10 --filter @workspace/api-server run build
+      npx --yes pnpm@10 --filter @workspace/api-server run build &&
+      pip3 install --user -r artifacts/miruro-sidecar/requirements.txt
     startCommand: >-
       npx --yes pnpm@10 --filter @workspace/db run push-force &&
+      (cd artifacts/miruro-sidecar && python3 -m uvicorn main:app --host 127.0.0.1 --port 8090 --loop asyncio &) &&
       node artifacts/api-server/dist/index.mjs
     healthCheckPath: /api/healthz
     envVars:
@@ -40,28 +45,12 @@ services:
         sync: false
       - key: GMAIL_APP_PASSWORD
         sync: false
-      # Set this to the miruro-relay service's public URL after both services
-      # have deployed once (e.g. https://miruro-relay-xxxx.onrender.com).
-      # Setting this makes the main app route all Miruro requests through the
-      # relay's non-blocked IP instead of trying to solve Cloudflare locally.
+      - key: FANART_API_KEY
+        sync: false
+      # Optional CF-bypass relay for the sidecar to fall back on if Miruro
+      # ever starts blocking Render's IP range directly. Not required for
+      # the sidecar to work; leave unset unless you see it start failing.
       - key: MIRURO_RELAY_URL
         sync: false
-
-  # Standalone forward-proxy for Miruro. Cloudflare hard-blocks Replit's dev
-  # IPs but not most Render IPs, so this tiny service (no app logic, just a
-  # allow-listed pass-through fetch) lets Miruro work even from environments
-  # that are IP-blocked. See .agents/memory/miruro-cf-ip-block.md.
-  - type: web
-    name: miruro-relay
-    runtime: node
-    region: oregon
-    plan: free
-    buildCommand: >-
-      npx --yes pnpm@10 install --frozen-lockfile &&
-      npx --yes pnpm@10 --filter @workspace/miruro-relay run build &&
-      npx --yes playwright install chromium --with-deps
-    startCommand: node artifacts/miruro-relay/dist/index.mjs
-    envVars:
-      - key: PROXY_URL
+      - key: MIRURO_RELAY_SECRET
         sync: false
-    healthCheckPath: /healthz
