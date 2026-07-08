@@ -5,7 +5,7 @@ import {
   Play, Pause, Volume2, VolumeX, Maximize, Minimize,
   SkipForward, SkipBack, Settings, Captions, Loader2,
   AlertTriangle, RotateCcw, Languages, Download, Mic,
-  Camera, Gauge, PictureInPicture2, Repeat, List, ChevronDown,
+  Camera, Gauge, PictureInPicture2, Repeat, List, ChevronDown, X,
 } from "lucide-react";
 
 const HOLD_THRESHOLD_MS = 350;
@@ -51,6 +51,7 @@ export type HlsSyncCommand = {
 interface EpisodePickerItem {
   number: number;
   title: string;
+  thumbnail?: string;
 }
 
 interface Props {
@@ -164,6 +165,8 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
   const [pipActive, setPipActive] = useState(false);
   const [showEpisodePicker, setShowEpisodePicker] = useState(false);
   const episodePickerRef = useRef<HTMLDivElement>(null);
+  const episodeTriggerRef = useRef<HTMLButtonElement>(null);
+  const episodeListRef = useRef<HTMLDivElement>(null);
 
   // Hover scrub-preview thumbnail
   const seekBarRef = useRef<HTMLDivElement>(null);
@@ -175,24 +178,33 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
   const [previewX, setPreviewX] = useState(0);
   const [previewReady, setPreviewReady] = useState(false);
 
-  // Close episode picker when clicking outside
+  // Close episode panel when clicking outside (but not on the trigger button)
   useEffect(() => {
     if (!showEpisodePicker) return;
     const handler = (e: MouseEvent) => {
-      if (episodePickerRef.current && !episodePickerRef.current.contains(e.target as Node)) {
-        setShowEpisodePicker(false);
-      }
+      if (
+        episodePickerRef.current?.contains(e.target as Node) ||
+        episodeTriggerRef.current?.contains(e.target as Node)
+      ) return;
+      setShowEpisodePicker(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [showEpisodePicker]);
 
-  // Auto-scroll episode picker to current episode when opened
+  // Auto-scroll episode list to current episode when panel opens
   useEffect(() => {
     if (!showEpisodePicker || currentEpisode == null) return;
-    const el = episodePickerRef.current?.querySelector(`[data-ep="${currentEpisode}"]`);
-    el?.scrollIntoView({ block: "center" });
+    const el = episodeListRef.current?.querySelector(`[data-ep="${currentEpisode}"]`);
+    el?.scrollIntoView({ block: "center", behavior: "smooth" });
   }, [showEpisodePicker, currentEpisode]);
+
+  // Keep controls visible while episode panel is open
+  useEffect(() => {
+    if (!showEpisodePicker) return;
+    setShowControls(true);
+    if (hideTimer.current) clearTimeout(hideTimer.current);
+  }, [showEpisodePicker]);
 
   // Cleanup any hold/flash/error timers on unmount so stale callbacks never
   // mutate state after the component is gone.
@@ -946,51 +958,100 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
         </div>
       )}
 
+      {/* Netflix-style episode panel — slides in from right (fullscreen only) */}
+      {fullscreen && episodes && episodes.length > 0 && (
+        <>
+          {/* Trigger button — above everything */}
+          <div className="absolute top-3 right-3 z-50 pointer-events-auto">
+            <button
+              ref={episodeTriggerRef}
+              onClick={() => setShowEpisodePicker((v) => !v)}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-black/55 border border-white/20 backdrop-blur-sm text-white/85 hover:text-white hover:bg-black/75 transition-all text-[11px] font-mono"
+              title="Episodes"
+            >
+              <List className="w-3.5 h-3.5 shrink-0" />
+              <span>EP {currentEpisode ?? "—"}</span>
+              <ChevronDown className={`w-3 h-3 transition-transform duration-200 ${showEpisodePicker ? "rotate-180" : ""}`} />
+            </button>
+          </div>
+
+          {/* Slide-in panel */}
+          <div
+            ref={episodePickerRef}
+            className="absolute right-0 top-0 bottom-0 w-72 z-40 pointer-events-auto flex flex-col overflow-hidden"
+            style={{
+              background: "rgba(255,255,255,0.97)",
+              backdropFilter: "blur(20px)",
+              transform: showEpisodePicker ? "translateX(0)" : "translateX(100%)",
+              transition: "transform 0.32s cubic-bezier(0.4, 0, 0.2, 1)",
+              boxShadow: "-8px 0 40px rgba(0,0,0,0.45)",
+            }}
+          >
+            {/* Panel header */}
+            <div className="flex items-center justify-between px-4 py-3.5 border-b border-gray-100 shrink-0">
+              <div>
+                <p className="text-[9px] font-mono text-gray-400 uppercase tracking-widest">Episodes</p>
+                <p className="text-[11px] text-gray-500 tabular-nums">{episodes.length} episodes</p>
+              </div>
+              <button
+                onClick={() => setShowEpisodePicker(false)}
+                className="p-1 text-gray-400 hover:text-gray-700 transition-colors rounded"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Episode list */}
+            <div ref={episodeListRef} className="flex-1 overflow-y-auto">
+              {episodes.map((ep) => (
+                <button
+                  key={ep.number}
+                  data-ep={ep.number}
+                  onClick={() => { onEpisodeSelect?.(ep.number); setShowEpisodePicker(false); }}
+                  className={`w-full flex items-start gap-3 px-3 py-2.5 text-left transition-colors hover:bg-gray-50 border-b border-gray-50 ${currentEpisode === ep.number ? "bg-gray-100" : ""}`}
+                >
+                  {/* Thumbnail */}
+                  <div className="relative w-[88px] shrink-0 aspect-video rounded overflow-hidden bg-gray-100">
+                    {ep.thumbnail ? (
+                      <img src={ep.thumbnail} alt="" className="w-full h-full object-cover" loading="lazy" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <Play className="w-4 h-4 text-gray-300 fill-gray-300" />
+                      </div>
+                    )}
+                    {currentEpisode === ep.number && (
+                      <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
+                        <div className="w-6 h-6 rounded-full bg-white shadow flex items-center justify-center">
+                          <Play className="w-3 h-3 text-gray-900 fill-gray-900 ml-0.5" />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  {/* Info */}
+                  <div className="flex-1 min-w-0 pt-0.5">
+                    <p className="text-[9px] font-mono text-gray-400 mb-0.5 tabular-nums">EP {ep.number}</p>
+                    <p className={`text-[12px] leading-tight font-medium truncate ${currentEpisode === ep.number ? "text-gray-900" : "text-gray-700"}`}>
+                      {ep.title}
+                    </p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+
       {/* Controls overlay */}
       <div
         className="absolute inset-0 flex flex-col justify-end z-30 pointer-events-none"
         style={{ opacity: showControls || !playing ? 1 : 0, transition: "opacity 0.25s ease" }}
       >
         {/* Title bar */}
-        {(title || (fullscreen && episodes && episodes.length > 0)) && (
+        {title && (
           <div className="absolute top-0 left-0 right-0 px-4 pt-4 pb-8 pointer-events-none"
             style={{ background: "linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, transparent 100%)" }}
           >
-            <div className="flex items-start justify-between gap-3">
-              {title && <p className="text-white text-sm font-semibold truncate drop-shadow">{title}</p>}
-              {/* Episode picker — only shown in fullscreen */}
-              {fullscreen && episodes && episodes.length > 0 && (
-                <div ref={episodePickerRef} className="relative shrink-0 pointer-events-auto">
-                  <button
-                    onClick={() => setShowEpisodePicker((v) => !v)}
-                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-black/50 border border-white/15 backdrop-blur-sm text-white/80 hover:text-white hover:bg-black/70 transition-colors text-[11px] font-mono"
-                    title="Episode list"
-                  >
-                    <List className="w-3.5 h-3.5 shrink-0" />
-                    <span>EP {currentEpisode ?? "—"}</span>
-                    <ChevronDown className={`w-3 h-3 transition-transform ${showEpisodePicker ? "rotate-180" : ""}`} />
-                  </button>
-                  {showEpisodePicker && (
-                    <div className="absolute top-full right-0 mt-1.5 w-64 max-h-72 overflow-y-auto bg-zinc-900/95 backdrop-blur border border-white/10 rounded-lg shadow-2xl z-50">
-                      <p className="sticky top-0 px-3 py-2 text-[9px] font-mono text-white/30 uppercase tracking-widest border-b border-white/5 bg-zinc-900/95">
-                        Episodes
-                      </p>
-                      {episodes.map((ep) => (
-                        <button
-                          key={ep.number}
-                          data-ep={ep.number}
-                          onClick={() => { onEpisodeSelect?.(ep.number); setShowEpisodePicker(false); }}
-                          className={`w-full text-left px-3 py-2 text-[11px] font-mono transition-colors hover:bg-white/10 flex items-center gap-2 ${currentEpisode === ep.number ? "text-blue-400 bg-blue-400/10" : "text-white/60"}`}
-                        >
-                          <span className="w-7 shrink-0 text-right opacity-50 tabular-nums">{ep.number}</span>
-                          <span className="truncate">{ep.title}</span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+            <p className="text-white text-sm font-semibold truncate drop-shadow pr-32">{title}</p>
           </div>
         )}
 
@@ -1063,11 +1124,11 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
                   <Settings className="w-4 h-4" />
                 </button>
                 {showSettings && (
-                  <div className="absolute bottom-full right-0 mb-2 min-w-[130px] bg-zinc-900 border border-white/10 rounded overflow-hidden shadow-xl z-50">
-                    <p className="px-3 py-1.5 text-[9px] font-mono text-white/30 uppercase tracking-widest border-b border-white/5">Quality</p>
+                  <div className="absolute bottom-full right-0 mb-2 min-w-[130px] bg-white border border-gray-200 rounded overflow-hidden shadow-xl z-50">
+                    <p className="px-3 py-1.5 text-[9px] font-mono text-gray-400 uppercase tracking-widest border-b border-gray-100">Quality</p>
                     <button
                       onClick={() => setQuality(-1)}
-                      className={`w-full text-left px-3 py-2 text-[11px] font-mono transition-colors hover:bg-white/10 ${currentLevel === -1 ? "text-blue-400" : "text-white/60"}`}
+                      className={`w-full text-left px-3 py-2 text-[11px] font-mono transition-colors hover:bg-gray-50 ${currentLevel === -1 ? "text-gray-900 font-semibold" : "text-gray-600"}`}
                     >
                       Auto
                     </button>
@@ -1077,7 +1138,7 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
                         <button
                           key={idx}
                           onClick={() => setQuality(idx)}
-                          className={`w-full text-left px-3 py-2 text-[11px] font-mono transition-colors hover:bg-white/10 ${currentLevel === idx ? "text-blue-400" : "text-white/60"}`}
+                          className={`w-full text-left px-3 py-2 text-[11px] font-mono transition-colors hover:bg-gray-50 ${currentLevel === idx ? "text-gray-900 font-semibold" : "text-gray-600"}`}
                         >
                           {qualityLabel(l)}
                         </button>
@@ -1180,13 +1241,13 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
                 <span className="text-[10px] font-mono">{playbackSpeed}x</span>
               </button>
               {showSpeed && (
-                <div className="absolute bottom-full right-0 mb-2 min-w-[90px] bg-zinc-900 border border-white/10 rounded overflow-hidden shadow-xl z-50">
-                  <p className="px-3 py-1.5 text-[9px] font-mono text-white/30 uppercase tracking-widest border-b border-white/5">Speed</p>
+                <div className="absolute bottom-full right-0 mb-2 min-w-[90px] bg-white border border-gray-200 rounded overflow-hidden shadow-xl z-50">
+                  <p className="px-3 py-1.5 text-[9px] font-mono text-gray-400 uppercase tracking-widest border-b border-gray-100">Speed</p>
                   {SPEED_OPTIONS.map((rate) => (
                     <button
                       key={rate}
                       onClick={() => cycleSpeed(rate)}
-                      className={`w-full text-left px-3 py-2 text-[11px] font-mono transition-colors hover:bg-white/10 ${playbackSpeed === rate ? "text-blue-400" : "text-white/60"}`}
+                      className={`w-full text-left px-3 py-2 text-[11px] font-mono transition-colors hover:bg-gray-50 ${playbackSpeed === rate ? "text-gray-900 font-semibold" : "text-gray-600"}`}
                     >
                       {rate}x
                     </button>
@@ -1209,8 +1270,8 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
                     : audioTracks[activeAudioTrack]?.name?.slice(0, 2).toUpperCase() ?? "AU"}
                 </button>
                 {showAudio && (
-                  <div className="absolute bottom-full right-0 mb-2 min-w-[140px] bg-zinc-900 border border-white/10 rounded shadow-xl z-50 overflow-hidden">
-                    <p className="px-3 py-1.5 text-[9px] font-mono text-white/30 uppercase tracking-widest border-b border-white/5 flex items-center gap-1">
+                  <div className="absolute bottom-full right-0 mb-2 min-w-[140px] bg-white border border-gray-200 rounded shadow-xl z-50 overflow-hidden">
+                    <p className="px-3 py-1.5 text-[9px] font-mono text-gray-400 uppercase tracking-widest border-b border-gray-100 flex items-center gap-1">
                       <Mic className="w-3 h-3" /> Audio Track
                     </p>
                     {audioTracks.map((t, idx) => (
@@ -1221,10 +1282,9 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
                           setActiveAudioTrack(idx);
                           setShowAudio(false);
                         }}
-                        className={`w-full text-left px-3 py-2 text-[11px] font-mono transition-colors hover:bg-white/10 flex items-center gap-2 ${activeAudioTrack === idx ? "text-blue-400" : "text-white/60"}`}
+                        className={`w-full text-left px-3 py-2 text-[11px] font-mono transition-colors hover:bg-gray-50 flex items-center gap-2 ${activeAudioTrack === idx ? "text-gray-900 font-semibold" : "text-gray-600"}`}
                       >
-                        {activeAudioTrack === idx && <span className="w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0" />}
-                        {activeAudioTrack !== idx && <span className="w-1.5 h-1.5 rounded-full bg-white/20 shrink-0" />}
+                        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${activeAudioTrack === idx ? "bg-gray-900" : "bg-gray-300"}`} />
                         {t.name || t.lang || `Track ${idx + 1}`}
                       </button>
                     ))}
@@ -1246,11 +1306,11 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
                     : <Captions className="w-4 h-4" />}
                 </button>
                 {showSubs && (
-                  <div className="absolute bottom-full right-0 mb-2 min-w-[170px] max-h-80 overflow-y-auto bg-zinc-900 border border-white/10 rounded shadow-xl z-50">
-                    <p className="px-3 py-1.5 text-[9px] font-mono text-white/30 uppercase tracking-widest border-b border-white/5">Subtitles</p>
+                  <div className="absolute bottom-full right-0 mb-2 min-w-[170px] max-h-80 overflow-y-auto bg-white border border-gray-200 rounded shadow-xl z-50">
+                    <p className="px-3 py-1.5 text-[9px] font-mono text-gray-400 uppercase tracking-widest border-b border-gray-100">Subtitles</p>
                     <button
                       onClick={() => { setActiveSub(null); setShowSubs(false); }}
-                      className={`w-full text-left px-3 py-2 text-[11px] font-mono transition-colors hover:bg-white/10 ${!activeSub ? "text-blue-400" : "text-white/60"}`}
+                      className={`w-full text-left px-3 py-2 text-[11px] font-mono transition-colors hover:bg-gray-50 ${!activeSub ? "text-gray-900 font-semibold" : "text-gray-600"}`}
                     >
                       Off
                     </button>
@@ -1258,20 +1318,20 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
                       <button
                         key={s.src}
                         onClick={() => { setActiveSub(s.src); setShowSubs(false); }}
-                        className={`w-full text-left px-3 py-2 text-[11px] font-mono transition-colors hover:bg-white/10 ${activeSub === s.src ? "text-blue-400" : "text-white/60"}`}
+                        className={`w-full text-left px-3 py-2 text-[11px] font-mono transition-colors hover:bg-gray-50 ${activeSub === s.src ? "text-gray-900 font-semibold" : "text-gray-600"}`}
                       >
                         {s.label}
                       </button>
                     ))}
-                    <div className="border-t border-white/5 mt-1">
-                      <p className="px-3 py-1.5 text-[9px] font-mono text-purple-400/70 uppercase tracking-widest flex items-center gap-1">
+                    <div className="border-t border-gray-100 mt-1">
+                      <p className="px-3 py-1.5 text-[9px] font-mono text-purple-500 uppercase tracking-widest flex items-center gap-1">
                         <Languages className="w-3 h-3" /> AI Translate
                       </p>
                       <div className="px-2 pb-2.5 flex gap-1.5">
                         <select
                           value={translateLang}
                           onChange={(e) => setTranslateLang(e.target.value)}
-                          className="flex-1 bg-zinc-800 border border-white/10 text-[11px] text-white/70 px-1.5 py-1 rounded-sm outline-none cursor-pointer"
+                          className="flex-1 bg-gray-50 border border-gray-200 text-[11px] text-gray-700 px-1.5 py-1 rounded-sm outline-none cursor-pointer"
                           onClick={(e) => e.stopPropagation()}
                         >
                           {TRANSLATE_LANGS.map((l) => (
@@ -1285,13 +1345,13 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
                             setShowSubs(false);
                           }}
                           disabled={translating}
-                          className="px-2 py-1 text-[10px] font-mono bg-purple-500/20 text-purple-300 border border-purple-400/30 hover:bg-purple-500/30 transition-colors rounded-sm disabled:opacity-40 whitespace-nowrap"
+                          className="px-2 py-1 text-[10px] font-mono bg-purple-50 text-purple-600 border border-purple-200 hover:bg-purple-100 transition-colors rounded-sm disabled:opacity-40 whitespace-nowrap"
                         >
                           {translating ? "…" : "Go"}
                         </button>
                       </div>
                       {translateError && (
-                        <p className="px-2 pb-2 text-[9px] text-red-400 font-mono leading-tight">{translateError}</p>
+                        <p className="px-2 pb-2 text-[9px] text-red-500 font-mono leading-tight">{translateError}</p>
                       )}
                       {currentTranslatedVtt && (
                         <div className="px-2 pb-2.5">
@@ -1305,7 +1365,7 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
                               a.click();
                               URL.revokeObjectURL(url);
                             }}
-                            className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 text-[10px] font-mono bg-zinc-800/80 text-white/50 border border-white/10 hover:border-white/30 hover:text-white/80 transition-colors rounded-sm"
+                            className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 text-[10px] font-mono bg-gray-50 text-gray-500 border border-gray-200 hover:border-gray-400 hover:text-gray-700 transition-colors rounded-sm"
                           >
                             <Download className="w-3 h-3" /> Save .txt
                           </button>

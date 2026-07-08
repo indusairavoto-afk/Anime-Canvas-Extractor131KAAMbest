@@ -2523,7 +2523,7 @@ export default function WatchAniList() {
 
   // Episode picker data for HlsPlayer fullscreen UI (must be after getEpTitle)
   const epPickerList = useMemo(
-    () => episodeNumbers.map((n) => ({ number: n, title: getEpTitle(n) })),
+    () => episodeNumbers.map((n) => ({ number: n, title: getEpTitle(n), thumbnail: getEpThumb(n) })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [episodeNumbers.length, jikanEps, streamEps],
   );
