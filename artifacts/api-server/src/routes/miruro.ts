@@ -1094,10 +1094,19 @@ router.get("/miruro/native-stream", async (req, res) => {
       (sfx) => streamHostname === sfx.slice(1) || streamHostname.endsWith(sfx)
     );
 
-    // kwik CDNs: route through sidecar cdn-proxy (Chrome TLS impersonation + kwik.cx referer)
-    // Other CDNs: route through anizone/hls (standard node fetch with miruro referer)
-    const referer = isKwikCdn ? "https://kwik.cx/" : "https://www.miruro.bz/";
-    const proxyBase = isKwikCdn ? "/api/miruro/cdn-proxy" : "/api/anizone/hls";
+    // kwik CDNs (owocdn/uwucdn) are hard IP-blocked from datacenter IPs by Cloudflare —
+    // even curl_cffi Chrome-impersonation cannot bypass a Cloudflare IP firewall rule.
+    // Returning an hlsUrl that proxies through this server would just produce a flood of
+    // 521s for every HLS segment fetch. Signal cdnBlocked so the frontend falls back to
+    // the SW iframe path, where the stream is fetched by the user's browser IP instead.
+    if (isKwikCdn) {
+      res.status(503).json({ error: "CDN is server-IP-blocked", cdnBlocked: true });
+      return;
+    }
+
+    // Non-kwik CDNs: route through anizone/hls (standard node fetch with miruro referer)
+    const referer = "https://www.miruro.bz/";
+    const proxyBase = "/api/anizone/hls";
     const makeProxyUrl = (u: string) =>
       `${proxyBase}?u=${Buffer.from(u).toString("base64url")}&ref=${Buffer.from(referer).toString("base64url")}`;
 
