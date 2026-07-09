@@ -408,9 +408,9 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
         }
       });
 
-      // Track whether we've already attempted a single media-error recovery.
-      // Reset per HLS instance (local variable inside this effect run).
+      // Track recovery attempts — reset per HLS instance (local vars inside this effect).
       let mediaRecoveryAttempted = false;
+      let networkRecoveryAttempted = false;
 
       hls.on(Hls.Events.ERROR, (_, data) => {
         if (data.fatal) {
@@ -418,16 +418,24 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
 
           // MEDIA_ERROR (e.g. bufferStalledError, internalException after a seek):
           // attempt HLS.js built-in media recovery once before giving up.
-          // This handles the common case where seeking to an un-buffered position
-          // causes a transient MSE decode failure that resolves with a single recovery call.
           if (data.type === Hls.ErrorTypes.MEDIA_ERROR && !mediaRecoveryAttempted) {
             console.warn('[HLS] Attempting media error recovery…');
             mediaRecoveryAttempted = true;
             hls.recoverMediaError();
-            return; // don't destroy or call onFatalError yet
+            return;
           }
 
-          // All other fatal errors (or second MEDIA_ERROR): give up and fall back.
+          // NETWORK_ERROR (e.g. transient CDN 521/403 during segment prefetch):
+          // retry startLoad() after a short pause — CDN IP blocks are often transient.
+          // Only attempt once per HLS instance to avoid an infinite retry loop.
+          if (data.type === Hls.ErrorTypes.NETWORK_ERROR && !networkRecoveryAttempted) {
+            console.warn('[HLS] Attempting network error recovery (startLoad in 2s)…');
+            networkRecoveryAttempted = true;
+            setTimeout(() => { if (mounted) hls.startLoad(); }, 2000);
+            return;
+          }
+
+          // No more recovery options — fall back to iframe.
           setError(data.details ?? "Stream error");
           setLoading(false);
           onFatalError?.();
