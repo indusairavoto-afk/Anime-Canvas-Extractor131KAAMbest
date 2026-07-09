@@ -1069,11 +1069,23 @@ router.get("/miruro/native-stream", async (req, res) => {
 
   try {
     // Prefer the relay pipe (pure Node — no Python sidecar needed) when
-    // MIRURO_RELAY_URL is configured.  Falls back to the Python sidecar on
-    // localhost:8090 when the relay is absent (e.g. local dev without a relay).
-    const native = isRelayPipeAvailable()
-      ? await fetchMiruroNativeStreamViaRelay(anilistIdNum, epNum, preferDub ? "dub" : "sub")
-      : await fetchMiruroNativeStream(anilistIdNum, epNum, preferDub ? "dub" : "sub");
+    // MIRURO_RELAY_URL is configured.  If the relay fails (outage, secret
+    // mismatch, decode error), fall back to the Python sidecar on localhost:8090.
+    // When relay is not configured, go straight to the Python sidecar.
+    let native;
+    if (isRelayPipeAvailable()) {
+      try {
+        native = await fetchMiruroNativeStreamViaRelay(anilistIdNum, epNum, preferDub ? "dub" : "sub");
+      } catch (relayErr) {
+        console.warn(
+          "[miruro] Relay pipe failed, falling back to Python sidecar:",
+          relayErr instanceof Error ? relayErr.message : relayErr,
+        );
+        native = await fetchMiruroNativeStream(anilistIdNum, epNum, preferDub ? "dub" : "sub");
+      }
+    } else {
+      native = await fetchMiruroNativeStream(anilistIdNum, epNum, preferDub ? "dub" : "sub");
+    }
 
     // Pick the correct proxy and referer based on the CDN hostname.
     let streamHostname = "";
