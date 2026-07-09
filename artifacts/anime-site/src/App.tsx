@@ -1,9 +1,10 @@
-import { Switch, Route, Router as WouterRouter } from "wouter";
+import { Switch, Route, Router as WouterRouter, useRoute } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Topbar } from "@/components/topbar";
 import { Sidebar } from "@/components/sidebar";
+import { Footer } from "@/components/footer";
 import { SidebarProvider } from "@/contexts/sidebar-context";
 import { AuthProvider } from "@/contexts/auth-context";
 import { ScrollToTop } from "@/components/scroll-to-top";
@@ -62,20 +63,33 @@ function Router() {
   );
 }
 
+function Layout() {
+  const [isWatch1] = useRoute("/watch/:episodeId");
+  const [isWatch2] = useRoute("/watch/al/:animeId/:episode");
+  const isWatchPage = isWatch1 || isWatch2;
+
+  return (
+    <>
+      <ScrollToTop />
+      <SidebarProvider>
+        <Topbar />
+        <Sidebar />
+        <div className="pt-14">
+          <Router />
+        </div>
+        {!isWatchPage && <Footer />}
+      </SidebarProvider>
+    </>
+  );
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <AuthProvider>
           <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-            <ScrollToTop />
-            <SidebarProvider>
-              <Topbar />
-              <Sidebar />
-              <div className="pt-14">
-                <Router />
-              </div>
-            </SidebarProvider>
+            <Layout />
           </WouterRouter>
         </AuthProvider>
         <Toaster />

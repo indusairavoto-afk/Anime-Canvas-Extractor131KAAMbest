@@ -2,7 +2,7 @@ import { Link } from "wouter";
 
 export default function NotFound() {
   return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-black">
+    <div className="min-h-[calc(100vh-14rem)] w-full flex items-center justify-center bg-black">
       <div className="text-center">
         <p className="font-mono text-[9px] uppercase tracking-[0.4em] text-white/30 mb-4">404</p>
         <h1 className="font-serif text-5xl text-white mb-4">Page Not Found</h1>
