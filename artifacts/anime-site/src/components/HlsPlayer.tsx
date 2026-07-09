@@ -408,9 +408,26 @@ export default function HlsPlayer({ hlsUrl, subtitles = [], title, progressKey, 
         }
       });
 
+      // Track whether we've already attempted a single media-error recovery.
+      // Reset per HLS instance (local variable inside this effect run).
+      let mediaRecoveryAttempted = false;
+
       hls.on(Hls.Events.ERROR, (_, data) => {
         if (data.fatal) {
           console.error('[HLS] Fatal error:', data.type, data.details, (data as {mimeType?: string}).mimeType, (data as {sourceBufferName?: string}).sourceBufferName);
+
+          // MEDIA_ERROR (e.g. bufferStalledError, internalException after a seek):
+          // attempt HLS.js built-in media recovery once before giving up.
+          // This handles the common case where seeking to an un-buffered position
+          // causes a transient MSE decode failure that resolves with a single recovery call.
+          if (data.type === Hls.ErrorTypes.MEDIA_ERROR && !mediaRecoveryAttempted) {
+            console.warn('[HLS] Attempting media error recovery…');
+            mediaRecoveryAttempted = true;
+            hls.recoverMediaError();
+            return; // don't destroy or call onFatalError yet
+          }
+
+          // All other fatal errors (or second MEDIA_ERROR): give up and fall back.
           setError(data.details ?? "Stream error");
           setLoading(false);
           onFatalError?.();
