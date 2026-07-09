@@ -24,12 +24,14 @@ This installs packages for all 10 workspace projects (frontend, API server, shar
 The "Start application" workflow runs all three servers in parallel:
 
 ```
-pnpm install --frozen-lockfile && \
+pnpm install --frozen-lockfile && pnpm --filter @workspace/db run push && \
 (cd artifacts/miruro-sidecar && pip install -q -r requirements.txt && \
   /home/runner/workspace/.pythonlibs/bin/uvicorn main:app --host 127.0.0.1 --port 8090 --loop asyncio > /tmp/miruro-sidecar.log 2>&1 &) && \
 (PORT=8080 bash -c 'cd artifacts/api-server && pnpm run dev' & \
  PORT=5000 pnpm --filter @workspace/anime-site run dev)
 ```
+
+The schema push (`pnpm --filter @workspace/db run push`) runs automatically on every startup — it's idempotent and safe to re-run.
 
 - Frontend: http://localhost:5000 (proxied externally)
 - API: http://localhost:8080
