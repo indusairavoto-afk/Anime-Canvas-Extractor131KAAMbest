@@ -5,6 +5,7 @@ import { SocksClient } from "socks";
 import { getCfSession, invalidateCfSession, warmCfSession } from "../lib/miruro-cf-solver.js";
 import { isMiruroRelayConfigured, relayFetch } from "../lib/miruro-relay.js";
 import { fetchMiruroNativeStream } from "../lib/miruro-sidecar.js";
+import { fetchMiruroNativeStreamViaRelay, isRelayPipeAvailable } from "../lib/miruro-pipe.js";
 
 const router = Router();
 
@@ -1067,7 +1068,12 @@ router.get("/miruro/native-stream", async (req, res) => {
   const KWIK_CDN_SUFFIXES = [".uwucdn.top", ".owocdn.top"];
 
   try {
-    const native = await fetchMiruroNativeStream(anilistIdNum, epNum, preferDub ? "dub" : "sub");
+    // Prefer the relay pipe (pure Node — no Python sidecar needed) when
+    // MIRURO_RELAY_URL is configured.  Falls back to the Python sidecar on
+    // localhost:8090 when the relay is absent (e.g. local dev without a relay).
+    const native = isRelayPipeAvailable()
+      ? await fetchMiruroNativeStreamViaRelay(anilistIdNum, epNum, preferDub ? "dub" : "sub")
+      : await fetchMiruroNativeStream(anilistIdNum, epNum, preferDub ? "dub" : "sub");
 
     // Pick the correct proxy and referer based on the CDN hostname.
     let streamHostname = "";
