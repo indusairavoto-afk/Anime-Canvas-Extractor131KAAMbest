@@ -2052,7 +2052,7 @@ export default function WatchAniList() {
         setSwFailed(true);
         setMiruroIframeUrl(null);
       }
-    }, 6000);
+    }, 2500);
     return () => clearTimeout(timeout);
   }, [server, miruroIframeUrl, swReady, miruroLegacyUrl]); // eslint-disable-line react-hooks/exhaustive-deps
 

@@ -5,7 +5,7 @@ import { SocksClient } from "socks";
 import { getCfSession, invalidateCfSession, warmCfSession } from "../lib/miruro-cf-solver.js";
 import { isMiruroRelayConfigured, relayFetch } from "../lib/miruro-relay.js";
 import { fetchMiruroNativeStream } from "../lib/miruro-sidecar.js";
-import { fetchMiruroNativeStreamViaRelay, isRelayPipeAvailable } from "../lib/miruro-pipe.js";
+import { fetchMiruroNativeStreamViaRelay, isRelayPipeAvailable, KwikCdnBlockedError } from "../lib/miruro-pipe.js";
 
 const router = Router();
 
@@ -1077,6 +1077,9 @@ router.get("/miruro/native-stream", async (req, res) => {
       try {
         native = await fetchMiruroNativeStreamViaRelay(anilistIdNum, epNum, preferDub ? "dub" : "sub");
       } catch (relayErr) {
+        // KwikCdnBlockedError means every provider was kwik-backed — sidecar
+        // would produce the same result, so skip it and signal cdnBlocked immediately.
+        if (relayErr instanceof KwikCdnBlockedError) throw relayErr;
         console.warn(
           "[miruro] Relay pipe failed, falling back to Python sidecar:",
           relayErr instanceof Error ? relayErr.message : relayErr,
@@ -1087,24 +1090,9 @@ router.get("/miruro/native-stream", async (req, res) => {
       native = await fetchMiruroNativeStream(anilistIdNum, epNum, preferDub ? "dub" : "sub");
     }
 
-    // Pick the correct proxy and referer based on the CDN hostname.
-    let streamHostname = "";
-    try { streamHostname = new URL(native.streamUrl).hostname; } catch { /* ignore */ }
-    const isKwikCdn = KWIK_CDN_SUFFIXES.some(
-      (sfx) => streamHostname === sfx.slice(1) || streamHostname.endsWith(sfx)
-    );
-
-    // kwik CDNs (owocdn/uwucdn) are hard IP-blocked from datacenter IPs by Cloudflare —
-    // even curl_cffi Chrome-impersonation cannot bypass a Cloudflare IP firewall rule.
-    // Returning an hlsUrl that proxies through this server would just produce a flood of
-    // 521s for every HLS segment fetch. Signal cdnBlocked so the frontend falls back to
-    // the SW iframe path, where the stream is fetched by the user's browser IP instead.
-    if (isKwikCdn) {
-      res.status(503).json({ error: "CDN is server-IP-blocked", cdnBlocked: true });
-      return;
-    }
-
-    // Non-kwik CDNs: route through anizone/hls (standard node fetch with miruro referer)
+    // Route through anizone/hls proxy with miruro referer.
+    // Non-kwik CDNs are accessible from the server with correct headers.
+    // (Kwik CDNs are skipped in the lib layer and cause KwikCdnBlockedError above.)
     const referer = "https://www.miruro.bz/";
     const proxyBase = "/api/anizone/hls";
     const makeProxyUrl = (u: string) =>
@@ -1119,6 +1107,13 @@ router.get("/miruro/native-stream", async (req, res) => {
     }));
     res.json({ hlsUrl, subtitles, intro: native.intro, outro: native.outro, provider: native.provider });
   } catch (err) {
+    const isCdnBlocked =
+      err instanceof KwikCdnBlockedError ||
+      (err instanceof Error && (err as Error & { cdnBlocked?: boolean }).cdnBlocked);
+    if (isCdnBlocked) {
+      res.status(503).json({ error: "CDN is server-IP-blocked", cdnBlocked: true });
+      return;
+    }
     const msg = err instanceof Error ? err.message : "Miruro sidecar error";
     res.status(503).json({ error: msg });
   }

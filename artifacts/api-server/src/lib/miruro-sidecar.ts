@@ -8,7 +8,9 @@
 
 const SIDECAR_URL = process.env.MIRURO_SIDECAR_URL ?? "http://127.0.0.1:8090";
 
-const PROVIDER_PRIORITY = ["kiwi", "arc", "zoro", "hop"];
+// Provider priority for native HLS.  Prefer providers whose CDNs are
+// reachable from our server (hls.anidb.app, vivibebe.site → 200 OK).
+const PROVIDER_PRIORITY = ["pewe", "bonk", "kiwi", "arc", "zoro", "hop"];
 
 interface SidecarEpisodeEntry {
   id?: string;
@@ -137,8 +139,23 @@ export async function fetchMiruroNativeStream(
   // Miruro's own backend proxies "sources" lookups to the underlying provider
   // (kiwi/arc/zoro/hop) server-side; a specific provider can be flaky/502
   // independently of our relay bypass working fine for the base pipe. Try
-  // each provider that has this episode until one returns a playable stream.
+  // each provider that has this episode until one returns a non-kwik-CDN stream.
+  // Kwik-CDN URLs (uwucdn/owocdn) are hard IP-blocked from datacenter egress;
+  // skip them and try the next provider.
+  const KWIK_CDN_SUFFIXES = [".uwucdn.top", ".owocdn.top"];
+  function isKwikCdnUrl(url: string): boolean {
+    try {
+      const hostname = new URL(url).hostname;
+      return KWIK_CDN_SUFFIXES.some((sfx) => hostname === sfx.slice(1) || hostname.endsWith(sfx));
+    } catch { return false; }
+  }
+
+  // KwikCdnBlockedError is only thrown when at least one provider returned a
+  // stream URL and every such URL was kwik-backed. Plain errors (network,
+  // parse, 502) do NOT count toward the kwik tally.
   let lastErr: Error | null = null;
+  let streamsSeen = 0;
+  let kwikStreamsSeen = 0;
   for (const { provider, slug } of candidates) {
     try {
       const sources = await sidecarGetJson(`/watch/${provider}/${anilistId}/${category}/${slug}`);
@@ -146,6 +163,12 @@ export async function fetchMiruroNativeStream(
       if (!streamUrl) {
         lastErr = new Error(`No playable stream in Miruro sidecar response (provider=${provider})`);
         continue;
+      }
+      streamsSeen++;
+      if (isKwikCdnUrl(streamUrl)) {
+        kwikStreamsSeen++;
+        lastErr = new Error(`Provider ${provider} uses kwik CDN (server-IP-blocked)`);
+        continue; // try next provider
       }
       return {
         streamUrl,
@@ -159,5 +182,10 @@ export async function fetchMiruroNativeStream(
     }
   }
 
+  if (streamsSeen > 0 && streamsSeen === kwikStreamsSeen) {
+    const e = new Error("All providers returned kwik-CDN-blocked stream URLs") as Error & { cdnBlocked: boolean };
+    e.cdnBlocked = true;
+    throw e;
+  }
   throw lastErr ?? new Error(`No provider returned a stream for anilistId=${anilistId} ep=${epNum}`);
 }
