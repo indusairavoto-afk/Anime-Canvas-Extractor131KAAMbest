@@ -199,6 +199,32 @@ async function handleProxy(request, url) {
       return new Response(js, { status: upstream.status, headers: newHeaders });
     }
 
+    // ── Non-HTML page response: miruro.bz may return JSON {"error":"Not found"}
+    // for certain IPs/routes instead of the SPA HTML. The injection script that
+    // posts miruro-sw-loaded never runs, so the parent times out in 15 s.
+    // Detect this early and fire miruro-sw-failed immediately so the parent can
+    // show its error overlay without the full timeout delay.
+    if (!isApiCall && !ct.includes('text/html') && !ct.includes('javascript') && !ct.includes('css')) {
+      var bodySnippet = '';
+      try {
+        var cloned = upstream.clone();
+        var ab = await cloned.arrayBuffer();
+        bodySnippet = new TextDecoder().decode(new Uint8Array(ab, 0, 128));
+      } catch (_) {}
+      if (bodySnippet.includes('"error"') || bodySnippet.toLowerCase().includes('not found')) {
+        console.warn('[sw-miruro] miruro.bz returned JSON error for page path', miruroPath, '— notifying parent');
+        self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+          .then(function(clients) {
+            clients.forEach(function(c) {
+              c.postMessage({ type: 'miruro-sw-failed', error: 'miruro.bz returned JSON error: ' + bodySnippet.slice(0, 80) });
+            });
+          });
+        return swFailedResponse('miruro.bz returned JSON (not HTML) — content unavailable from browser SW path');
+      }
+      // Other non-HTML (binary assets, etc.): pass through
+      return new Response(upstream.body, { status: upstream.status, headers: newHeaders });
+    }
+
     // ── HTML: full rewrite + interceptor injection ──────────────────────────
     if (ct.includes('text/html')) {
       let html = await upstream.text();

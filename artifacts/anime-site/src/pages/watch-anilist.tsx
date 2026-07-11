@@ -1610,7 +1610,7 @@ export default function WatchAniList() {
     const timeout = setTimeout(() => {
       if (mounted) {
         console.warn("[miruro-sw] SW activation timeout — switching to fallback");
-        sessionStorage.setItem("miruro_sw_blocked_v11", "1");
+        sessionStorage.setItem("miruro_sw_blocked_v12", "1");
         setSwFailed(true);
       }
     }, 5000);
@@ -1620,7 +1620,7 @@ export default function WatchAniList() {
       clearTimeout(timeout);
       setSwReady(true);
       setSwFailed(false); // clear any earlier timeout/failure flag so SW path stays active
-      sessionStorage.removeItem("miruro_sw_blocked_v11"); // SW is working — clear stale block flag
+      sessionStorage.removeItem("miruro_sw_blocked_v12"); // SW is working — clear stale block flag
     };
 
     navigator.serviceWorker
@@ -1665,7 +1665,7 @@ export default function WatchAniList() {
       // The user can still manually trigger the inline attempt via the "Try inline" button
       // in the overlay (which is useful if a server-side CF session happens to exist).
       setMiruroIframeUrl(null);
-      sessionStorage.setItem("miruro_sw_blocked_v11", "1"); // remember so next visit skips the black-screen flash
+      sessionStorage.setItem("miruro_sw_blocked_v12", "1"); // remember so next visit skips the black-screen flash
       setMiruroProxyBlocked(true);
     }
   }, [swFailed, miruroIframeUrl, miruroLegacyUrl]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -2010,7 +2010,7 @@ export default function WatchAniList() {
         server === "MIRURO" &&
         miruroIframeUrlRef.current?.startsWith("/miruro-sw/")
       ) {
-        sessionStorage.setItem("miruro_sw_blocked_v11", "1");
+        sessionStorage.setItem("miruro_sw_blocked_v12", "1");
         setSwFailed(true);
       }
 
@@ -2056,7 +2056,10 @@ export default function WatchAniList() {
         setMiruroIframeUrl(miruroLegacyUrl);
         setSwReady(true);
       } else {
-        sessionStorage.setItem("miruro_sw_blocked_v11", "1");
+        // Do NOT set the sessionStorage block flag here — a slow CF challenge
+        // (Turnstile / JS challenge) is transient and should be retried on the next
+        // watch page navigation. Only hard CF IP blocks (miruro-proxy-error,
+        // miruro-sw-failed from a CORS/network TypeError) should set the flag.
         setSwFailed(true);
         setMiruroIframeUrl(null);
       }
@@ -2839,7 +2842,7 @@ export default function WatchAniList() {
                       if (miruroLegacyUrl && miruroIframeUrl !== miruroLegacyUrl) {
                         setMiruroIframeUrl(miruroLegacyUrl);
                       } else {
-                        sessionStorage.setItem("miruro_sw_blocked_v11", "1");
+                        sessionStorage.setItem("miruro_sw_blocked_v12", "1");
                         setSwFailed(true);
                         setMiruroIframeUrl(null);
                       }

@@ -503,7 +503,26 @@ router.get("/miruro/proxy", async (req, res) => {
     }
 
     if (!contentType.includes("text/html")) {
-      // Non-HTML: forward as-is
+      // Non-HTML from a watch-page URL: miruro.bz returns 200 application/json
+      // {"error":"Not found"} when the request originates from certain datacenter
+      // IPs (e.g. Cloudflare Workers relay).  Forwarding this JSON raw makes the
+      // iframe display a JSON blob instead of an error overlay.  Detect and convert.
+      if (contentType.includes("application/json") || contentType.includes("text/plain")) {
+        const buf = await upstream.arrayBuffer();
+        const snippet = Buffer.from(buf).toString("utf-8", 0, 128);
+        if (snippet.includes('"error"') || snippet.toLowerCase().includes("not found")) {
+          res.setHeader("Content-Type", "text/html; charset=utf-8");
+          res.status(503).send(miruroProxyErrorHtml("Miruro content unavailable from this server. Try opening Miruro directly."));
+          return;
+        }
+        // Non-error JSON/text (e.g. API responses): forward as-is
+        res.setHeader("Content-Type", contentType);
+        res.setHeader("Cache-Control", "public, max-age=3600");
+        res.setHeader("Access-Control-Allow-Origin", "*");
+        res.send(Buffer.from(buf));
+        return;
+      }
+      // Other non-HTML (binary, etc.): forward as-is
       res.setHeader("Content-Type", contentType);
       res.setHeader("Cache-Control", "public, max-age=3600");
       res.setHeader("Access-Control-Allow-Origin", "*");

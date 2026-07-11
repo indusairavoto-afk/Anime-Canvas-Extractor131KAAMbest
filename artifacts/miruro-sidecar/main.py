@@ -101,7 +101,7 @@ async def _pipe_request(path: str, query: dict) -> dict:
     if res is None:
         # Direct curl_cffi with TLS impersonation — works even when Replit IPs
         # are CF-blocked because curl_cffi mimics Chrome's TLS fingerprint.
-        async with AsyncSession(impersonate="chrome110", proxies=PROXIES, timeout=15) as client:
+        async with AsyncSession(impersonate="chrome136", proxies=PROXIES, timeout=15) as client:
             res = await client.get(f"{MIRURO_PIPE_URL}?e={encoded_req}", headers=HEADERS)
 
     if res.status_code != 200:
