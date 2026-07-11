@@ -947,6 +947,25 @@ ${env2Inline ? `// env2.js inlined synchronously to ensure window.env is set bef
  * both the server-IP block and miruro's X-Frame-Options restriction (which
  * only blocks framing, not top-level navigation).
  */
+/**
+ * GET /api/miruro/relay-pipe-url
+ *
+ * Returns the public CF Worker relay /pipe URL so the browser SW can call
+ * the relay directly (browser → CF Worker has no IP restriction) as a
+ * fallback when direct miruro.bz API calls fail due to CORS.
+ * No secret is sent here — the relay's /pipe endpoint is open for pipe calls
+ * (the RELAY_SECRET gates the /relay general-proxy endpoint, not /pipe).
+ */
+router.get("/miruro/relay-pipe-url", (_req, res) => {
+  const relayBase = (process.env.MIRURO_RELAY_URL ?? "").replace(/\/$/, "");
+  if (!relayBase) {
+    res.json({ url: null });
+    return;
+  }
+  res.setHeader("Cache-Control", "public, max-age=3600");
+  res.json({ url: `${relayBase}/pipe` });
+});
+
 router.get("/miruro/direct-url", (req, res) => {
   const anilistId = (req.query.anilistId as string | undefined)?.trim();
   const ep = (req.query.ep as string | undefined)?.trim();

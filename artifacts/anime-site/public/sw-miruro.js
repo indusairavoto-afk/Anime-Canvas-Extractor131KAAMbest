@@ -13,7 +13,13 @@
 const MIRURO_ORIGIN = 'https://www.miruro.bz';
 const MIRURO_HOSTNAMES = new Set(['www.miruro.bz', 'miruro.bz', 'www.miruro.to', 'miruro.to']);
 const SW_PREFIX = '/miruro-sw';
-const VERSION = 'v10';
+const VERSION = 'v11';
+
+// When set, API pipe calls that fail CORS against miruro.bz are retried
+// through this relay URL (browser → CF Worker, no server IP restriction).
+// The relay must return CORS headers (Access-Control-Allow-Origin: *) for
+// this to be readable. Set by the injected script after page load.
+var RELAY_PIPE_URL = null;
 
 /**
  * CDN hostnames used by Miruro's video providers (kiwi, etc.).
@@ -37,6 +43,14 @@ const DROP_RESP_HEADERS = new Set([
 self.addEventListener('install', () => {
   // Take control immediately — don't wait for old SW to die
   self.skipWaiting();
+});
+
+// Receive relay URL from the injected page script so the SW can use it as
+// a fallback for pipe calls that fail CORS against miruro.bz directly.
+self.addEventListener('message', function(event) {
+  if (event.data && event.data.type === 'set-relay-url' && event.data.url) {
+    RELAY_PIPE_URL = event.data.url;
+  }
 });
 
 self.addEventListener('activate', (event) => {
@@ -103,6 +117,14 @@ async function handleProxy(request, url) {
     // scripts when returned as a fetch response, only as an iframe navigation).
     let upstream;
     if (isApiCall) {
+      // First try: fetch miruro.bz API directly from the browser (user's home IP).
+      // Requires miruro.bz to return Access-Control-Allow-Origin:* for the endpoint.
+      // If CORS fails, try the relay (browser→CF Worker has no IP restrictions;
+      // relay adds CORS headers so we can read the response).
+      // Do NOT broadcast miruro-sw-failed on API CORS failures — the page navigation
+      // works fine; only the pipe API fails. Broadcasting swFailed disables the SW
+      // for the entire session and forces the (also-blocked) server proxy path.
+      var apiSuccess = false;
       try {
         upstream = await fetch(miruroUrl, {
           method,
@@ -110,19 +132,44 @@ async function handleProxy(request, url) {
           body,
           credentials: 'omit',
         });
+        apiSuccess = true;
       } catch (apiErr) {
-        // CORS/network failure on API call — notify parent frame directly.
-        // swFailedResponse HTML won't work here because the SPA is doing a
-        // fetch() call (not a navigation), so <script> tags never execute.
-        const apiMsg = apiErr instanceof Error ? apiErr.message : String(apiErr);
-        console.warn('[sw-miruro] API call CORS failure for', miruroPath, ':', apiMsg);
-        self.clients.matchAll({ type: 'window', includeUncontrolled: true })
-          .then(function(clients) {
-            clients.forEach(function(c) {
-              c.postMessage({ type: 'miruro-sw-failed', error: apiMsg });
-            });
-          });
-        return new Response(JSON.stringify({ error: apiMsg, source: 'sw-cors' }), {
+        console.warn('[sw-miruro] API call direct CORS failure for', miruroPath, '— trying relay');
+      }
+
+      // Relay fallback: browser → CF Worker (no IP restriction from browser side).
+      // Relay must return CORS headers; it does since we added them.
+      if (!apiSuccess && RELAY_PIPE_URL && miruroPath.startsWith('/api/secure/pipe')) {
+        try {
+          // Extract the 'e' param and re-POST to relay in WAF-safe format.
+          // The relay builds the base64url internally so no eyJ... crosses the wire.
+          var pipeSearch = new URL(miruroUrl).search;
+          var eParam = new URLSearchParams(pipeSearch).get('e');
+          if (eParam) {
+            // Decode the 'e' to extract path+query, then re-POST WAF-safe keys.
+            try {
+              var decoded = JSON.parse(atob(eParam.replace(/-/g,'+').replace(/_/g,'/')));
+              upstream = await fetch(RELAY_PIPE_URL, {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ a: decoded.path, q: decoded.query || {}, host: 'www.miruro.bz' }),
+                credentials: 'omit',
+              });
+              apiSuccess = true;
+            } catch (decErr) {
+              console.warn('[sw-miruro] relay pipe decode error:', decErr);
+            }
+          }
+        } catch (relayErr) {
+          console.warn('[sw-miruro] relay pipe fallback failed:', relayErr);
+        }
+      }
+
+      if (!apiSuccess) {
+        // Both direct and relay failed — return error to the SPA caller.
+        // Do NOT send miruro-sw-failed: the page navigation works fine; letting
+        // the SW stay active is better than forcing the server proxy (also blocked).
+        return new Response(JSON.stringify({ error: 'pipe unavailable', source: 'sw-cors' }), {
           status: 503,
           headers: { 'content-type': 'application/json', 'access-control-allow-origin': '*' }
         });
@@ -470,6 +517,19 @@ button[aria-label*="ownload" i],a[aria-label*="ownload" i],
     if(u.startsWith('/health')||u.startsWith('/random-pool.json'))return SW+u;
     return u;
   }
+
+  // Wire relay URL into the SW so it can use the relay as a pipe fallback.
+  // The relay URL is injected server-side via the watch page; we post it to
+  // the SW via postMessage so it can retry CORS-failed pipe calls through CF.
+  try{
+    var _rUrl='/api/miruro/relay-pipe-url';
+    fetch(_rUrl).then(function(r){return r.json();}).then(function(d){
+      if(d&&d.url){
+        navigator.serviceWorker.controller&&
+        navigator.serviceWorker.controller.postMessage({type:'set-relay-url',url:d.url});
+      }
+    }).catch(function(){});
+  }catch(e){}
 
   // Fix SPA router: needs to see the real watch path, not /miruro-sw/watch/...
   try{history.replaceState(null,'',${pathJson});}catch(e){}

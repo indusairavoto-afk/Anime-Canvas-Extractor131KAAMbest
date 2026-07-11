@@ -85,17 +85,33 @@ export default {
       return Response.json({ ok: true, service: "miruro-relay" });
     }
 
-    // All other endpoints require the shared secret (if configured)
+    // CORS preflight — allow browser SW to call /pipe directly
+    if (request.method === "OPTIONS") {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          "access-control-allow-origin": "*",
+          "access-control-allow-methods": "GET, POST, OPTIONS",
+          "access-control-allow-headers": "content-type, x-relay-secret",
+          "access-control-max-age": "86400",
+        },
+      });
+    }
+
+    // /pipe is intentionally open — it only fetches allow-listed miruro.bz hosts,
+    // so there's no sensitive exposure. This lets the browser SW call /pipe
+    // directly without a secret (SW code is public; secret can't go in it).
+    if (url.pathname === "/pipe") {
+      return handlePipe(request, url);
+    }
+
+    // All other endpoints (/relay general-proxy) require the shared secret.
     if (!checkSecret(request, env)) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     if (url.pathname === "/relay") {
       return handleRelay(request, url);
-    }
-
-    if (url.pathname === "/pipe") {
-      return handlePipe(request, url);
     }
 
     return Response.json({ error: "Not found" }, { status: 404 });
@@ -248,8 +264,15 @@ async function handlePipe(request: Request, url: URL): Promise<Response> {
   });
 
   const contentType = upstream.headers.get("content-type") ?? "text/plain";
+  // Add CORS headers so browsers (e.g. the SW-miruro service worker) can call
+  // this endpoint directly and read the response without a CORS error.
   return new Response(upstream.body, {
     status: upstream.status,
-    headers: { "content-type": contentType },
+    headers: {
+      "content-type": contentType,
+      "access-control-allow-origin": "*",
+      "access-control-allow-methods": "GET, POST, OPTIONS",
+      "access-control-allow-headers": "content-type, x-relay-secret",
+    },
   });
 }
