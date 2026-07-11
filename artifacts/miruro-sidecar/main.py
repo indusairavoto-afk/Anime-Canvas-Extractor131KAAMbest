@@ -81,10 +81,13 @@ async def _pipe_request(path: str, query: dict) -> dict:
         if MIRURO_RELAY_SECRET:
             req_headers["x-relay-secret"] = MIRURO_RELAY_SECRET
         try:
+            # Use POST with JSON body — avoids CF WAF SSRF detection that fires
+            # when the origin URL appears as a query parameter.
+            req_headers["content-type"] = "application/json"
             async with httpx.AsyncClient(timeout=15) as client:
-                relay_res = await client.get(
+                relay_res = await client.post(
                     worker_url,
-                    params={"e": encoded_req, "origin": MIRURO_SIDECAR_ORIGIN},
+                    json={"e": encoded_req, "origin": MIRURO_SIDECAR_ORIGIN},
                     headers=req_headers,
                 )
             if relay_res.status_code == 200:

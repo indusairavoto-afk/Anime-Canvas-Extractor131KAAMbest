@@ -1,262 +1,233 @@
 /**
- * Miruro Relay
+ * Miruro Relay — Cloudflare Worker
  *
- * A standalone forward-proxy designed to run on a host whose IP is NOT
- * blocked by Cloudflare (e.g. Render's free tier), unlike Replit's shared
- * datacenter IPs.
+ * Runs on Cloudflare's edge network (ASN 13335). Because this is Cloudflare
+ * infrastructure making the request, miruro.bz's CF firewall rule that blocks
+ * Replit/DigitalOcean datacenter IPs does NOT apply here.
  *
- * CF Bypass strategy:
- *  1. On every /relay request, inject cached CF session cookies into the
- *     forwarded headers. If we have a valid session, upstream sees a
- *     real browser's cookie jar and usually returns 200.
- *  2. On 403/429 (session expired or IP rotated), invalidate the cache,
- *     trigger a fresh Playwright + stealth browser solve, then retry once.
- *  3. If the browser solve fails (hard IP block), return 503 so the
- *     api-server can fall back to another streaming server.
+ * Endpoints:
+ *   GET  /healthz              — health check
+ *   ALL  /relay?url=<encoded>  — general forward proxy (used by api-server Node code)
+ *   GET  /pipe?e=<encoded>     — miruro pipe passthrough (used by Python sidecar)
  *
- * Optional:
- *  - PROXY_URL env var: route browser + fetch through a proxy
- *    (e.g. http://user:pass@residential-proxy.com:8000 or socks5://...)
- *  - Cookie persistence: cf_clearance is saved to /tmp and reused across
- *    relay restarts, avoiding unnecessary browser launches.
- *
- * Allow-listed upstream hosts (security: prevents open-proxy abuse):
- *   miruro.bz, miruro.to, pro.ultracloud.cc, pru.ultracloud.cc
+ * Security:
+ *   Set the RELAY_SECRET environment variable via `wrangler secret put RELAY_SECRET`.
+ *   When set, every request (except /healthz) must include the header:
+ *     x-relay-secret: <your-secret>
+ *   Without it the Worker is an open proxy — only safe if the URL is not public.
  */
-import express from "express";
-import { ProxyAgent, fetch as undiciFetch } from "undici";
-import {
-  getCfSession,
-  injectCfHeaders,
-  invalidateCfSession,
-  warmCfSession,
-} from "./cf-bypass.js";
 
-// Build a proxy dispatcher once at startup (reused across requests for efficiency).
-// When PROXY_URL is set, ALL upstream fetches — both plain and cookie-injected —
-// are routed through it. This ensures traffic from the relay's server process
-// exits via the proxy IP, not the relay host's own IP (which may be CF-blocked).
-let proxyDispatcher: ProxyAgent | undefined;
-const PROXY_URL = process.env.PROXY_URL;
-if (PROXY_URL) {
-  try {
-    proxyDispatcher = new ProxyAgent(PROXY_URL);
-    console.info(
-      `[miruro-relay] Proxy dispatcher ready: ${PROXY_URL.replace(/:\/\/.*@/, "://<redacted>@")}`
-    );
-  } catch (e) {
-    console.error("[miruro-relay] Failed to create ProxyAgent:", e);
-  }
+export interface Env {
+  RELAY_SECRET?: string;
 }
-
-/**
- * Drop-in fetch wrapper that routes through the proxy when PROXY_URL is set.
- * Uses undici's ProxyAgent so authenticated proxies (user:pass@host:port) work
- * correctly — native Node fetch does not support proxy auth natively.
- */
-function relayFetch(url: string, init: RequestInit & { redirect?: RequestRedirect }): Promise<Response> {
-  if (proxyDispatcher) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return undiciFetch(url, { ...init, dispatcher: proxyDispatcher } as any) as unknown as Promise<Response>;
-  }
-  return fetch(url, init);
-}
-
-const app = express();
-const PORT = Number(process.env.PORT) || 10000;
 
 const ALLOWED_HOSTS = [
   "miruro.bz",
   "www.miruro.bz",
   "miruro.to",
   "www.miruro.to",
+  "miruro.tv",
+  "www.miruro.tv",
   "pro.ultracloud.cc",
   "pru.ultracloud.cc",
+  // AnimePahe + kwik.cx — used by the PAHE streaming server
+  "animepahe.ru",
+  "animepahe.com",
+  "animepahe.org",
+  "animepahe.pw",
+  "kwik.cx",
+  "kwik.si",
 ];
+
+// Headers dropped when forwarding responses back to the caller.
+const HOP_BY_HOP = new Set([
+  "connection",
+  "keep-alive",
+  "transfer-encoding",
+  "te",
+  "trailer",
+  "upgrade",
+  "proxy-authorization",
+  "proxy-authenticate",
+  "x-relay-headers",
+  "x-relay-secret",
+]);
+
+// Browser-like headers sent on pipe requests so miruro doesn't reject us.
+const PIPE_BROWSER_HEADERS: Record<string, string> = {
+  "User-Agent":
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36",
+  Accept: "*/*",
+  "Accept-Language": "en-US,en;q=0.9",
+  "sec-fetch-site": "same-origin",
+  "sec-fetch-mode": "cors",
+  "sec-fetch-dest": "empty",
+  "sec-ch-ua": '"Chromium";v="110", "Not A(Brand";v="24", "Google Chrome";v="110"',
+  "sec-ch-ua-mobile": "?0",
+  "sec-ch-ua-platform": '"Windows"',
+};
 
 function isAllowedHost(hostname: string): boolean {
   return ALLOWED_HOSTS.some((h) => hostname === h || hostname.endsWith(`.${h}`));
 }
 
-/** Whether an upstream status indicates a CF block that requires re-solving */
-function isCfBlock(status: number): boolean {
-  return status === 403 || status === 429;
+function checkSecret(request: Request, env: Env): boolean {
+  if (!env.RELAY_SECRET) return true; // open if no secret configured
+  return request.headers.get("x-relay-secret") === env.RELAY_SECRET;
 }
 
-/** HOP-BY-HOP headers we must strip before forwarding to the caller */
-const HOP_BY_HOP = new Set([
-  "content-encoding",
-  "content-length",
-  "transfer-encoding",
-  "connection",
-  "keep-alive",
-  "proxy-authenticate",
-  "proxy-authorization",
-  "te",
-  "trailer",
-  "upgrade",
-]);
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const url = new URL(request.url);
 
-// Read raw request body for any method/content-type so we can forward it
-// upstream unchanged (works for JSON, form data, binary, etc.).
-app.use((req, res, next) => {
-  const chunks: Buffer[] = [];
-  req.on("data", (chunk) => chunks.push(chunk));
-  req.on("end", () => {
-    (req as express.Request & { rawBody?: Buffer }).rawBody = Buffer.concat(chunks);
-    next();
-  });
-  req.on("error", next);
-});
+    // Health — no auth required
+    if (url.pathname === "/healthz" || url.pathname === "/health") {
+      return Response.json({ ok: true, service: "miruro-relay" });
+    }
 
-// ── Health / root ──────────────────────────────────────────────────────────
+    // All other endpoints require the shared secret (if configured)
+    if (!checkSecret(request, env)) {
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-app.get("/", (_req, res) => {
-  res.json({ ok: true, service: "miruro-relay" });
-});
+    if (url.pathname === "/relay") {
+      return handleRelay(request, url);
+    }
 
-app.get("/healthz", (_req, res) => {
-  res.json({ ok: true });
-});
+    if (url.pathname === "/pipe") {
+      return handlePipe(request, url);
+    }
 
-// ── Session status (debug) ─────────────────────────────────────────────────
+    return Response.json({ error: "Not found" }, { status: 404 });
+  },
+};
 
-app.get("/status", async (_req, res) => {
-  const session = await getCfSession();
-  res.json({
-    hasCfSession: !!session,
-    expiresIn: session
-      ? Math.round((session.expiresAt - Date.now()) / 1000) + "s"
-      : null,
-    proxyConfigured: !!process.env.PROXY_URL,
-  });
-});
+// ── /relay — general forward proxy ──────────────────────────────────────────
 
-// ── Core relay endpoint ───────────────────────────────────────────────────
-
-app.all("/relay", async (req, res) => {
-  const rawUrl = (req.query.url as string | undefined)?.trim();
+async function handleRelay(request: Request, url: URL): Promise<Response> {
+  const rawUrl = url.searchParams.get("url")?.trim();
   if (!rawUrl) {
-    res.status(400).json({ error: "url query param is required" });
-    return;
+    return Response.json({ error: "url query param is required" }, { status: 400 });
   }
 
   let target: URL;
   try {
     target = new URL(rawUrl);
   } catch {
-    res.status(400).json({ error: "Invalid url" });
-    return;
+    return Response.json({ error: "Invalid url" }, { status: 400 });
   }
 
   if (!isAllowedHost(target.hostname)) {
-    res.status(403).json({ error: `Host not allow-listed: ${target.hostname}` });
-    return;
+    return Response.json(
+      { error: `Host not allow-listed: ${target.hostname}` },
+      { status: 403 }
+    );
   }
 
   // Decode caller-supplied headers (base64 JSON from api-server/miruro-relay.ts)
   let callerHeaders: Record<string, string> = {};
-  const encodedHeaders = req.headers["x-relay-headers"];
-  if (typeof encodedHeaders === "string" && encodedHeaders.length > 0) {
+  const encodedHeaders = request.headers.get("x-relay-headers");
+  if (encodedHeaders) {
     try {
-      callerHeaders = JSON.parse(
-        Buffer.from(encodedHeaders, "base64").toString("utf-8")
-      );
+      callerHeaders = JSON.parse(atob(encodedHeaders));
     } catch {
       // malformed — proceed with empty headers
     }
   }
 
-  const rawBody = (req as express.Request & { rawBody?: Buffer }).rawBody;
-  const hasBody =
-    req.method !== "GET" &&
-    req.method !== "HEAD" &&
-    rawBody &&
-    rawBody.length > 0;
+  const method = request.method;
+  const hasBody = method !== "GET" && method !== "HEAD";
 
-  /**
-   * Perform the actual upstream fetch with optional CF cookie injection.
-   * Returns the upstream Response (may be a CF block).
-   */
-  async function doFetch(withSession: boolean): Promise<Response> {
-    let headers = { ...callerHeaders };
+  const upstream = await fetch(target.toString(), {
+    method,
+    headers: callerHeaders,
+    body: hasBody ? request.body : undefined,
+    redirect: "manual",
+  });
 
-    if (withSession) {
-      const session = await getCfSession();
-      if (session) {
-        headers = injectCfHeaders(headers, session);
-      }
-    }
-
-    return relayFetch(target.toString(), {
-      method: req.method,
-      headers,
-      body: hasBody ? rawBody : undefined,
-      redirect: "manual",
-    });
-  }
-
-  /** Stream a Response back to the caller, copying status + safe headers. */
-  function sendUpstream(upstream: Response): void {
-    res.status(upstream.status);
-    for (const [key, value] of upstream.headers.entries()) {
-      if (!HOP_BY_HOP.has(key.toLowerCase())) {
-        res.setHeader(key, value);
-      }
+  // Strip hop-by-hop headers before forwarding the response.
+  // set-cookie is handled separately below since Headers.entries() merges
+  // multiple set-cookie values into a single comma-joined string, which
+  // corrupts cookies (Expires contains commas) and drops all but one cookie.
+  const responseHeaders = new Headers();
+  for (const [key, value] of upstream.headers.entries()) {
+    if (!HOP_BY_HOP.has(key.toLowerCase()) && key.toLowerCase() !== "set-cookie") {
+      responseHeaders.set(key, value);
     }
   }
+  const setCookies =
+    typeof (upstream.headers as Headers & { getSetCookie?: () => string[] }).getSetCookie ===
+    "function"
+      ? (upstream.headers as Headers & { getSetCookie: () => string[] }).getSetCookie()
+      : [];
+  for (const cookie of setCookies) {
+    responseHeaders.append("set-cookie", cookie);
+  }
 
+  return new Response(upstream.body, {
+    status: upstream.status,
+    headers: responseHeaders,
+  });
+}
+
+// ── /pipe — miruro secure pipe passthrough ──────────────────────────────────
+//
+// Accepts BOTH POST (preferred, avoids CF WAF SSRF detection on query params)
+// and legacy GET (backwards-compatible for any older callers).
+//
+// POST body: { e: "<base64url-pipe-payload>", origin?: "<miruro-origin>" }
+// GET query: ?e=<base64url>&origin=<encoded>  (legacy)
+
+async function handlePipe(request: Request, url: URL): Promise<Response> {
+  let e: string | null = null;
+  let origin = "https://www.miruro.bz";
+
+  if (request.method === "POST") {
+    try {
+      const body = (await request.json()) as { e?: string; origin?: string };
+      e = body.e ?? null;
+      if (body.origin) origin = body.origin;
+    } catch {
+      return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+  } else {
+    // Legacy GET — read from query string
+    e = url.searchParams.get("e");
+    origin = url.searchParams.get("origin") ?? origin;
+  }
+
+  if (!e) {
+    return Response.json({ error: "e is required" }, { status: 400 });
+  }
+
+  let originUrl: URL;
   try {
-    // Attempt 1: plain fetch with cached CF cookies injected
-    let upstream = await doFetch(true);
-
-    if (isCfBlock(upstream.status)) {
-      console.info(
-        `[miruro-relay] Got ${upstream.status} from upstream — invalidating CF session, re-solving…`
-      );
-      // Drain the blocked response body to release the connection before retrying.
-      // Skipping this leaves the socket open and can exhaust the connection pool.
-      await upstream.body?.cancel().catch(() => {});
-
-      invalidateCfSession();
-
-      // Trigger a fresh browser solve (awaited — we need the new cookies before retrying)
-      const newSession = await getCfSession();
-      let retryUpstream: Response | null = null;
-
-      if (newSession) {
-        // Attempt 2: retry with the freshly-solved cookies
-        retryUpstream = await doFetch(true);
-      }
-
-      if (!retryUpstream || isCfBlock(retryUpstream.status)) {
-        // Drain retry body too (if we got one) before sending error response
-        await retryUpstream?.body?.cancel().catch(() => {});
-        // Still blocked after re-solve — report 503 so the api-server
-        // can surface the "upstream blocked" error and auto-switch servers.
-        res.status(503).json({
-          error: "CF upstream block — cannot reach miruro.bz from this IP",
-        });
-        return;
-      }
-
-      upstream = retryUpstream;
-    }
-
-    sendUpstream(upstream);
-    const buf = Buffer.from(await upstream.arrayBuffer());
-    res.send(buf);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : "Unknown error";
-    res.status(502).json({ error: `Relay fetch failed: ${msg}` });
+    originUrl = new URL(origin);
+  } catch {
+    return Response.json({ error: "Invalid origin" }, { status: 400 });
   }
-});
 
-// ── Startup ────────────────────────────────────────────────────────────────
+  if (!isAllowedHost(originUrl.hostname)) {
+    return Response.json(
+      { error: `Origin not allow-listed: ${originUrl.hostname}` },
+      { status: 403 }
+    );
+  }
 
-app.listen(PORT, () => {
-  console.log(`[miruro-relay] listening on port ${PORT}`);
-  // Pre-warm the CF session in the background so the first request
-  // doesn't pay the full browser-launch latency (~10-20 s).
-  warmCfSession();
-});
+  const pipeUrl = `${origin}/api/secure/pipe?e=${encodeURIComponent(e)}`;
+
+  const upstream = await fetch(pipeUrl, {
+    method: "GET",
+    headers: {
+      ...PIPE_BROWSER_HEADERS,
+      Referer: `${origin}/`,
+      Origin: origin,
+    },
+  });
+
+  const contentType = upstream.headers.get("content-type") ?? "text/plain";
+  return new Response(upstream.body, {
+    status: upstream.status,
+    headers: { "content-type": contentType },
+  });
+}
