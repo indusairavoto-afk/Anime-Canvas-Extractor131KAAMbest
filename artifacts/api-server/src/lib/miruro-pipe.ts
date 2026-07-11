@@ -68,9 +68,9 @@ async function relayPipeRequest(path: string, query: Record<string, string | num
   const relayBase = (process.env.MIRURO_RELAY_URL ?? "").replace(/\/$/, "");
   if (!relayBase) throw new Error("MIRURO_RELAY_URL is not configured");
 
-  const encoded = encodePipeRequest(path, query);
-  // Use POST with JSON body to avoid Cloudflare WAF SSRF false-positives
-  // that fire when the origin URL is embedded in a GET query string.
+  // Send WAF-safe {fn, q, host} — short keys, hostname-only (no protocol).
+  // The Worker encodes to base64url and prepends https:// internally so no
+  // eyJ... strings or URLs-with-protocol ever cross the wire.
   const url = `${relayBase}/pipe`;
 
   const headers: Record<string, string> = { "content-type": "application/json" };
@@ -78,10 +78,13 @@ async function relayPipeRequest(path: string, query: Record<string, string | num
     headers["x-relay-secret"] = process.env.MIRURO_RELAY_SECRET;
   }
 
+  // Strip protocol from origin for the host field (www.miruro.bz not https://...)
+  const originHost = MIRURO_ORIGIN.replace(/^https?:\/\//, "");
+
   const res = await fetch(url, {
     method: "POST",
     headers,
-    body: JSON.stringify({ e: encoded, origin: MIRURO_ORIGIN }),
+    body: JSON.stringify({ a: path, q: query, host: originHost }),
     signal: AbortSignal.timeout(15_000),
   });
   if (!res.ok) {

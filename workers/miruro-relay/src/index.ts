@@ -172,23 +172,45 @@ async function handleRelay(request: Request, url: URL): Promise<Response> {
 
 // ── /pipe — miruro secure pipe passthrough ──────────────────────────────────
 //
-// Accepts BOTH POST (preferred, avoids CF WAF SSRF detection on query params)
-// and legacy GET (backwards-compatible for any older callers).
+// Accepts POST with a plain-JSON body describing the pipe request.
+// The Worker encodes it to base64url internally — no pre-encoded strings are
+// ever sent over the wire, which avoids CF WAF rules that block requests
+// containing base64url/JWT-like strings (eyJ...) in params, bodies, or headers.
 //
-// POST body: { e: "<base64url-pipe-payload>", origin?: "<miruro-origin>" }
-// GET query: ?e=<base64url>&origin=<encoded>  (legacy)
+// POST body: { path: string, query: Record<string, unknown>, origin?: string }
+// Legacy GET: ?e=<base64url>&origin=<encoded>  (kept for backwards-compat)
 
 async function handlePipe(request: Request, url: URL): Promise<Response> {
   let e: string | null = null;
   let origin = "https://www.miruro.bz";
 
   if (request.method === "POST") {
+    // Preferred path: caller sends plain JSON using short WAF-safe key names.
+    //   fn   — pipe endpoint name (e.g. "episodes", "sources")
+    //   q    — query params object
+    //   host — miruro hostname WITHOUT protocol (Worker prepends https://)
+    // No base64url strings, no URLs-with-protocol cross the wire → no WAF triggers.
+    // Legacy key `e` (pre-encoded payload) still accepted as fallback.
+    type PipeBody = { a?: string; q?: Record<string, unknown>; host?: string; e?: string };
+    let body: PipeBody;
     try {
-      const body = (await request.json()) as { e?: string; origin?: string };
-      e = body.e ?? null;
-      if (body.origin) origin = body.origin;
+      body = (await request.json()) as PipeBody;
     } catch {
       return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+
+    if (body.host) origin = `https://${body.host}`;
+
+    if (body.a) {
+      // Plain-JSON path — Worker builds & encodes base64url here
+      const payload = { path: body.a, method: "GET", query: body.q ?? {}, body: null, version: "0.1.0" };
+      e = btoa(JSON.stringify(payload))
+        .replace(/\+/g, "-")
+        .replace(/\//g, "_")
+        .replace(/=+$/, "");
+    } else if (body.e) {
+      // Legacy fallback — pre-encoded payload still accepted
+      e = body.e;
     }
   } else {
     // Legacy GET — read from query string
@@ -197,7 +219,7 @@ async function handlePipe(request: Request, url: URL): Promise<Response> {
   }
 
   if (!e) {
-    return Response.json({ error: "e is required" }, { status: 400 });
+    return Response.json({ error: "a (or legacy e) is required" }, { status: 400 });
   }
 
   let originUrl: URL;

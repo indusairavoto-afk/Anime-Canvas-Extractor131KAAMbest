@@ -81,13 +81,15 @@ async def _pipe_request(path: str, query: dict) -> dict:
         if MIRURO_RELAY_SECRET:
             req_headers["x-relay-secret"] = MIRURO_RELAY_SECRET
         try:
-            # Use POST with JSON body — avoids CF WAF SSRF detection that fires
-            # when the origin URL appears as a query parameter.
+            # WAF-safe short keys: fn=endpoint, q=query, host=hostname-only.
+            # Worker encodes to base64url + prepends https:// internally.
+            # No eyJ... strings or URLs-with-protocol on the wire → no WAF trigger.
             req_headers["content-type"] = "application/json"
+            origin_host = MIRURO_SIDECAR_ORIGIN.replace("https://", "").replace("http://", "")
             async with httpx.AsyncClient(timeout=15) as client:
                 relay_res = await client.post(
                     worker_url,
-                    json={"e": encoded_req, "origin": MIRURO_SIDECAR_ORIGIN},
+                    json={"a": path, "q": query, "host": origin_host},
                     headers=req_headers,
                 )
             if relay_res.status_code == 200:
