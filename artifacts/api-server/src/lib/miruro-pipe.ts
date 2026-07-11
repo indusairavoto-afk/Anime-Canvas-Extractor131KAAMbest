@@ -69,14 +69,21 @@ async function relayPipeRequest(path: string, query: Record<string, string | num
   if (!relayBase) throw new Error("MIRURO_RELAY_URL is not configured");
 
   const encoded = encodePipeRequest(path, query);
-  const url = `${relayBase}/pipe?e=${encodeURIComponent(encoded)}&origin=${encodeURIComponent(MIRURO_ORIGIN)}`;
+  // Use POST with JSON body to avoid Cloudflare WAF SSRF false-positives
+  // that fire when the origin URL is embedded in a GET query string.
+  const url = `${relayBase}/pipe`;
 
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = { "content-type": "application/json" };
   if (process.env.MIRURO_RELAY_SECRET) {
     headers["x-relay-secret"] = process.env.MIRURO_RELAY_SECRET;
   }
 
-  const res = await fetch(url, { headers, signal: AbortSignal.timeout(15_000) });
+  const res = await fetch(url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ e: encoded, origin: MIRURO_ORIGIN }),
+    signal: AbortSignal.timeout(15_000),
+  });
   if (!res.ok) {
     const body = (await res.text()).slice(0, 300);
     throw new Error(`Relay /pipe returned ${res.status}: ${body}`);

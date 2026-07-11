@@ -95,7 +95,7 @@ export default {
     }
 
     if (url.pathname === "/pipe") {
-      return handlePipe(url);
+      return handlePipe(request, url);
     }
 
     return Response.json({ error: "Not found" }, { status: 404 });
@@ -171,14 +171,34 @@ async function handleRelay(request: Request, url: URL): Promise<Response> {
 }
 
 // ── /pipe — miruro secure pipe passthrough ──────────────────────────────────
+//
+// Accepts BOTH POST (preferred, avoids CF WAF SSRF detection on query params)
+// and legacy GET (backwards-compatible for any older callers).
+//
+// POST body: { e: "<base64url-pipe-payload>", origin?: "<miruro-origin>" }
+// GET query: ?e=<base64url>&origin=<encoded>  (legacy)
 
-async function handlePipe(url: URL): Promise<Response> {
-  const e = url.searchParams.get("e");
-  if (!e) {
-    return Response.json({ error: "e query param is required" }, { status: 400 });
+async function handlePipe(request: Request, url: URL): Promise<Response> {
+  let e: string | null = null;
+  let origin = "https://www.miruro.bz";
+
+  if (request.method === "POST") {
+    try {
+      const body = (await request.json()) as { e?: string; origin?: string };
+      e = body.e ?? null;
+      if (body.origin) origin = body.origin;
+    } catch {
+      return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+  } else {
+    // Legacy GET — read from query string
+    e = url.searchParams.get("e");
+    origin = url.searchParams.get("origin") ?? origin;
   }
 
-  const origin = url.searchParams.get("origin") ?? "https://www.miruro.bz";
+  if (!e) {
+    return Response.json({ error: "e is required" }, { status: 400 });
+  }
 
   let originUrl: URL;
   try {
