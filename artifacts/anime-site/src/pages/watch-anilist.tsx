@@ -241,7 +241,14 @@ export default function WatchAniList() {
   // Initialise from sessionStorage so a prior CF-block on miruro-sw in the same
   // browser session skips the SW path immediately and shows the popup button
   // without the 2-3 s black-screen flash while the SW tries and fails again.
-  const [swFailed, setSwFailed] = useState(() => !!sessionStorage.getItem("miruro_sw_blocked"));
+  const [swFailed, setSwFailed] = useState(() => {
+    // Version the key alongside sw-miruro.js VERSION constant.
+    // Bumping the version clears any stale "blocked" flag from old SW builds.
+    const SW_KEY = "miruro_sw_blocked_v12";
+    // Clean up any old unversioned / prior-version keys so they don't linger.
+    ["miruro_sw_blocked", "miruro_sw_blocked_v10", "miruro_sw_blocked_v11"].forEach(k => sessionStorage.removeItem(k));
+    return !!sessionStorage.getItem(SW_KEY);
+  });
   /**
    * Server-side proxy URL returned by /api/miruro/stream when a relay is
    * configured and reachable. Used as fallback when the SW path fails.
@@ -682,6 +689,7 @@ export default function WatchAniList() {
   const totalEps = anime?.episodes ?? 0;
   const title = anime?.title.english || anime?.title.romaji || "";
   const romajiTitle = anime?.title.romaji || "";
+  const englishTitle = anime?.title.english || "";
 
   // Once title is known, auto-activate GOGO with derived slug (or user-saved slug)
   useEffect(() => {
@@ -843,7 +851,7 @@ export default function WatchAniList() {
     // MIRURO — constructs an iframe URL via miruro.to using the AniList ID + romaji slug
     setServerHealth(h => ({ ...h, MIRURO: "checking" }));
     schedule(preferred === "MIRURO" ? 0 : HEAD_START, () => {
-      fetch(apiUrl(`/api/miruro/stream?anilistId=${animeId}&ep=${currentEp}&romajiTitle=${encodeURIComponent(romajiTitle)}&dub=${lang === "DUB" ? "1" : "0"}`))
+      fetch(apiUrl(`/api/miruro/stream?anilistId=${animeId}&ep=${currentEp}&romajiTitle=${encodeURIComponent(romajiTitle)}&englishTitle=${encodeURIComponent(englishTitle)}&dub=${lang === "DUB" ? "1" : "0"}`))
         .then(r => r.json())
         .then((data: { iframeUrl?: string; swUrl?: string; legacyIframeUrl?: string; error?: string }) => {
           if (cancelled) return;
@@ -961,7 +969,7 @@ export default function WatchAniList() {
     }, 15000);
 
     return () => { cancelled = true; timers.forEach(clearTimeout); clearTimeout(fallback); };
-  }, [animeId, currentEp, title, anime?.idMal, romajiTitle, lang]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [animeId, currentEp, title, anime?.idMal, romajiTitle, englishTitle, lang]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // When GOGO server is selected, fetch the CDN player iframe URL from the gogoanimes.cv page
   // so we can embed only the CDN player (with our control bridge) instead of the full site.
@@ -1602,7 +1610,7 @@ export default function WatchAniList() {
     const timeout = setTimeout(() => {
       if (mounted) {
         console.warn("[miruro-sw] SW activation timeout — switching to fallback");
-        sessionStorage.setItem("miruro_sw_blocked", "1");
+        sessionStorage.setItem("miruro_sw_blocked_v11", "1");
         setSwFailed(true);
       }
     }, 5000);
@@ -1612,7 +1620,7 @@ export default function WatchAniList() {
       clearTimeout(timeout);
       setSwReady(true);
       setSwFailed(false); // clear any earlier timeout/failure flag so SW path stays active
-      sessionStorage.removeItem("miruro_sw_blocked"); // SW is working — clear stale block flag
+      sessionStorage.removeItem("miruro_sw_blocked_v11"); // SW is working — clear stale block flag
     };
 
     navigator.serviceWorker
@@ -1657,7 +1665,7 @@ export default function WatchAniList() {
       // The user can still manually trigger the inline attempt via the "Try inline" button
       // in the overlay (which is useful if a server-side CF session happens to exist).
       setMiruroIframeUrl(null);
-      sessionStorage.setItem("miruro_sw_blocked", "1"); // remember so next visit skips the black-screen flash
+      sessionStorage.setItem("miruro_sw_blocked_v11", "1"); // remember so next visit skips the black-screen flash
       setMiruroProxyBlocked(true);
     }
   }, [swFailed, miruroIframeUrl, miruroLegacyUrl]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1696,7 +1704,7 @@ export default function WatchAniList() {
     // Reset legacy URL before each request so a stale relay URL from a prior
     // episode or server switch can never bleed into the new request's fallback path.
     setMiruroLegacyUrl(null);
-    fetch(apiUrl(`/api/miruro/stream?anilistId=${animeId}&ep=${currentEp}&romajiTitle=${encodeURIComponent(romajiTitle)}&dub=${lang === "DUB" ? "1" : "0"}`))
+    fetch(apiUrl(`/api/miruro/stream?anilistId=${animeId}&ep=${currentEp}&romajiTitle=${encodeURIComponent(romajiTitle)}&englishTitle=${encodeURIComponent(englishTitle)}&dub=${lang === "DUB" ? "1" : "0"}`))
       .then((r) => r.json())
       .then((data: { iframeUrl?: string; swUrl?: string; legacyIframeUrl?: string; error?: string }) => {
         if (cancelled) return;
@@ -1728,7 +1736,7 @@ export default function WatchAniList() {
       })
       .finally(() => { if (!cancelled) setMiruroLoading(false); });
     return () => { cancelled = true; };
-  }, [server, animeId, currentEp, romajiTitle, lang]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [server, animeId, currentEp, romajiTitle, englishTitle, lang]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * Try to resolve a direct m3u8 stream via the Miruro sidecar. Runs alongside
@@ -2002,7 +2010,7 @@ export default function WatchAniList() {
         server === "MIRURO" &&
         miruroIframeUrlRef.current?.startsWith("/miruro-sw/")
       ) {
-        sessionStorage.setItem("miruro_sw_blocked", "1");
+        sessionStorage.setItem("miruro_sw_blocked_v11", "1");
         setSwFailed(true);
       }
 
@@ -2048,11 +2056,14 @@ export default function WatchAniList() {
         setMiruroIframeUrl(miruroLegacyUrl);
         setSwReady(true);
       } else {
-        sessionStorage.setItem("miruro_sw_blocked", "1");
+        sessionStorage.setItem("miruro_sw_blocked_v11", "1");
         setSwFailed(true);
         setMiruroIframeUrl(null);
       }
-    }, 2500);
+    // 15 s: miruro.bz may serve a Cloudflare JS challenge that takes 3–5 s to
+    // auto-solve before the real watch page loads. The old 2.5 s fired too
+    // early, switching to the server-proxy path (also blocked) unnecessarily.
+    }, 15000);
     return () => clearTimeout(timeout);
   }, [server, miruroIframeUrl, swReady, miruroLegacyUrl]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -2828,7 +2839,7 @@ export default function WatchAniList() {
                       if (miruroLegacyUrl && miruroIframeUrl !== miruroLegacyUrl) {
                         setMiruroIframeUrl(miruroLegacyUrl);
                       } else {
-                        sessionStorage.setItem("miruro_sw_blocked", "1");
+                        sessionStorage.setItem("miruro_sw_blocked_v11", "1");
                         setSwFailed(true);
                         setMiruroIframeUrl(null);
                       }

@@ -13,7 +13,7 @@
 const MIRURO_ORIGIN = 'https://www.miruro.bz';
 const MIRURO_HOSTNAMES = new Set(['www.miruro.bz', 'miruro.bz', 'www.miruro.to', 'miruro.to']);
 const SW_PREFIX = '/miruro-sw';
-const VERSION = 'v11';
+const VERSION = 'v12';
 
 // When set, API pipe calls that fail CORS against miruro.bz are retried
 // through this relay URL (browser → CF Worker, no server IP restriction).

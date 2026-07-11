@@ -1004,6 +1004,7 @@ router.get("/miruro/stream", async (req, res) => {
   const anilistId = (req.query.anilistId as string | undefined)?.trim();
   const ep = (req.query.ep as string | undefined)?.trim();
   const romajiTitle = (req.query.romajiTitle as string | undefined)?.trim();
+  const englishTitle = (req.query.englishTitle as string | undefined)?.trim();
   const preferDub = (req.query.dub as string | undefined) === "1";
 
   if (!anilistId || !ep) {
@@ -1017,7 +1018,11 @@ router.get("/miruro/stream", async (req, res) => {
     return;
   }
 
-  const slug = romajiTitle ? toMiruroSlug(romajiTitle) : null;
+  // Prefer English title for the slug — miruro.bz uses English slugs (e.g.
+  // "attack-on-titan" not "shingeki-no-kyojin"). Fall back to romaji if no
+  // English title is available.
+  const slugTitle = englishTitle || romajiTitle;
+  const slug = slugTitle ? toMiruroSlug(slugTitle) : null;
   const dubSuffix = preferDub ? "&dub=true" : "";
 
   // ── Primary path: Service Worker bypass (browser-side, no CF block) ──────
