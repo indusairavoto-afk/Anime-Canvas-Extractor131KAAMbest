@@ -30,3 +30,6 @@
 - [WeebCentral native manga reader](weebcentral-manga-reader.md) — manga reader tries WeebCentral scrape first (own image UI, no third-party chrome), falls back to atsu.moe iframe only if not found.
 - [atsu.moe reader bottom UI proxy](atsu-reader-bottom-ui-proxy.md) — cross-origin atsu.moe iframe chrome (Comments/Chapters/Reading tabs, bookmark, comments) hidden via same-origin proxy + text-heuristic hide script, not direct DOM access.
 - [Miruro relay request shape](miruro-relay-request-shape.md) — relay can 403 a bare homepage fetch (CF WAF) while real API/watch endpoints succeed fine; test relay health with actual app endpoints, not the homepage.
+- [Miruro SW 4xx → Chrome error page](miruro-sw-4xx-chrome-error.md) — SW must never pass 4xx/5xx to iframe; Chrome shows native error page; use swFailedResponse + Math.min(128,byteLen) for safe body peek.
+- [Miruro SW registration race](miruro-sw-registration-race.md) — markReady must use controller check + controllerchange, not statechange; MiruroSwBridge component catches race via reload trampoline.
+- [Miruro pipe 403 from CF Workers](miruro-pipe-403-from-cf-workers.md) — miruro.bz CF now 403s pipe endpoint from both CF Worker and sidecar IPs; server-side HLS path broken; SW browser path is only viable route.

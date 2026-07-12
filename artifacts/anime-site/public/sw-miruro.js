@@ -199,17 +199,39 @@ async function handleProxy(request, url) {
       return new Response(js, { status: upstream.status, headers: newHeaders });
     }
 
-    // ── Non-HTML page response: miruro.bz may return JSON {"error":"Not found"}
-    // for certain IPs/routes instead of the SPA HTML. The injection script that
-    // posts miruro-sw-loaded never runs, so the parent times out in 15 s.
-    // Detect this early and fire miruro-sw-failed immediately so the parent can
-    // show its error overlay without the full timeout delay.
+    // ── Non-HTML page response detection ───────────────────────────────────────
+    // miruro.bz may return JSON {"error":"Not found"} (200 or 404) instead of
+    // the SPA HTML.  The SW injection script that posts miruro-sw-loaded never
+    // runs, so the parent times out.  Worse, the browser shows its native
+    // "The webpage might be temporarily down" error page inside the iframe for
+    // any 4xx/5xx response — even with a body — so we must never pass those
+    // through to the iframe unhandled.
+    //
+    // Rules for non-API, non-HTML, non-CSS/JS responses:
+    //   • HTTP 4xx/5xx → always swFailedResponse (Chrome would show error page)
+    //   • HTTP 2xx with JSON error body → swFailedResponse (silently broken page)
+    //   • HTTP 2xx with other body (images, binary) → pass through (assets)
     if (!isApiCall && !ct.includes('text/html') && !ct.includes('javascript') && !ct.includes('css')) {
+      // HTTP error status: never pass through to iframe — Chrome renders its own
+      // error page and the parent never gets the miruro-sw-failed postMessage.
+      if (upstream.status >= 400) {
+        console.warn('[sw-miruro] miruro.bz returned HTTP', upstream.status, 'for path', miruroPath, '— notifying parent');
+        self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+          .then(function(clients) {
+            clients.forEach(function(c) {
+              c.postMessage({ type: 'miruro-sw-failed', error: 'miruro.bz returned HTTP ' + upstream.status + ' for ' + miruroPath });
+            });
+          });
+        return swFailedResponse('miruro.bz returned HTTP ' + upstream.status + ' — content unavailable from browser SW path');
+      }
+      // 2xx response: peek at the body to detect JSON error payloads.
+      // NOTE: new Uint8Array(buffer, 0, N) throws RangeError when byteLength < N,
+      // so cap N at the actual buffer size.
       var bodySnippet = '';
       try {
         var cloned = upstream.clone();
         var ab = await cloned.arrayBuffer();
-        bodySnippet = new TextDecoder().decode(new Uint8Array(ab, 0, 128));
+        bodySnippet = new TextDecoder().decode(new Uint8Array(ab, 0, Math.min(128, ab.byteLength)));
       } catch (_) {}
       if (bodySnippet.includes('"error"') || bodySnippet.toLowerCase().includes('not found')) {
         console.warn('[sw-miruro] miruro.bz returned JSON error for page path', miruroPath, '— notifying parent');
@@ -221,7 +243,7 @@ async function handleProxy(request, url) {
           });
         return swFailedResponse('miruro.bz returned JSON (not HTML) — content unavailable from browser SW path');
       }
-      // Other non-HTML (binary assets, etc.): pass through
+      // Other 2xx non-HTML (images, binary assets, etc.): pass through normally.
       return new Response(upstream.body, { status: upstream.status, headers: newHeaders });
     }
 

@@ -30,6 +30,7 @@ import VerifyEmailPage from "@/pages/verify-email";
 import Dubbed from "@/pages/dubbed";
 import NewsPage from "@/pages/news";
 import NewsArticle from "@/pages/news-article";
+import MiruroSwBridge from "@/pages/miruro-sw-bridge";
 
 const queryClient = new QueryClient();
 
@@ -58,6 +59,10 @@ function Router() {
       <Route path="/dubbed" component={Dubbed} />
       <Route path="/news" component={NewsPage} />
       <Route path="/news/:slug" component={NewsArticle} />
+      {/* SW race-condition trampoline: when the iframe navigates to /miruro-sw/*
+          before the SW is controlling the page, React renders this component
+          which waits for the SW to claim the client then reloads. */}
+      <Route path="/miruro-sw/:rest*" component={MiruroSwBridge} />
       <Route component={NotFound} />
     </Switch>
   );

@@ -1626,16 +1626,15 @@ export default function WatchAniList() {
     navigator.serviceWorker
       .register("/sw-miruro.js", { scope: "/miruro-sw/" })
       .then((reg) => {
-        if (reg.active) { markReady(); return; }
-        // SW installing or waiting — listen for activation
-        const worker = reg.installing ?? reg.waiting;
-        if (worker) {
-          worker.addEventListener("statechange", () => {
-            if (worker.state === "activated") markReady();
-          });
-        }
-        // Also fires when controller changes (covers skipWaiting + clients.claim)
+        // If controller is already set the SW is controlling this page right now.
+        // markReady immediately — no race.
+        if (navigator.serviceWorker.controller) { markReady(); return; }
+        // SW active but not yet controlling (e.g. page loaded before clients.claim).
+        // Wait for controllerchange which fires *after* clients.claim() completes.
+        // This is the authoritative signal that the SW will intercept fetches.
         navigator.serviceWorker.addEventListener("controllerchange", markReady, { once: true });
+        // Belt-and-suspenders: if controller was set concurrently (rare), catch it.
+        if (navigator.serviceWorker.controller) { markReady(); }
       })
       .catch((err) => {
         console.warn("[miruro-sw] SW registration failed:", err);
