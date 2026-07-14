@@ -208,6 +208,8 @@ export default function WatchAniList() {
   const [kotoHlsUrl, setKotoHlsUrl] = useState<string | null>(null);
   const [kotoPlayerLoading, setKotoPlayerLoading] = useState(false);
   const [kotoPlayerError, setKotoPlayerError] = useState<string | null>(null);
+  const [kotoPuppeteerLoading, setKotoPuppeteerLoading] = useState(false);
+  const [gogoPuppeteerLoading, setGogoPuppeteerLoading] = useState(false);
   const [miruroIframeUrl, setMiruroIframeUrl] = useState<string | null>(null);
   const [miruroLoading, setMiruroLoading] = useState(false);
   const [miruroError, setMiruroError] = useState<string | null>(null);
@@ -1095,6 +1097,30 @@ export default function WatchAniList() {
     return () => { cancelled = true; };
   }, [server, gogoSlug, currentEp, animeId, lang]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // GOGO Puppeteer HLS fallback — when the GoGo CDN extraction returns no HLS URL,
+  // try Puppeteer browser interception on the embed URL before falling back to iframe.
+  useEffect(() => {
+    // Only fire when GoGo resolved a cdnUrl with no HLS and cdn fetch has finished
+    if (server !== "GOGO" || !cdnUrl || gogoHlsUrl || cdnLoading) {
+      if (server !== "GOGO" || cdnLoading) setGogoPuppeteerLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setGogoPuppeteerLoading(true);
+    fetch(apiUrl(`/api/voidstream/hls?url=${encodeURIComponent(cdnUrl)}`))
+      .then(r => r.json())
+      .then((data: { hlsUrl?: string }) => {
+        if (cancelled) return;
+        if (data.hlsUrl) {
+          setGogoHlsUrl(data.hlsUrl);
+          setGogoStreamError(false); // Puppeteer found a stream — clear any cdn-reported error
+        }
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setGogoPuppeteerLoading(false); });
+    return () => { cancelled = true; };
+  }, [server, cdnUrl, gogoHlsUrl, cdnLoading]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Reset search results when switching away from GOGO or when anime changes
   useEffect(() => {
     setGogoSearchResults([]);
@@ -1438,6 +1464,26 @@ export default function WatchAniList() {
       .finally(() => { if (!cancelled) setKotoPlayerLoading(false); });
     return () => { cancelled = true; };
   }, [server, kotoSlug, kotoSearching, anime, currentEp, lang]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // KOTO Puppeteer HLS fallback — when the primary extraction returns a player URL but
+  // no HLS URL, try Puppeteer browser interception before showing the embed iframe.
+  useEffect(() => {
+    if (server !== "KOTO" || !kotoPlayerUrl || kotoHlsUrl) {
+      setKotoPuppeteerLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setKotoPuppeteerLoading(true);
+    fetch(apiUrl(`/api/voidstream/hls?url=${encodeURIComponent(kotoPlayerUrl)}`))
+      .then(r => r.json())
+      .then((data: { hlsUrl?: string }) => {
+        if (cancelled) return;
+        if (data.hlsUrl) setKotoHlsUrl(data.hlsUrl);
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setKotoPuppeteerLoading(false); });
+    return () => { cancelled = true; };
+  }, [server, kotoPlayerUrl, kotoHlsUrl]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch HLS stream JSON for AniZone when server is selected with a valid slug
   useEffect(() => {
@@ -3062,13 +3108,13 @@ export default function WatchAniList() {
                   />
                 )}
 
-                {/* KOTO fallback iframe: player URL found but no extractable HLS.
+                {/* KOTO fallback iframe: player URL found but Puppeteer extraction also failed.
                     vidtube.site and megaplay.buzz have no X-Frame-Options and must load
                     directly — the browser handles cookies + same-origin API calls correctly
                     without our proxy. megaplay.buzz in particular breaks when proxied
                     (renders a 404 error page instead of the player). Other player URLs go
                     through the proxy as before. */}
-                {server === "KOTO" && kotoPlayerUrl && !kotoHlsUrl && (
+                {server === "KOTO" && kotoPlayerUrl && !kotoHlsUrl && !kotoPuppeteerLoading && (
                   <iframe
                     ref={iframeRef}
                     key={`koto-iframe-${kotoSlug || "mal"}-${currentEp}`}
@@ -3105,8 +3151,8 @@ export default function WatchAniList() {
                   />
                 )}
 
-                {/* GOGO iframe fallback (when no HLS URL) / CUSTOM: embed via iframe */}
-                {(server === "CUSTOM" || (server === "GOGO" && !gogoHlsUrl)) && (
+                {/* GOGO iframe fallback (when no HLS URL and Puppeteer extraction also failed) / CUSTOM */}
+                {(server === "CUSTOM" || (server === "GOGO" && !gogoHlsUrl && !gogoPuppeteerLoading)) && (
                 <iframe
                   ref={iframeRef}
                   key={`${animeId}-${anime.idMal ?? "al"}-${currentEp}-${lang}-${server}-${server === "CUSTOM" ? customUrl : ""}-${server === "GOGO" ? (cdnLoading ? "loading" : (cdnUrl ?? "fallback")) : ""}`}
@@ -3688,8 +3734,8 @@ export default function WatchAniList() {
                   </div>
                 )}
 
-                {/* KOTO loading / error overlay — only shown when no URL at all */}
-                {server === "KOTO" && !kotoHlsUrl && !kotoPlayerUrl && (
+                {/* KOTO loading / error overlay — shown when no URL at all or while Puppeteer extracts */}
+                {server === "KOTO" && !kotoHlsUrl && (!kotoPlayerUrl || kotoPuppeteerLoading) && (
                   <div className="absolute inset-0 z-10 flex flex-col items-center justify-center" style={{ background: "rgba(0,0,0,0.92)" }}>
                     {banner && <img src={banner} alt="" className="absolute inset-0 w-full h-full object-cover opacity-10 scale-110 blur-sm" />}
                     <div className="relative z-10 flex flex-col items-center gap-4">
@@ -3733,12 +3779,30 @@ export default function WatchAniList() {
                             <div className="absolute inset-0 rounded-full border-2 border-t-teal-400 border-r-transparent border-b-transparent border-l-transparent animate-spin" />
                             <div className="absolute inset-2 rounded-full border border-white/20 border-t-teal-400/60 animate-spin" style={{ animationDuration: "0.6s", animationDirection: "reverse" }} />
                           </div>
-                          <p className="text-white/70 text-sm font-semibold tracking-wide">Fetching AniKoto stream…</p>
+                          <p className="text-white/70 text-sm font-semibold tracking-wide">
+                            {kotoPuppeteerLoading ? "Extracting AniKoto stream…" : "Fetching AniKoto stream…"}
+                          </p>
                         </>
                       )}
                       <p className="text-white/20 text-[11px] font-mono uppercase tracking-widest">
                         Episode {currentEp} · {lang}
                       </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* GOGO Puppeteer HLS extraction overlay */}
+                {server === "GOGO" && gogoPuppeteerLoading && !gogoHlsUrl && (
+                  <div className="absolute inset-0 z-10 flex flex-col items-center justify-center" style={{ background: "rgba(0,0,0,0.92)" }}>
+                    {banner && <img src={banner} alt="" className="absolute inset-0 w-full h-full object-cover opacity-10 scale-110 blur-sm" />}
+                    <div className="relative z-10 flex flex-col items-center gap-4">
+                      <div className="relative w-14 h-14">
+                        <div className="absolute inset-0 rounded-full border-2 border-white/10" />
+                        <div className="absolute inset-0 rounded-full border-2 border-t-orange-400 border-r-transparent border-b-transparent border-l-transparent animate-spin" />
+                        <div className="absolute inset-2 rounded-full border border-white/20 border-t-orange-400/60 animate-spin" style={{ animationDuration: "0.6s", animationDirection: "reverse" }} />
+                      </div>
+                      <p className="text-white/70 text-sm font-semibold tracking-wide">Extracting GoGo stream…</p>
+                      <p className="text-white/20 text-[11px] font-mono uppercase tracking-widest">Episode {currentEp} · {lang}</p>
                     </div>
                   </div>
                 )}
