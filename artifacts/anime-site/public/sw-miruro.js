@@ -11,6 +11,11 @@
  */
 
 const MIRURO_ORIGIN = 'https://www.miruro.bz';
+// Secondary backend — separate Cloudflare zone from miruro.bz. When the
+// user's browser IP is hard-blocked on .bz's CF firewall, it is frequently
+// NOT blocked on .to's (different IP reputation lists per zone). Used as an
+// automatic same-session retry before surfacing the "open in popup" overlay.
+const MIRURO_ORIGIN_FALLBACK = 'https://www.miruro.to';
 const MIRURO_HOSTNAMES = new Set(['www.miruro.bz', 'miruro.bz', 'www.miruro.to', 'miruro.to']);
 const SW_PREFIX = '/miruro-sw';
 const VERSION = 'v12';
@@ -90,9 +95,10 @@ self.addEventListener('fetch', (event) => {
  * Main proxy handler. Fetches from miruro.bz using the browser's IP
  * (which is not CF-blocked), then transforms the response.
  */
-async function handleProxy(request, url) {
+async function handleProxy(request, url, originOverride) {
+  const activeOrigin = originOverride || MIRURO_ORIGIN;
   const miruroPath = url.pathname.slice(SW_PREFIX.length); // /watch/123/slug
-  const miruroUrl = MIRURO_ORIGIN + miruroPath + url.search;
+  const miruroUrl = activeOrigin + miruroPath + url.search;
   const method = request.method;
 
   try {
@@ -260,6 +266,13 @@ async function handleProxy(request, url) {
         html.includes('cf-error-details') ||
         html.includes('Sorry, you have been blocked')
       ) {
+        // If we were on the primary origin (.bz) and haven't tried the fallback
+        // origin (.to, a separate Cloudflare zone/IP-reputation list) yet in this
+        // request, retry there transparently before surfacing the popup overlay.
+        if (activeOrigin === MIRURO_ORIGIN && !isApiCall) {
+          console.warn('[sw-miruro] hard CF block on', activeOrigin, '— retrying via fallback origin', MIRURO_ORIGIN_FALLBACK);
+          return handleProxy(request, url, MIRURO_ORIGIN_FALLBACK);
+        }
         return cfBlockResponse();
       }
 
