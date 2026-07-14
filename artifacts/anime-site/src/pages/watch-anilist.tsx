@@ -1991,6 +1991,19 @@ export default function WatchAniList() {
         server === "MIRURO" &&
         (miruroIframeUrlRef.current !== null || miruroInPageUrlRef.current !== null)
       ) {
+        // If this was the SW path (browser IP hard-blocked by CF) and a relay is
+        // configured/reachable, try the relay-proxied iframe before giving up to
+        // the popup overlay — the Cloudflare Worker edge IP is often not on the
+        // same blocklist as the user's residential/ISP IP.
+        const wasSwPath = miruroIframeUrlRef.current?.startsWith("/miruro-sw/") ?? false;
+        if (wasSwPath && miruroLegacyUrl && miruroIframeUrlRef.current !== miruroLegacyUrl) {
+          setMiruroIframeUrl(miruroLegacyUrl);
+          miruroIframeUrlRef.current = miruroLegacyUrl;
+          setSwReady(true);
+          setMiruroInPageUrl(null);
+          miruroInPageUrlRef.current = null;
+          return;
+        }
         setMiruroIframeUrl(null);
         miruroIframeUrlRef.current = null;
         setMiruroLoading(false);
@@ -2025,7 +2038,7 @@ export default function WatchAniList() {
     };
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
-  }, [server]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [server, miruroLegacyUrl]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * Load-timeout fallback for the first-load SW race condition.
