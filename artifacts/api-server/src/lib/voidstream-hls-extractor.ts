@@ -21,8 +21,8 @@ const CHROMIUM_PATH =
   "/nix/store/qa9cnw4v5xkxyip6mb9kxqfq1z4x2dx1-chromium-138.0.7204.100/bin/chromium-browser";
 
 const CACHE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
-const PAGE_TIMEOUT_MS = 13_000;           // per-provider page timeout
-const BATCH_TIMEOUT_MS = 18_000;          // overall batch timeout (11 providers in parallel)
+const PAGE_TIMEOUT_MS = 20_000;           // per-provider page timeout (voidstream.space needs ~15s for S1→S2 fallback)
+const BATCH_TIMEOUT_MS = 25_000;          // overall batch timeout (12 providers in parallel)
 
 const hlsCache = new Map<string, { hlsUrl: string; expiresAt: number }>();
 

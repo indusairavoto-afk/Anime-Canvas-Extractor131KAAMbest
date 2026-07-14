@@ -36,6 +36,14 @@ interface ProviderDef {
 // Ordered with anime-focused / generally reliable providers first.
 // Confirmed reachable from Replit IPs via HEAD check before adding.
 const PROVIDERS: ProviderDef[] = [
+  // voidstream.space itself — navigates the real site so its own S1→S2 auto-switching
+  // is executed by the browser. Intercepts whatever server fires the m3u8.
+  {
+    id: "voidstream",
+    label: "VoidStream (Direct)",
+    movieUrl: (id) => `https://voidstream.space/watch/movie-${id}`,
+    tvUrl: (id, s, e) => `https://voidstream.space/watch/tv-${id}?season=${s}&ep=${e}`,
+  },
   {
     id: "sukuna",
     label: "VoidStream (Anime)",
