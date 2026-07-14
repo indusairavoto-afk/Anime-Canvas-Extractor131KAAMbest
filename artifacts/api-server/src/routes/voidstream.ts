@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { loadFribbMapping } from "../lib/fribb-mapping";
+import { extractHlsFromEmbed } from "../lib/voidstream-hls-extractor";
 
 /**
  * "VOIDSTREAM" server.
@@ -166,6 +167,34 @@ router.get("/voidstream/stream", async (req, res) => {
     const msg = err instanceof Error ? err.message : "Unknown error";
     console.warn("[voidstream] resolve failed:", msg);
     res.status(502).json({ error: `VoidStream mapping lookup failed: ${msg}` });
+  }
+});
+
+/**
+ * GET /api/voidstream/hls?url=<encodedEmbedUrl>
+ * Uses Puppeteer to navigate to a third-party embed provider page and
+ * intercept the HLS manifest (.m3u8) URL the player fetches internally.
+ * Returns the raw stream URL so the frontend can use our native HLS player
+ * instead of showing the embed iframe — eliminates ads and popup redirects.
+ */
+router.get("/voidstream/hls", async (req, res) => {
+  const embedUrl = (req.query.url as string | undefined)?.trim();
+  if (!embedUrl) {
+    res.status(400).json({ error: "url query param required" });
+    return;
+  }
+
+  try {
+    const hlsUrl = await extractHlsFromEmbed(embedUrl);
+    if (!hlsUrl) {
+      res.status(502).json({ error: "Could not extract HLS stream from this provider" });
+      return;
+    }
+    res.json({ hlsUrl });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    console.warn("[voidstream-hls] route error:", msg);
+    res.status(502).json({ error: `HLS extraction failed: ${msg}` });
   }
 });
 

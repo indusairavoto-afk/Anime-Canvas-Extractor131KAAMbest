@@ -296,6 +296,8 @@ export default function WatchAniList() {
   const [voidstreamSourceIndex, setVoidstreamSourceIndex] = useState(0);
   const [voidstreamLoading, setVoidstreamLoading] = useState(false);
   const [voidstreamError, setVoidstreamError] = useState<string | null>(null);
+  const [voidstreamHlsUrl, setVoidstreamHlsUrl] = useState<string | null>(null);
+  const [voidstreamHlsLoading, setVoidstreamHlsLoading] = useState(false);
   const [serverDropOpen, setServerDropOpen] = useState(false);
   const [animeonsenIdInput, setAnimeonsenIdInput] = useState<string>("");
   // When true, a popup is open establishing Cloudflare clearance — show a connecting overlay
@@ -1984,7 +1986,7 @@ export default function WatchAniList() {
     return () => { cancelled = true; };
   }, [server, animeId, currentEp]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  /** Cascades to the next VoidStream embed provider when the current iframe fails to load. */
+  /** Cascades to the next VoidStream provider when the current HLS extraction or playback fails. */
   const tryNextVoidstreamSource = useCallback(() => {
     setVoidstreamSourceIndex(i => {
       if (i + 1 < voidstreamSources.length) return i + 1;
@@ -1992,6 +1994,38 @@ export default function WatchAniList() {
       return i;
     });
   }, [voidstreamSources.length]);
+
+  // Extract a direct HLS stream URL from the current VoidStream embed provider using
+  // server-side Puppeteer. Cascades to the next provider on failure.
+  useEffect(() => {
+    if (server !== "VOIDSTREAM" || voidstreamSources.length === 0) {
+      setVoidstreamHlsUrl(null);
+      setVoidstreamHlsLoading(false);
+      return;
+    }
+    if (voidstreamSourceIndex >= voidstreamSources.length) return;
+
+    const source = voidstreamSources[voidstreamSourceIndex];
+    let cancelled = false;
+    setVoidstreamHlsUrl(null);
+    setVoidstreamHlsLoading(true);
+
+    const params = new URLSearchParams({ url: source.iframeUrl });
+    fetch(apiUrl(`/api/voidstream/hls?${params}`))
+      .then(r => r.json())
+      .then((data: { hlsUrl?: string; error?: string }) => {
+        if (cancelled) return;
+        if (data.hlsUrl) {
+          setVoidstreamHlsUrl(data.hlsUrl);
+        } else {
+          tryNextVoidstreamSource();
+        }
+      })
+      .catch(() => { if (!cancelled) tryNextVoidstreamSource(); })
+      .finally(() => { if (!cancelled) setVoidstreamHlsLoading(false); });
+
+    return () => { cancelled = true; };
+  }, [server, voidstreamSources, voidstreamSourceIndex]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load saved AnimeonSen content ID from localStorage
   useEffect(() => {
@@ -3495,23 +3529,31 @@ export default function WatchAniList() {
                   </div>
                 )}
 
-                {/* VOIDSTREAM — cascades through embed providers (vidapi.xyz, videasy, vidfast, vidsrc, etc). */}
-                {server === "VOIDSTREAM" && voidstreamSourceIndex < voidstreamSources.length && (
-                  <iframe
-                    ref={iframeRef}
-                    key={`voidstream-${animeId}-${currentEp}-${voidstreamSources[voidstreamSourceIndex].id}`}
-                    src={voidstreamSources[voidstreamSourceIndex].iframeUrl}
-                    allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
-                    allowFullScreen
-                    title="VoidStream Player"
-                    style={{ position: "absolute", inset: 0, width: "100%", height: "100%", border: "none", background: "#000" }}
-                    onLoad={() => setTimeout(() => setIframeLoaded(true), 300)}
-                    onError={tryNextVoidstreamSource}
+                {/* VOIDSTREAM — native HLS player (ad-free, no redirects, no popups) */}
+                {server === "VOIDSTREAM" && voidstreamHlsUrl && !voidstreamHlsLoading && (
+                  <HlsPlayer
+                    key={`voidstream-${animeId}-${currentEp}-${voidstreamSourceIndex}`}
+                    hlsUrl={voidstreamHlsUrl}
+                    title={getEpTitle(currentEp) !== `Episode ${currentEp}` ? `${title} — Ep ${currentEp}: ${getEpTitle(currentEp)}` : `${title} — Episode ${currentEp}`}
+                    progressKey={`al_${animeId}_${currentEp}`}
+                    onFatalError={tryNextVoidstreamSource}
+                    syncCommand={wtSyncCmd}
+                    onPlayStateChange={(playing, time) => playing ? wt.sendPlay(time) : wt.sendPause(time)}
+                    onSeek={(t) => wt.sendSeek(t)}
+                    onBuffering={wt.sendBuffering}
+                    onTimeUpdate={(t) => { playerTimeRef.current = t; }}
+                    episodes={epPickerList}
+                    currentEpisode={currentEp}
+                    onEpisodeSelect={handleEpPick}
+                    animeCover={cover}
+                    animeLogo={logoUrl ?? undefined}
+                    epMeta={epMeta}
+                    epDescription={epDescription}
                   />
                 )}
 
-                {/* VOIDSTREAM loading / error overlay */}
-                {server === "VOIDSTREAM" && voidstreamSourceIndex >= voidstreamSources.length && (
+                {/* VOIDSTREAM loading / error overlay — hidden once HLS player is active */}
+                {server === "VOIDSTREAM" && !voidstreamHlsUrl && (
                   <div className="absolute inset-0 z-10 flex flex-col items-center justify-center" style={{ background: "rgba(0,0,0,0.92)" }}>
                     {banner && <img src={banner} alt="" className="absolute inset-0 w-full h-full object-cover opacity-10 scale-110 blur-sm" />}
                     <div className="relative z-10 flex flex-col items-center gap-4">
@@ -3522,7 +3564,7 @@ export default function WatchAniList() {
                           </div>
                           <p className="text-white/80 text-sm font-semibold tracking-wide">VoidStream Unavailable</p>
                           <p className="text-white/35 text-[11px] font-mono max-w-[260px] text-center leading-relaxed">
-                            This title isn't mapped to a TMDB entry, or every embed provider failed.<br/>Try another server.
+                            This title isn't mapped to a TMDB entry, or every stream provider failed.<br/>Try another server.
                           </p>
                           {suggestedServer && SERVER_META[suggestedServer] && (
                             <>
@@ -3558,7 +3600,11 @@ export default function WatchAniList() {
                             <div className="absolute inset-2 rounded-full border border-white/20 border-t-violet-400/60 animate-spin" style={{ animationDuration: "0.6s", animationDirection: "reverse" }} />
                           </div>
                           <p className="text-white/70 text-sm font-semibold tracking-wide">
-                            {voidstreamLoading ? "Loading VoidStream…" : `Trying ${voidstreamSources[voidstreamSourceIndex]?.label ?? "provider"}…`}
+                            {voidstreamLoading
+                              ? "Loading VoidStream…"
+                              : voidstreamHlsLoading
+                                ? `Extracting stream · ${voidstreamSources[voidstreamSourceIndex]?.label ?? "provider"}…`
+                                : "Preparing stream…"}
                           </p>
                         </>
                       )}
@@ -4284,6 +4330,7 @@ export default function WatchAniList() {
                             onClick={() => {
                               setVoidstreamSourceIndex(i);
                               setVoidstreamError(null);
+                              setVoidstreamHlsUrl(null);
                               setIframeLoaded(false);
                             }}
                             className={`w-full flex items-center gap-2 px-5 py-1.5 text-[10px] font-mono transition-colors ${
