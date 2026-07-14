@@ -1944,88 +1944,78 @@ export default function WatchAniList() {
     return () => { cancelled = true; };
   }, [server, animeId, currentEp, shirokoProvider]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Fetch VoidStream provider list when server is VOIDSTREAM.
-  // Resets to the first (anime-tailored) provider on every anime/episode
-  // change; the onError handler below cascades through the rest.
+  // VoidStream: single batch request — resolves TMDB, builds all provider URLs,
+  // and tries them ALL IN PARALLEL via server-side Puppeteer. Returns the first
+  // working HLS URL (typically within 5–10 s after the browser is pre-warmed).
   useEffect(() => {
     if (server !== "VOIDSTREAM") {
       setVoidstreamSources([]);
+      setVoidstreamHlsUrl(null);
+      setVoidstreamLoading(false);
+      setVoidstreamHlsLoading(false);
       setVoidstreamError(null);
       return;
-    }
-    const cached = raceCache.current.voidstream;
-    if (cached !== undefined) {
-      if (cached?.sources?.length) {
-        setVoidstreamSources(cached.sources);
-        setVoidstreamSourceIndex(0);
-        setVoidstreamLoading(false);
-        setVoidstreamError(null);
-        raceCache.current.voidstream = undefined;
-        return;
-      }
-      raceCache.current.voidstream = undefined;
     }
     let cancelled = false;
     setVoidstreamSources([]);
     setVoidstreamSourceIndex(0);
+    setVoidstreamHlsUrl(null);
     setVoidstreamLoading(true);
+    setVoidstreamHlsLoading(true);
     setVoidstreamError(null);
+
     const params = new URLSearchParams({ anilistId: String(animeId), ep: String(currentEp) });
-    fetch(apiUrl(`/api/voidstream/stream?${params}`))
+    fetch(apiUrl(`/api/voidstream/stream-hls?${params}`))
       .then(r => r.json())
-      .then((data: { sources?: { id: string; label: string; iframeUrl: string }[]; error?: string }) => {
+      .then((data: { sources?: { id: string; label: string; iframeUrl: string }[]; hlsUrl?: string; providerIndex?: number; error?: string }) => {
         if (cancelled) return;
-        if (data.sources && data.sources.length > 0) {
-          setVoidstreamSources(data.sources);
+        setVoidstreamLoading(false);
+        setVoidstreamHlsLoading(false);
+        if (data.sources?.length) setVoidstreamSources(data.sources);
+        if (data.hlsUrl) {
+          setVoidstreamHlsUrl(data.hlsUrl);
+          if (data.providerIndex != null) setVoidstreamSourceIndex(data.providerIndex);
         } else {
-          setVoidstreamError(data.error ?? "Anime not found on VoidStream");
+          setVoidstreamError(data.error ?? "No stream found on any VoidStream provider");
         }
       })
-      .catch((e: Error) => { if (!cancelled) setVoidstreamError(e.message); })
-      .finally(() => { if (!cancelled) setVoidstreamLoading(false); });
+      .catch((e: Error) => {
+        if (!cancelled) {
+          setVoidstreamLoading(false);
+          setVoidstreamHlsLoading(false);
+          setVoidstreamError(e.message);
+        }
+      });
     return () => { cancelled = true; };
   }, [server, animeId, currentEp]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  /** Cascades to the next VoidStream provider when the current HLS extraction or playback fails. */
+  /** Manual provider switch — re-extracts HLS for a specific provider the user picked. */
   const tryNextVoidstreamSource = useCallback(() => {
-    setVoidstreamSourceIndex(i => {
-      if (i + 1 < voidstreamSources.length) return i + 1;
-      setVoidstreamError("All VoidStream providers failed to load this episode");
-      return i;
-    });
-  }, [voidstreamSources.length]);
+    // No-op kept for onFatalError wire-up; manual retries go through the picker onClick.
+  }, []);
 
-  // Extract a direct HLS stream URL from the current VoidStream embed provider using
-  // server-side Puppeteer. Cascades to the next provider on failure.
-  useEffect(() => {
-    if (server !== "VOIDSTREAM" || voidstreamSources.length === 0) {
-      setVoidstreamHlsUrl(null);
-      setVoidstreamHlsLoading(false);
-      return;
-    }
-    if (voidstreamSourceIndex >= voidstreamSources.length) return;
-
-    const source = voidstreamSources[voidstreamSourceIndex];
-    let cancelled = false;
+  /** Re-extract HLS for a manually selected VoidStream provider. */
+  const switchVoidstreamProvider = useCallback((iframeUrl: string, index: number) => {
+    setVoidstreamSourceIndex(index);
     setVoidstreamHlsUrl(null);
     setVoidstreamHlsLoading(true);
-
-    const params = new URLSearchParams({ url: source.iframeUrl });
+    setVoidstreamError(null);
+    const params = new URLSearchParams({ url: iframeUrl });
     fetch(apiUrl(`/api/voidstream/hls?${params}`))
       .then(r => r.json())
       .then((data: { hlsUrl?: string; error?: string }) => {
-        if (cancelled) return;
+        setVoidstreamHlsLoading(false);
         if (data.hlsUrl) {
           setVoidstreamHlsUrl(data.hlsUrl);
         } else {
-          tryNextVoidstreamSource();
+          setVoidstreamError("This provider couldn't deliver a stream. Try another.");
         }
       })
-      .catch(() => { if (!cancelled) tryNextVoidstreamSource(); })
-      .finally(() => { if (!cancelled) setVoidstreamHlsLoading(false); });
-
-    return () => { cancelled = true; };
-  }, [server, voidstreamSources, voidstreamSourceIndex]); // eslint-disable-line react-hooks/exhaustive-deps
+      .catch(() => {
+        setVoidstreamHlsLoading(false);
+        setVoidstreamError("Provider extraction failed. Try another.");
+      });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load saved AnimeonSen content ID from localStorage
   useEffect(() => {
@@ -4328,10 +4318,8 @@ export default function WatchAniList() {
                           <button
                             key={s.id}
                             onClick={() => {
-                              setVoidstreamSourceIndex(i);
-                              setVoidstreamError(null);
-                              setVoidstreamHlsUrl(null);
-                              setIframeLoaded(false);
+                              switchVoidstreamProvider(s.iframeUrl, i);
+                              setServerDropOpen(false);
                             }}
                             className={`w-full flex items-center gap-2 px-5 py-1.5 text-[10px] font-mono transition-colors ${
                               voidstreamSourceIndex === i

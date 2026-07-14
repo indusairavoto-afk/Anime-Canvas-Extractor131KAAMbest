@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { loadFribbMapping } from "../lib/fribb-mapping";
-import { extractHlsFromEmbed } from "../lib/voidstream-hls-extractor";
+import { extractHlsFromEmbed, extractHlsBatch } from "../lib/voidstream-hls-extractor";
 
 /**
  * "VOIDSTREAM" server.
@@ -171,6 +171,77 @@ router.get("/voidstream/stream", async (req, res) => {
 });
 
 /**
+ * GET /api/voidstream/stream-hls?anilistId=...&ep=...
+ * One-shot endpoint: resolves TMDB, builds all provider embed URLs, then
+ * tries them ALL IN PARALLEL via the singleton Puppeteer browser.
+ * Returns the first working HLS URL plus the full sources list (for the
+ * manual provider picker in the UI).
+ */
+router.get("/voidstream/stream-hls", async (req, res) => {
+  const anilistIdRaw = (req.query.anilistId as string | undefined)?.trim();
+  const ep = (req.query.ep as string | undefined)?.trim();
+
+  const anilistId = Number(anilistIdRaw);
+  if (!anilistIdRaw || !Number.isFinite(anilistId) || anilistId <= 0) {
+    res.status(400).json({ error: "anilistId query param required" });
+    return;
+  }
+
+  const epNum = ep ? parseInt(ep, 10) : 1;
+  if (!Number.isFinite(epNum) || epNum <= 0) {
+    res.status(400).json({ error: `Invalid ep: "${ep}"` });
+    return;
+  }
+
+  try {
+    const resolved = await resolveTmdb(anilistId);
+    if (!resolved) {
+      res.status(404).json({ error: "No TMDB mapping found for this title on VoidStream" });
+      return;
+    }
+
+    const episode = epNum + resolved.episodeOffset;
+    const sources = PROVIDERS.map((p) => ({
+      id: p.id,
+      label: p.label,
+      iframeUrl: resolved.kind === "movie"
+        ? p.movieUrl(resolved.tmdbId)
+        : p.tvUrl(resolved.tmdbId, resolved.season, episode),
+    }));
+
+    // Try all providers in parallel — first hit wins
+    const hit = await extractHlsBatch(sources);
+
+    if (!hit) {
+      // Return sources even on failure so the UI can show the provider picker
+      res.status(502).json({
+        sources,
+        error: "No VoidStream provider returned a working stream for this episode",
+      });
+      return;
+    }
+
+    const providerIndex = sources.findIndex((s) => s.id === hit.providerId);
+
+    // Proxy the HLS manifest through our server so the browser gets the right
+    // Referer on every segment request (CDNs like shysmoke/primebox Workers check it).
+    const hlsProxy = `/api/anizone/hls?u=${Buffer.from(hit.hlsUrl).toString("base64url")}&ref=${Buffer.from(hit.embedUrl).toString("base64url")}`;
+
+    res.json({
+      sources,
+      hlsUrl: hlsProxy,
+      providerId: hit.providerId,
+      providerLabel: hit.providerLabel,
+      providerIndex: providerIndex >= 0 ? providerIndex : 0,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    console.warn("[voidstream] stream-hls failed:", msg);
+    res.status(502).json({ error: `VoidStream batch extraction failed: ${msg}` });
+  }
+});
+
+/**
  * GET /api/voidstream/hls?url=<encodedEmbedUrl>
  * Uses Puppeteer to navigate to a third-party embed provider page and
  * intercept the HLS manifest (.m3u8) URL the player fetches internally.
@@ -190,7 +261,9 @@ router.get("/voidstream/hls", async (req, res) => {
       res.status(502).json({ error: "Could not extract HLS stream from this provider" });
       return;
     }
-    res.json({ hlsUrl });
+    // Proxy through our HLS relay so the CDN sees the embed page as Referer
+    const hlsProxy = `/api/anizone/hls?u=${Buffer.from(hlsUrl).toString("base64url")}&ref=${Buffer.from(embedUrl).toString("base64url")}`;
+    res.json({ hlsUrl: hlsProxy });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Unknown error";
     console.warn("[voidstream-hls] route error:", msg);
