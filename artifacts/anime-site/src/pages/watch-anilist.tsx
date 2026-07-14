@@ -175,7 +175,7 @@ export default function WatchAniList() {
   const [loading, setLoading] = useState(true);
   const [lang, setLang] = useState<"SUB" | "DUB">(initialLang as "SUB" | "DUB");
   const [actualLang, setActualLang] = useState<"SUB" | "DUB" | null>(null);
-  const [server, setServer] = useState<"GOGO" | "KOTO" | "ANIZONE" | "MIRURO" | "NEXUS" | "ANIMEONSEN" | "ANINEKO" | "SHIROKO" | "PAHE" | "CUSTOM">("MIRURO");
+  const [server, setServer] = useState<"GOGO" | "KOTO" | "ANIZONE" | "MIRURO" | "NEXUS" | "ANIMEONSEN" | "ANINEKO" | "SHIROKO" | "PAHE" | "VOIDSTREAM" | "CUSTOM">("MIRURO");
   const [anizoneSlug, setAnizoneSlug] = useState("");
   const [anizoneSlugInput, setAnizoneSlugInput] = useState("");
   const [anizoneSearching, setAnizoneSearching] = useState(false);
@@ -292,6 +292,10 @@ export default function WatchAniList() {
   const [shirokoLoading, setShirokoLoading] = useState(false);
   const [shirokoError, setShirokoError] = useState<string | null>(null);
   const [shirokoProvider, setShirokoProvider] = useState("zen");
+  const [voidstreamSources, setVoidstreamSources] = useState<{ id: string; label: string; iframeUrl: string }[]>([]);
+  const [voidstreamSourceIndex, setVoidstreamSourceIndex] = useState(0);
+  const [voidstreamLoading, setVoidstreamLoading] = useState(false);
+  const [voidstreamError, setVoidstreamError] = useState<string | null>(null);
   const [serverDropOpen, setServerDropOpen] = useState(false);
   const [animeonsenIdInput, setAnimeonsenIdInput] = useState<string>("");
   // When true, a popup is open establishing Cloudflare clearance — show a connecting overlay
@@ -328,6 +332,7 @@ export default function WatchAniList() {
     anineko?: { iframeUrl?: string; slug?: string } | null;
     shiroko?: { iframeUrl?: string } | null;
     pahe?: { hlsUrl?: string } | null;
+    voidstream?: { sources: { id: string; label: string; iframeUrl: string }[] } | null;
   }>({});
   const [autoDetecting, setAutoDetecting] = useState(false);
   const [autoSwitchMsg, setAutoSwitchMsg] = useState<string | null>(null);
@@ -335,7 +340,7 @@ export default function WatchAniList() {
   const [gogoMaybeCountdown, setGogoMaybeCountdown] = useState<number | null>(null);
   const [paheHlsUrl, setPaheHlsUrl] = useState<string | null>(null);
   const [paheError, setPaheError] = useState<string | null>(null);
-  const [serverHealth, setServerHealth] = useState<{ GOGO: "unknown" | "checking" | "ok" | "fail"; KOTO: "unknown" | "checking" | "ok" | "fail"; ANIZONE: "unknown" | "checking" | "ok" | "fail"; MIRURO: "unknown" | "checking" | "ok" | "fail"; NEXUS: "unknown" | "checking" | "ok" | "fail"; ANIMEONSEN: "unknown" | "checking" | "ok" | "fail"; ANINEKO: "unknown" | "checking" | "ok" | "fail"; SHIROKO: "unknown" | "checking" | "ok" | "fail"; PAHE: "unknown" | "checking" | "ok" | "fail" }>({ GOGO: "unknown", KOTO: "unknown", ANIZONE: "unknown", MIRURO: "unknown", NEXUS: "unknown", ANIMEONSEN: "unknown", ANINEKO: "unknown", SHIROKO: "unknown", PAHE: "unknown" });
+  const [serverHealth, setServerHealth] = useState<{ GOGO: "unknown" | "checking" | "ok" | "fail"; KOTO: "unknown" | "checking" | "ok" | "fail"; ANIZONE: "unknown" | "checking" | "ok" | "fail"; MIRURO: "unknown" | "checking" | "ok" | "fail"; NEXUS: "unknown" | "checking" | "ok" | "fail"; ANIMEONSEN: "unknown" | "checking" | "ok" | "fail"; ANINEKO: "unknown" | "checking" | "ok" | "fail"; SHIROKO: "unknown" | "checking" | "ok" | "fail"; PAHE: "unknown" | "checking" | "ok" | "fail"; VOIDSTREAM: "unknown" | "checking" | "ok" | "fail" }>({ GOGO: "unknown", KOTO: "unknown", ANIZONE: "unknown", MIRURO: "unknown", NEXUS: "unknown", ANIMEONSEN: "unknown", ANINEKO: "unknown", SHIROKO: "unknown", PAHE: "unknown", VOIDSTREAM: "unknown" });
   const [sourcePageTitle, setSourcePageTitle] = useState<string | null>(null);
   const [verifyResult, setVerifyResult] = useState<{ correct: boolean; confidence: "high" | "medium" | "low"; reason: string; extractedEpisode: number | null } | null>(null);
   const [newEpNotice, setNewEpNotice] = useState<number | null>(null);
@@ -356,10 +361,11 @@ export default function WatchAniList() {
     ANINEKO:    { label: "AniNeko",    colorCls: "text-pink-400",   borderCls: "border-pink-400/70",   hoverCls: "hover:bg-pink-400/10" },
     SHIROKO:    { label: "Shiroko",    colorCls: "text-sky-400",    borderCls: "border-sky-400/70",    hoverCls: "hover:bg-sky-400/10" },
     PAHE:       { label: "AnimePahe",  colorCls: "text-rose-400",   borderCls: "border-rose-400/70",   hoverCls: "hover:bg-rose-400/10" },
+    VOIDSTREAM: { label: "VoidStream", colorCls: "text-violet-400", borderCls: "border-violet-400/70", hoverCls: "hover:bg-violet-400/10" },
   };
 
   const suggestedServer = useMemo(() => {
-    const priority = ["GOGO", "KOTO", "ANIZONE", "MIRURO", "ANINEKO", "ANIMEONSEN", "SHIROKO", "PAHE"] as const;
+    const priority = ["GOGO", "KOTO", "ANIZONE", "MIRURO", "ANINEKO", "ANIMEONSEN", "SHIROKO", "PAHE", "VOIDSTREAM"] as const;
     return priority.find(s => s !== server && serverHealth[s] === "ok") ?? null;
   }, [server, serverHealth]);
 
@@ -399,6 +405,7 @@ export default function WatchAniList() {
       (server === "MIRURO" && ((!!miruroError && !miruroUsingPopup) || (miruroProxyBlocked && !miruroPopupOpen))) ||
       (server === "ANIMEONSEN" && !!animeonsenError) ||
       (server === "SHIROKO" && !!shirokoError) ||
+      (server === "VOIDSTREAM" && !!voidstreamError) ||
       (server === "PAHE" && !!paheError);
 
     if (!hasError || !suggestedServer) { setFailCountdown(null); return; }
@@ -407,7 +414,7 @@ export default function WatchAniList() {
     const iv = setInterval(() => setFailCountdown(n => (n !== null && n > 1 ? n - 1 : n)), 1000);
     const t = setTimeout(() => { switchToServer(suggestedServer); setFailCountdown(null); }, 5000);
     return () => { clearInterval(iv); clearTimeout(t); };
-  }, [server, aninekoError, kotoPlayerError, miruroError, miruroUsingPopup, miruroProxyBlocked, miruroPopupOpen, animeonsenError, shirokoError, paheError, suggestedServer]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [server, aninekoError, kotoPlayerError, miruroError, miruroUsingPopup, miruroProxyBlocked, miruroPopupOpen, animeonsenError, shirokoError, paheError, voidstreamError, suggestedServer]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Watch Together sync command for HlsPlayer ───────────────────────────
   const [wtSyncCmd, setWtSyncCmd] = useState<HlsSyncCommand | null>(null);
@@ -573,7 +580,7 @@ export default function WatchAniList() {
     userPickedRef.current = false;
     raceCache.current = {};
     setAutoDetecting(false);
-    setServerHealth({ GOGO: "unknown", KOTO: "unknown", ANIZONE: "unknown", MIRURO: "unknown", NEXUS: "unknown", ANIMEONSEN: "unknown", ANINEKO: "unknown", SHIROKO: "unknown", PAHE: "unknown" });
+    setServerHealth({ GOGO: "unknown", KOTO: "unknown", ANIZONE: "unknown", MIRURO: "unknown", NEXUS: "unknown", ANIMEONSEN: "unknown", ANINEKO: "unknown", SHIROKO: "unknown", PAHE: "unknown", VOIDSTREAM: "unknown" });
     setPaheHlsUrl(null);
     setPaheError(null);
     setSourcePageTitle(null);
@@ -716,14 +723,14 @@ export default function WatchAniList() {
 
     // Default to MIRURO when no preference is saved. Once the user manually picks
     // a different server it is persisted normally — we don't overwrite that choice.
-    const saved = localStorage.getItem(`na_preferred_${animeId}`) as "GOGO" | "KOTO" | "ANIZONE" | "MIRURO" | "NEXUS" | "ANIMEONSEN" | "ANINEKO" | "SHIROKO" | "PAHE" | null;
+    const saved = localStorage.getItem(`na_preferred_${animeId}`) as "GOGO" | "KOTO" | "ANIZONE" | "MIRURO" | "NEXUS" | "ANIMEONSEN" | "ANINEKO" | "SHIROKO" | "PAHE" | "VOIDSTREAM" | null;
     if (!saved) localStorage.setItem(`na_preferred_${animeId}`, "MIRURO");
     const preferred = saved ?? "MIRURO";
     // Non-preferred servers wait this long before their fetch fires, giving preferred a head start
     const HEAD_START = preferred ? 800 : 0;
 
     setRaceWinnerServer(null);
-    const tryWin = (srv: "GOGO" | "KOTO" | "ANIZONE" | "MIRURO" | "NEXUS" | "ANIMEONSEN" | "ANINEKO" | "SHIROKO" | "PAHE") => {
+    const tryWin = (srv: "GOGO" | "KOTO" | "ANIZONE" | "MIRURO" | "NEXUS" | "ANIMEONSEN" | "ANINEKO" | "SHIROKO" | "PAHE" | "VOIDSTREAM") => {
       if (cancelled || won || userPickedRef.current) return;
       won = true;
       setRaceWinnerServer(srv);
@@ -938,6 +945,27 @@ export default function WatchAniList() {
           }
         })
         .catch(() => { if (!cancelled) { raceCache.current.shiroko = null; setServerHealth(h => ({ ...h, SHIROKO: "fail" })); } });
+    });
+
+    // VOIDSTREAM — resolves AniList id -> TMDB id via community mapping, then
+    // returns a ranked list of third-party embed provider iframe URLs.
+    setServerHealth(h => ({ ...h, VOIDSTREAM: "checking" }));
+    schedule(preferred === "VOIDSTREAM" ? 0 : HEAD_START + 300, () => {
+      const params = new URLSearchParams({ anilistId: String(animeId), ep: String(currentEp) });
+      fetch(apiUrl(`/api/voidstream/stream?${params}`))
+        .then(r => r.json())
+        .then((data: { sources?: { id: string; label: string; iframeUrl: string }[]; error?: string }) => {
+          if (cancelled) return;
+          if (data.sources && data.sources.length > 0) {
+            raceCache.current.voidstream = { sources: data.sources };
+            setServerHealth(h => ({ ...h, VOIDSTREAM: "ok" }));
+            tryWin("VOIDSTREAM");
+          } else {
+            raceCache.current.voidstream = null;
+            setServerHealth(h => ({ ...h, VOIDSTREAM: "fail" }));
+          }
+        })
+        .catch(() => { if (!cancelled) { raceCache.current.voidstream = null; setServerHealth(h => ({ ...h, VOIDSTREAM: "fail" })); } });
     });
 
     // PAHE — AnimePahe → kwik.cx → native HLS; requires CF Worker relay
@@ -1913,6 +1941,57 @@ export default function WatchAniList() {
       .finally(() => { if (!cancelled) setShirokoLoading(false); });
     return () => { cancelled = true; };
   }, [server, animeId, currentEp, shirokoProvider]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fetch VoidStream provider list when server is VOIDSTREAM.
+  // Resets to the first (anime-tailored) provider on every anime/episode
+  // change; the onError handler below cascades through the rest.
+  useEffect(() => {
+    if (server !== "VOIDSTREAM") {
+      setVoidstreamSources([]);
+      setVoidstreamError(null);
+      return;
+    }
+    const cached = raceCache.current.voidstream;
+    if (cached !== undefined) {
+      if (cached?.sources?.length) {
+        setVoidstreamSources(cached.sources);
+        setVoidstreamSourceIndex(0);
+        setVoidstreamLoading(false);
+        setVoidstreamError(null);
+        raceCache.current.voidstream = undefined;
+        return;
+      }
+      raceCache.current.voidstream = undefined;
+    }
+    let cancelled = false;
+    setVoidstreamSources([]);
+    setVoidstreamSourceIndex(0);
+    setVoidstreamLoading(true);
+    setVoidstreamError(null);
+    const params = new URLSearchParams({ anilistId: String(animeId), ep: String(currentEp) });
+    fetch(apiUrl(`/api/voidstream/stream?${params}`))
+      .then(r => r.json())
+      .then((data: { sources?: { id: string; label: string; iframeUrl: string }[]; error?: string }) => {
+        if (cancelled) return;
+        if (data.sources && data.sources.length > 0) {
+          setVoidstreamSources(data.sources);
+        } else {
+          setVoidstreamError(data.error ?? "Anime not found on VoidStream");
+        }
+      })
+      .catch((e: Error) => { if (!cancelled) setVoidstreamError(e.message); })
+      .finally(() => { if (!cancelled) setVoidstreamLoading(false); });
+    return () => { cancelled = true; };
+  }, [server, animeId, currentEp]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Cascades to the next VoidStream embed provider when the current iframe fails to load. */
+  const tryNextVoidstreamSource = useCallback(() => {
+    setVoidstreamSourceIndex(i => {
+      if (i + 1 < voidstreamSources.length) return i + 1;
+      setVoidstreamError("All VoidStream providers failed to load this episode");
+      return i;
+    });
+  }, [voidstreamSources.length]);
 
   // Load saved AnimeonSen content ID from localStorage
   useEffect(() => {
@@ -3416,6 +3495,80 @@ export default function WatchAniList() {
                   </div>
                 )}
 
+                {/* VOIDSTREAM — cascades through embed providers (vidapi.xyz, videasy, vidfast, vidsrc, etc). */}
+                {server === "VOIDSTREAM" && voidstreamSourceIndex < voidstreamSources.length && (
+                  <iframe
+                    ref={iframeRef}
+                    key={`voidstream-${animeId}-${currentEp}-${voidstreamSources[voidstreamSourceIndex].id}`}
+                    src={voidstreamSources[voidstreamSourceIndex].iframeUrl}
+                    allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
+                    allowFullScreen
+                    title="VoidStream Player"
+                    style={{ position: "absolute", inset: 0, width: "100%", height: "100%", border: "none", background: "#000" }}
+                    onLoad={() => setTimeout(() => setIframeLoaded(true), 300)}
+                    onError={tryNextVoidstreamSource}
+                  />
+                )}
+
+                {/* VOIDSTREAM loading / error overlay */}
+                {server === "VOIDSTREAM" && voidstreamSourceIndex >= voidstreamSources.length && (
+                  <div className="absolute inset-0 z-10 flex flex-col items-center justify-center" style={{ background: "rgba(0,0,0,0.92)" }}>
+                    {banner && <img src={banner} alt="" className="absolute inset-0 w-full h-full object-cover opacity-10 scale-110 blur-sm" />}
+                    <div className="relative z-10 flex flex-col items-center gap-4">
+                      {voidstreamError ? (
+                        <div className="text-center space-y-3">
+                          <div className="w-11 h-11 border border-yellow-400/40 bg-yellow-400/5 flex items-center justify-center mx-auto rounded-sm">
+                            <span className="text-yellow-400 text-xl">🔧</span>
+                          </div>
+                          <p className="text-white/80 text-sm font-semibold tracking-wide">VoidStream Unavailable</p>
+                          <p className="text-white/35 text-[11px] font-mono max-w-[260px] text-center leading-relaxed">
+                            This title isn't mapped to a TMDB entry, or every embed provider failed.<br/>Try another server.
+                          </p>
+                          {suggestedServer && SERVER_META[suggestedServer] && (
+                            <>
+                              {failCountdown !== null && (
+                                <p className="text-yellow-400/80 text-[11px] font-mono animate-pulse">
+                                  Auto-switching to {SERVER_META[suggestedServer].label} in {failCountdown}s…
+                                </p>
+                              )}
+                              <div className="flex items-center gap-2 mt-1">
+                                <button
+                                  onClick={() => switchToServer(suggestedServer)}
+                                  className={`inline-flex items-center gap-2 text-[11px] font-mono font-bold px-5 py-2.5 border ${SERVER_META[suggestedServer].borderCls} ${SERVER_META[suggestedServer].colorCls} ${SERVER_META[suggestedServer].hoverCls} transition-all uppercase tracking-widest`}
+                                >
+                                  <Play className="w-3 h-3 fill-current" /> Try {SERVER_META[suggestedServer].label}
+                                </button>
+                                {failCountdown !== null && (
+                                  <button
+                                    onClick={() => setFailCountdown(null)}
+                                    className="text-[10px] font-mono px-3 py-2.5 border border-white/15 text-white/35 hover:border-white/40 hover:text-white/60 transition-colors uppercase tracking-widest"
+                                  >
+                                    Cancel
+                                  </button>
+                                )}
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      ) : (
+                        <>
+                          <div className="relative w-14 h-14">
+                            <div className="absolute inset-0 rounded-full border-2 border-white/10" />
+                            <div className="absolute inset-0 rounded-full border-2 border-t-violet-400 border-r-transparent border-b-transparent border-l-transparent animate-spin" />
+                            <div className="absolute inset-2 rounded-full border border-white/20 border-t-violet-400/60 animate-spin" style={{ animationDuration: "0.6s", animationDirection: "reverse" }} />
+                          </div>
+                          <p className="text-white/70 text-sm font-semibold tracking-wide">
+                            {voidstreamLoading ? "Loading VoidStream…" : `Trying ${voidstreamSources[voidstreamSourceIndex]?.label ?? "provider"}…`}
+                          </p>
+                        </>
+                      )}
+                      <p className="text-white/20 text-[11px] font-mono uppercase tracking-widest">
+                        Episode {currentEp} · {lang}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 {/* PAHE — AnimePahe native HLS via kwik.cx */}
                 {server === "PAHE" && paheHlsUrl && (
                   <HlsPlayer
@@ -4036,6 +4189,7 @@ export default function WatchAniList() {
                     server === "ANINEKO"    ? "text-pink-400" :
                     server === "SHIROKO"    ? "text-sky-400" :
                     server === "PAHE"       ? "text-rose-400" :
+                    server === "VOIDSTREAM" ? "text-violet-400" :
                     "text-white"
                   }>{server}</span>
                   <ChevronDown className={`w-3 h-3 transition-transform ${serverDropOpen ? "rotate-180" : ""}`} />
@@ -4051,6 +4205,7 @@ export default function WatchAniList() {
                       { key: "ANINEKO",    label: "ANINEKO",    color: "pink"   as const, onClick: () => { userPickedRef.current = true; setServer("ANINEKO"); setIframeLoaded(false); } },
                       { key: "SHIROKO",    label: "SHIROKO",    color: "sky"    as const, onClick: () => { userPickedRef.current = true; setServer("SHIROKO"); setIframeLoaded(false); } },
                       { key: "PAHE",       label: "AnimePahe",  color: "rose"   as const, onClick: () => { userPickedRef.current = true; setServer("PAHE"); setIframeLoaded(false); } },
+                      { key: "VOIDSTREAM", label: "VOIDSTREAM", color: "violet" as const, onClick: () => { userPickedRef.current = true; setServer("VOIDSTREAM"); setIframeLoaded(false); } },
                     ]).map(({ key, label, color, onClick }) => {
                       const active = server === key;
                       const health = serverHealth[key as keyof typeof serverHealth];
@@ -4063,6 +4218,7 @@ export default function WatchAniList() {
                         pink:   active ? "text-pink-400"   : "text-pink-400/50",
                         sky:    active ? "text-sky-400"    : "text-sky-400/50",
                         rose:   active ? "text-rose-400"   : "text-rose-400/50",
+                        violet: active ? "text-violet-400" : "text-violet-400/50",
                       }[color];
                       const dotClass =
                         health === "ok"       ? "bg-green-400" :
@@ -4113,6 +4269,33 @@ export default function WatchAniList() {
                               ? <span className="text-sky-400 text-[9px] shrink-0">✓</span>
                               : <span className="w-[9px] shrink-0" />}
                             {p.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {/* VOIDSTREAM providers — shown when VOIDSTREAM is the active server; cascades
+                        automatically on error, but lets the user jump to a specific one directly. */}
+                    {server === "VOIDSTREAM" && voidstreamSources.length > 0 && (
+                      <div className="border-t border-white/10 pt-1 pb-1">
+                        <div className="px-3 py-1 text-[9px] font-mono text-violet-400/40 uppercase tracking-widest">Provider</div>
+                        {voidstreamSources.map((s, i) => (
+                          <button
+                            key={s.id}
+                            onClick={() => {
+                              setVoidstreamSourceIndex(i);
+                              setVoidstreamError(null);
+                              setIframeLoaded(false);
+                            }}
+                            className={`w-full flex items-center gap-2 px-5 py-1.5 text-[10px] font-mono transition-colors ${
+                              voidstreamSourceIndex === i
+                                ? "text-violet-300 bg-violet-400/10"
+                                : "text-white/40 hover:text-white/70 hover:bg-white/5"
+                            }`}
+                          >
+                            {voidstreamSourceIndex === i
+                              ? <span className="text-violet-400 text-[9px] shrink-0">✓</span>
+                              : <span className="w-[9px] shrink-0" />}
+                            {s.label}
                           </button>
                         ))}
                       </div>

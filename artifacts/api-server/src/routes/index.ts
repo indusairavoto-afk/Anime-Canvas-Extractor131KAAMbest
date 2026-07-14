@@ -37,6 +37,7 @@ import newsRouter from "./news";
 import animecornerRouter from "./animecorner";
 import paheRouter from "./pahe";
 import logoRouter from "./logo";
+import voidstreamRouter from "./voidstream";
 
 const router: IRouter = Router();
 
@@ -78,5 +79,6 @@ router.use(newsRouter);
 router.use(animecornerRouter);
 router.use(paheRouter);
 router.use(logoRouter);
+router.use(voidstreamRouter);
 
 export default router;

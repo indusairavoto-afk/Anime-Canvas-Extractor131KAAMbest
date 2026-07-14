@@ -33,3 +33,4 @@
 - [Miruro SW 4xx → Chrome error page](miruro-sw-4xx-chrome-error.md) — SW must never pass 4xx/5xx to iframe; Chrome shows native error page; use swFailedResponse + Math.min(128,byteLen) for safe body peek.
 - [Miruro SW registration race](miruro-sw-registration-race.md) — markReady must use controller check + controllerchange, not statechange; MiruroSwBridge component catches race via reload trampoline.
 - [Miruro pipe 403 from CF Workers](miruro-pipe-403-from-cf-workers.md) — miruro.bz CF now 403s pipe endpoint from both CF Worker and sidecar IPs; server-side HLS path broken; SW browser path is only viable route.
+- [VoidStream server integration](voidstream-embed-resolution.md) — aggregator sites that need login often just wrap public TMDB-keyed embed providers; build those URLs directly via the shared Fribb AniList→TMDB mapping instead of touching the site's auth.

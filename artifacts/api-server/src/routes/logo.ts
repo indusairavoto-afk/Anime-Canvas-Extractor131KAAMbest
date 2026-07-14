@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { loadFribbMapping } from "../lib/fribb-mapping";
 
 /**
  * Anime logo lookup: AniList ID -> TheTVDB ID (via the Fribb/anime-lists
@@ -10,45 +11,7 @@ import { Router } from "express";
 
 const router = Router();
 
-const MAPPING_URL =
-  "https://raw.githubusercontent.com/Fribb/anime-lists/master/anime-list-full.json";
-
-interface MappingEntry {
-  anilist_id?: number;
-  tvdb_id?: number;
-  themoviedb_id?: { movie?: number; tv?: number } | number;
-}
-
-let mappingCache: Map<number, MappingEntry> | null = null;
-let mappingLoadedAt = 0;
-const MAPPING_TTL_MS = 24 * 60 * 60 * 1000; // 24h
-let mappingLoadPromise: Promise<Map<number, MappingEntry>> | null = null;
-
-async function loadMapping(): Promise<Map<number, MappingEntry>> {
-  if (mappingCache && Date.now() - mappingLoadedAt < MAPPING_TTL_MS) {
-    return mappingCache;
-  }
-  if (mappingLoadPromise) return mappingLoadPromise;
-
-  mappingLoadPromise = (async () => {
-    const res = await fetch(MAPPING_URL, { signal: AbortSignal.timeout(20_000) });
-    if (!res.ok) throw new Error(`mapping fetch failed: ${res.status}`);
-    const list = (await res.json()) as MappingEntry[];
-    const map = new Map<number, MappingEntry>();
-    for (const entry of list) {
-      if (entry.anilist_id) map.set(entry.anilist_id, entry);
-    }
-    mappingCache = map;
-    mappingLoadedAt = Date.now();
-    return map;
-  })();
-
-  try {
-    return await mappingLoadPromise;
-  } finally {
-    mappingLoadPromise = null;
-  }
-}
+const loadMapping = loadFribbMapping;
 
 interface FanartImage {
   id: string;
