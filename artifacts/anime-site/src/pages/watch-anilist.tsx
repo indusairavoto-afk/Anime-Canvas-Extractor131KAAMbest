@@ -175,7 +175,7 @@ export default function WatchAniList() {
   const [loading, setLoading] = useState(true);
   const [lang, setLang] = useState<"SUB" | "DUB">(initialLang as "SUB" | "DUB");
   const [actualLang, setActualLang] = useState<"SUB" | "DUB" | null>(null);
-  const [server, setServer] = useState<"GOGO" | "KOTO" | "ANIZONE" | "MIRURO" | "NEXUS" | "ANIMEONSEN" | "ANINEKO" | "SHIROKO" | "PAHE" | "VOIDSTREAM" | "CUSTOM">("MIRURO");
+  const [server, setServer] = useState<"GOGO" | "KOTO" | "ANIZONE" | "MIRURO" | "NEXUS" | "ANIMEONSEN" | "ANINEKO" | "SHIROKO" | "PAHE" | "VOIDSTREAM" | "CUSTOM">("VOIDSTREAM");
   const [anizoneSlug, setAnizoneSlug] = useState("");
   const [anizoneSlugInput, setAnizoneSlugInput] = useState("");
   const [anizoneSearching, setAnizoneSearching] = useState(false);
@@ -365,7 +365,7 @@ export default function WatchAniList() {
   };
 
   const suggestedServer = useMemo(() => {
-    const priority = ["GOGO", "KOTO", "ANIZONE", "MIRURO", "ANINEKO", "ANIMEONSEN", "SHIROKO", "PAHE", "VOIDSTREAM"] as const;
+    const priority = ["VOIDSTREAM", "GOGO", "KOTO", "ANIZONE", "MIRURO", "ANINEKO", "ANIMEONSEN", "SHIROKO", "PAHE"] as const;
     return priority.find(s => s !== server && serverHealth[s] === "ok") ?? null;
   }, [server, serverHealth]);
 
@@ -721,11 +721,11 @@ export default function WatchAniList() {
     let won = false;
     setAutoDetecting(true);
 
-    // Default to MIRURO when no preference is saved. Once the user manually picks
+    // Default to VOIDSTREAM when no preference is saved. Once the user manually picks
     // a different server it is persisted normally — we don't overwrite that choice.
     const saved = localStorage.getItem(`na_preferred_${animeId}`) as "GOGO" | "KOTO" | "ANIZONE" | "MIRURO" | "NEXUS" | "ANIMEONSEN" | "ANINEKO" | "SHIROKO" | "PAHE" | "VOIDSTREAM" | null;
-    if (!saved) localStorage.setItem(`na_preferred_${animeId}`, "MIRURO");
-    const preferred = saved ?? "MIRURO";
+    if (!saved) localStorage.setItem(`na_preferred_${animeId}`, "VOIDSTREAM");
+    const preferred = saved ?? "VOIDSTREAM";
     // Non-preferred servers wait this long before their fetch fires, giving preferred a head start
     const HEAD_START = preferred ? 800 : 0;
 
