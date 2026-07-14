@@ -21,8 +21,8 @@ const CHROMIUM_PATH =
   "/nix/store/qa9cnw4v5xkxyip6mb9kxqfq1z4x2dx1-chromium-138.0.7204.100/bin/chromium-browser";
 
 const CACHE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
-const PAGE_TIMEOUT_MS = 12_000;           // per-provider page timeout
-const BATCH_TIMEOUT_MS = 14_000;          // overall batch timeout
+const PAGE_TIMEOUT_MS = 13_000;           // per-provider page timeout
+const BATCH_TIMEOUT_MS = 18_000;          // overall batch timeout (11 providers in parallel)
 
 const hlsCache = new Map<string, { hlsUrl: string; expiresAt: number }>();
 
@@ -141,6 +141,7 @@ async function extractHlsFromEmbed(embedUrl: string): Promise<string | null> {
     page.on("request", (req: { url: () => string; abort: (r?: string) => Promise<void>; continue: () => Promise<void> }) => {
       const url = req.url();
       if (isAdUrl(url)) { req.abort("blockedbyclient").catch(() => {}); return; }
+      // Intercept by URL pattern: .m3u8 in path (most providers)
       if (
         resolveHls &&
         url.includes(".m3u8") &&
@@ -151,6 +152,22 @@ async function extractHlsFromEmbed(embedUrl: string): Promise<string | null> {
         resolveHls(url);
       }
       req.continue().catch(() => {});
+    });
+
+    // Also intercept responses by Content-Type so we catch providers
+    // that serve HLS through opaque proxy URLs (no .m3u8 in path).
+    page.on("response", (resp: { url: () => string; headers: () => Record<string, string> }) => {
+      if (!resolveHls) return;
+      const url = resp.url();
+      if (isAdUrl(url)) return;
+      const ct = (resp.headers()["content-type"] ?? "").toLowerCase();
+      if (
+        (ct.includes("mpegurl") || ct.includes("x-mpegurl")) &&
+        !url.includes("/ads/") &&
+        !url.includes("ad-")
+      ) {
+        resolveHls(url);
+      }
     });
 
     page

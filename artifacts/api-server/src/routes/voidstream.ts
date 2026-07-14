@@ -34,6 +34,7 @@ interface ProviderDef {
 
 // Mirrors the provider switch statement in voidstream.space's own client bundle.
 // Ordered with anime-focused / generally reliable providers first.
+// Confirmed reachable from Replit IPs via HEAD check before adding.
 const PROVIDERS: ProviderDef[] = [
   {
     id: "sukuna",
@@ -58,6 +59,27 @@ const PROVIDERS: ProviderDef[] = [
     label: "VoidStream (Super)",
     movieUrl: (id) => `https://vidsrc.me/embed/movie?tmdb=${id}`,
     tvUrl: (id, s, e) => `https://vidsrc.me/embed/tv?tmdb=${id}&season=${s}&episode=${e}`,
+  },
+  // vidsrc.to — separate backend from vidsrc.me, confirmed reachable
+  {
+    id: "vidsrcto",
+    label: "VoidStream (S2)",
+    movieUrl: (id) => `https://vidsrc.to/embed/movie/${id}`,
+    tvUrl: (id, s, e) => `https://vidsrc.to/embed/tv/${id}/${s}/${e}`,
+  },
+  // 2embed.skin — confirmed reachable, mirrors VoidStream Server 2
+  {
+    id: "twoembedsk",
+    label: "VoidStream (S3)",
+    movieUrl: (id) => `https://2embed.skin/embed/movie/${id}`,
+    tvUrl: (id, s, e) => `https://2embed.skin/embed/tv/${id}/${s}/${e}`,
+  },
+  // smashystream — confirmed reachable, used by VoidStream and others
+  {
+    id: "smashy",
+    label: "VoidStream (S4)",
+    movieUrl: (id) => `https://smashystream.xyz/playere.php?tmdb=${id}&type=movie`,
+    tvUrl: (id, s, e) => `https://smashystream.xyz/playere.php?tmdb=${id}&s=${s}&e=${e}`,
   },
   {
     id: "vidnest",
