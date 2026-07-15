@@ -24,6 +24,7 @@ const CHALLENGE_TIMEOUT_MS = 40_000;
 const COOLDOWN_MS = 10 * 60 * 1000;
 
 const CHROMIUM_PATH =
+  process.env.PUPPETEER_EXECUTABLE_PATH ||
   "/nix/store/qa9cnw4v5xkxyip6mb9kxqfq1z4x2dx1-chromium-138.0.7204.100/bin/chromium-browser";
 
 export interface CfSession {
