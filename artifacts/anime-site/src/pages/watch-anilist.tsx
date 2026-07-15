@@ -2037,8 +2037,33 @@ export default function WatchAniList() {
 
   /** Manual provider switch — re-extracts HLS for a specific provider the user picked. */
   const tryNextVoidstreamSource = useCallback(() => {
-    // No-op kept for onFatalError wire-up; manual retries go through the picker onClick.
-  }, []);
+    // Walk forward through providers until one successfully extracts an HLS URL.
+    const tryFrom = (idx: number) => {
+      if (idx >= voidstreamSources.length) {
+        setVoidstreamHlsUrl(null);
+        setVoidstreamHlsLoading(false);
+        setVoidstreamError("All providers exhausted — no working stream found. Try another server.");
+        return;
+      }
+      const src = voidstreamSources[idx];
+      setVoidstreamSourceIndex(idx);
+      setVoidstreamHlsUrl(null);
+      setVoidstreamHlsLoading(true);
+      setVoidstreamError(null);
+      fetch(apiUrl(`/api/voidstream/hls?url=${encodeURIComponent(src.iframeUrl)}`))
+        .then(r => r.json())
+        .then((data: { hlsUrl?: string; error?: string }) => {
+          if (data.hlsUrl) {
+            setVoidstreamHlsLoading(false);
+            setVoidstreamHlsUrl(data.hlsUrl);
+          } else {
+            tryFrom(idx + 1); // this provider has no stream — skip to next
+          }
+        })
+        .catch(() => tryFrom(idx + 1));
+    };
+    tryFrom(voidstreamSourceIndex + 1);
+  }, [voidstreamSourceIndex, voidstreamSources]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Re-extract HLS for a manually selected VoidStream provider. */
   const switchVoidstreamProvider = useCallback((iframeUrl: string, index: number) => {

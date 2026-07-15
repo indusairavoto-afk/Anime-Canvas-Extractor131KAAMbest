@@ -266,42 +266,49 @@ router.get("/anizone/hls", async (req, res) => {
     const upstream = await fetchWithFallbacks();
 
     const contentType = upstream.headers.get("content-type") ?? "";
-
-    if (
+    const isManifestByMeta =
       cdnUrl.includes(".m3u8") ||
       contentType.includes("mpegurl") ||
-      contentType.includes("x-mpegURL")
-    ) {
-      const text = await upstream.text();
-      // Detect Cloudflare challenge / error pages served as HTTP 200.
-      // These arrive when the server IP is CF-blocked and the CDN returns an
-      // HTML challenge or error page instead of m3u8 content.  Serving this as
-      // a playlist would give HLS.js thousands of garbage "segment" URLs; return
-      // 503 instead so onFatalError fires quickly and the SW iframe takes over.
+      contentType.includes("x-mpegURL");
+
+    // Read entire body once as Buffer so we can inspect content AND serve it
+    // without needing a second fetch. This handles CDN proxy URLs that have no
+    // ".m3u8" in their path (e.g. m3u8.primebox.workers.dev/proxy?url=...) but
+    // still return m3u8 content.
+    const buf = Buffer.from(await upstream.arrayBuffer());
+    const preview = buf.slice(0, 128).toString("utf8").trimStart();
+
+    // Sniff: true m3u8 starts with #EXTM3U
+    const isManifest = isManifestByMeta || preview.startsWith("#EXTM3U");
+
+    if (isManifest) {
+      // HTML / Cloudflare challenge page instead of m3u8 → return 503 so
+      // hls.js fires a NETWORK_ERROR → onFatalError → next provider is tried.
       if (
         contentType.includes("text/html") ||
-        text.trimStart().startsWith("<!DOCTYPE") ||
-        text.trimStart().startsWith("<html")
+        preview.startsWith("<!DOCTYPE") ||
+        preview.startsWith("<html")
       ) {
         return res.status(503).json({ error: "CDN IP-blocked (CF challenge received instead of m3u8)" });
       }
+      // Non-m3u8 response masquerading as a manifest (JSON error, empty body, etc.)
+      // → same 503 so the player falls through to the next provider cleanly.
+      if (!preview.startsWith("#EXTM3U")) {
+        return res.status(503).json({ error: "CDN returned non-m3u8 content for manifest URL" });
+      }
+      const text = buf.toString("utf8");
       const rewritten = rewriteM3u8(text, cdnUrl);
-
       res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
       res.setHeader("Access-Control-Allow-Origin", "*");
       res.setHeader("Cache-Control", "no-cache");
       return res.send(rewritten);
     }
 
-    res.setHeader(
-      "Content-Type",
-      contentType || "video/mp2t",
-    );
+    // Binary segment pass-through
+    res.setHeader("Content-Type", contentType || "video/mp2t");
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Cache-Control", "no-cache");
-
-    const buf = await upstream.arrayBuffer();
-    return res.send(Buffer.from(buf));
+    return res.send(buf);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "proxy error";
     return res.status(502).send(msg);
