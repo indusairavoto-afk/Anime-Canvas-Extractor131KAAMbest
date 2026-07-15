@@ -13,6 +13,7 @@
 
 import puppeteer from "puppeteer-extra";
 import StealthPlugin from "puppeteer-extra-plugin-stealth";
+import { CHROMIUM_PATH } from "./chromium-path.js";
 
 puppeteer.use(StealthPlugin());
 
@@ -23,9 +24,7 @@ const SESSION_TTL_MS = 25 * 60 * 1000;
 const CHALLENGE_TIMEOUT_MS = 40_000;
 const COOLDOWN_MS = 10 * 60 * 1000;
 
-const CHROMIUM_PATH =
-  process.env.PUPPETEER_EXECUTABLE_PATH ||
-  "/nix/store/qa9cnw4v5xkxyip6mb9kxqfq1z4x2dx1-chromium-138.0.7204.100/bin/chromium-browser";
+// CHROMIUM_PATH is resolved by chromium-path.ts (auto-detects via `which`)
 
 export interface CfSession {
   cookieHeader: string;

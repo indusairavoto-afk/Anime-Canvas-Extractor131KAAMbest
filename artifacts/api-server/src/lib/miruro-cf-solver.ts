@@ -22,6 +22,7 @@ import StealthPlugin from "puppeteer-extra-plugin-stealth";
 import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
+import { CHROMIUM_PATH } from "./chromium-path.js";
 
 // Register the stealth plugin — must be done before any launch() call
 puppeteer.use(StealthPlugin());
@@ -38,13 +39,7 @@ const CHALLENGE_TIMEOUT_MS = 40_000;
 /** After a hard IP block, back off this long before trying again */
 const COOLDOWN_MS = 10 * 60 * 1000;
 
-/**
- * System Chromium path — installed by Nix, its wrapper script already sets
- * up the correct LD_LIBRARY_PATH.
- */
-const CHROMIUM_PATH =
-  process.env.PUPPETEER_EXECUTABLE_PATH ||
-  "/nix/store/qa9cnw4v5xkxyip6mb9kxqfq1z4x2dx1-chromium-138.0.7204.100/bin/chromium-browser";
+// CHROMIUM_PATH is resolved by chromium-path.ts (auto-detects via `which`)
 
 /**
  * CF bypass extension path — provides an extra layer of Cloudflare challenge

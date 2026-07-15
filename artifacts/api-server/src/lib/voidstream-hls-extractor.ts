@@ -14,14 +14,9 @@
 
 import puppeteer from "puppeteer-extra";
 import StealthPlugin from "puppeteer-extra-plugin-stealth";
+import { CHROMIUM_PATH } from "./chromium-path.js";
 
 puppeteer.use(StealthPlugin());
-
-// On Replit (NixOS) the binary lives in the Nix store; on any other Linux
-// (Render, Railway, …) set PUPPETEER_EXECUTABLE_PATH to the installed path.
-const CHROMIUM_PATH =
-  process.env.PUPPETEER_EXECUTABLE_PATH ||
-  "/nix/store/qa9cnw4v5xkxyip6mb9kxqfq1z4x2dx1-chromium-138.0.7204.100/bin/chromium-browser";
 
 const CACHE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
 const PAGE_TIMEOUT_MS = 20_000;           // per-provider page timeout (voidstream.space needs ~15s for S1→S2 fallback)
