@@ -23,7 +23,7 @@ services:
     region: oregon
     plan: free
     buildCommand: >-
-      (sudo apt-get install -y chromium-browser 2>/dev/null || sudo apt-get install -y chromium 2>/dev/null || true) &&
+      PUPPETEER_CACHE_DIR=/opt/render/project/src/.puppeteer-cache
       npx --yes pnpm@10 install --frozen-lockfile &&
       npx --yes pnpm@10 --filter @workspace/anime-site run build &&
       npx --yes pnpm@10 --filter @workspace/api-server run build &&
@@ -33,9 +33,10 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
-      # Chromium installed by buildCommand; path differs by OS
-      - key: PUPPETEER_EXECUTABLE_PATH
-        value: /usr/bin/chromium-browser
+      # Tell puppeteer where it downloaded Chrome during the build step.
+      # The project directory persists from build → runtime on Render.
+      - key: PUPPETEER_CACHE_DIR
+        value: /opt/render/project/src/.puppeteer-cache
       - key: DATABASE_URL
         fromDatabase:
           name: nexa-anime-db
